@@ -1,13 +1,8 @@
 import { FileText, Settings, Upload, Video } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { SettingsPanel } from "renderer/components/settings/SettingsPanel";
 import { TaskList } from "renderer/components/task/TaskList";
 import { Button } from "renderer/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "renderer/components/ui/card";
 import { VideoUploader } from "renderer/components/video/VideoUploader";
 import { TranslationTask } from "shared/types/video";
 
@@ -146,16 +141,7 @@ export function MainScreen() {
       case "tasks":
         return <TaskList tasks={tasks} onTaskAction={handleTaskAction} />;
       case "settings":
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>设置</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">设置页面正在开发中...</p>
-            </CardContent>
-          </Card>
-        );
+        return <SettingsPanel />;
       default:
         return null;
     }

@@ -4,7 +4,6 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import {
   TaskStatus,
-  TranscriptionSegment,
   TranslationTask,
   VideoFile,
 } from "../../shared/types/video";
@@ -12,12 +11,14 @@ import { SubtitleGenerator } from "../utils/subtitle-generator";
 import { databaseManager } from "./database/manager";
 import { ffmpegProcessor } from "./ffmpeg/processor";
 import { ollamaClient } from "./ollama/client";
+import { whisperTranscriber } from "./whisper/transcriber";
 
 export interface CreateTaskOptions {
   filePath: string;
   sourceLanguage: string;
   targetLanguage: string;
   ollamaModel?: string;
+  whisperModel?: string;
 }
 
 export class TaskManager {
@@ -25,22 +26,29 @@ export class TaskManager {
   private mainWindow: BrowserWindow | null = null;
 
   constructor() {
-    this.initializeOllama();
+    this.initializeServices();
   }
 
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
   }
 
-  private async initializeOllama(): Promise<void> {
+  private async initializeServices(): Promise<void> {
     try {
-      const isRunning = await ollamaClient.isRunning();
-      if (!isRunning) {
+      // 初始化 Ollama
+      const isOllamaRunning = await ollamaClient.isRunning();
+      if (!isOllamaRunning) {
         console.log("启动 Ollama 服务...");
         await ollamaClient.startDaemon();
       }
+
+      // 检查 Whisper 是否可用
+      const isWhisperAvailable = await whisperTranscriber.isAvailable();
+      if (!isWhisperAvailable) {
+        console.warn("Whisper 不可用，请确保已安装 whisper 或 whisper.cpp");
+      }
     } catch (error) {
-      console.error("Ollama 初始化失败:", error);
+      console.error("服务初始化失败:", error);
     }
   }
 
@@ -105,7 +113,7 @@ export class TaskManager {
       this.notifyTaskUpdate(task);
 
       // 异步开始处理任务
-      this.processTask(task.id, options.ollamaModel);
+      this.processTask(task.id, options.ollamaModel, options.whisperModel);
 
       return task.id;
     } catch (error) {
@@ -119,7 +127,8 @@ export class TaskManager {
    */
   private async processTask(
     taskId: string,
-    ollamaModel = "llama3"
+    ollamaModel = "llama3",
+    whisperModel = "base"
   ): Promise<void> {
     const task = this.activeTasks.get(taskId);
     if (!task) {
@@ -148,29 +157,19 @@ export class TaskManager {
 
       const audioSegments = await ffmpegProcessor.segmentAudio(audioPath);
 
-      // 步骤 3: 语音识别 (模拟 - 实际需要集成 Whisper)
-      const segments: TranscriptionSegment[] = [];
-
-      for (let i = 0; i < audioSegments.length; i++) {
-        const audioSegment = audioSegments[i];
-
-        // 模拟转录过程
-        const transcriptionText = `这是第 ${i + 1} 段转录文本示例`;
-
-        const segment: TranscriptionSegment = {
-          id: uuidv4(),
-          start: audioSegment.start,
-          end: audioSegment.end,
-          originalText: transcriptionText,
-          confidence: 0.95,
-        };
-
-        segments.push(segment);
-
-        // 更新进度
-        const progress = 30 + ((i + 1) / audioSegments.length) * 30;
-        await this.updateTaskStatus(taskId, TaskStatus.TRANSCRIBING, progress);
-      }
+      // 步骤 3: 使用 Whisper 进行语音识别
+      const segments = await whisperTranscriber.transcribeBatch(
+        audioSegments,
+        {
+          model: whisperModel as any,
+          language: this.getWhisperLanguageCode(task.sourceLanguage),
+          temperature: 0.0,
+        },
+        (completed, total) => {
+          const progress = 30 + (completed / total) * 30;
+          this.updateTaskStatus(taskId, TaskStatus.TRANSCRIBING, progress);
+        }
+      );
 
       // 保存转录段落
       databaseManager.saveTranscriptionSegments(taskId, segments);
@@ -239,6 +238,33 @@ export class TaskManager {
         error.message
       );
     }
+  }
+
+  /**
+   * 将语言名称转换为 Whisper 语言代码
+   */
+  private getWhisperLanguageCode(language: string): string {
+    const languageMap: Record<string, string> = {
+      English: "en",
+      Chinese: "zh",
+      中文: "zh",
+      Japanese: "ja",
+      日本語: "ja",
+      Korean: "ko",
+      한국어: "ko",
+      Spanish: "es",
+      French: "fr",
+      German: "de",
+      Italian: "it",
+      Portuguese: "pt",
+      Russian: "ru",
+      Arabic: "ar",
+      Hindi: "hi",
+      Thai: "th",
+      Vietnamese: "vi",
+    };
+
+    return languageMap[language] || "auto";
   }
 
   /**
@@ -367,6 +393,9 @@ export class TaskManager {
 
     // 清理 FFmpeg 临时文件
     ffmpegProcessor.cleanup();
+
+    // 清理 Whisper 临时文件
+    whisperTranscriber.cleanup();
 
     // 停止 Ollama 守护进程
     ollamaClient.stopDaemon();

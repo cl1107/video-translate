@@ -22,8 +22,9 @@
     "compile:packageJSON": "tsx ./src/lib/electron-app/release/modules/prebuild.ts",
     "prebuild": "run-s clean:dev compile:app compile:packageJSON",
     "build": "pnpm electron-builder",
-    "postinstall": "run-s prebuild install:deps",
+    "postinstall": "run-s prebuild install:deps rebuild:native",
     "install:deps": "electron-builder install-app-deps",
+    "rebuild:native": "electron-rebuild",
     "make:release": "tsx ./src/lib/electron-app/release/modules/release.ts",
     "release": "electron-builder --publish always",
     "clean:dev": "rimraf ./node_modules/.dev",
@@ -31,7 +32,10 @@
     "lint:fix": "biome lint --write --no-errors-on-unmatched"
   },
   "dependencies": {
+    "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node-fetch": "^2.6.12",
@@ -48,7 +52,8 @@
     "react-router-dom": "^7.2.0",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "whisper-node": "^1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
