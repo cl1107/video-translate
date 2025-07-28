@@ -31,18 +31,28 @@
     "lint:fix": "biome lint --write --no-errors-on-unmatched"
   },
   "dependencies": {
+    "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node-fetch": "^2.6.12",
+    "@types/uuid": "^10.0.0",
+    "better-sqlite3": "^12.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-router-dom": "^2.1.0",
     "lucide-react": "^0.477.0",
+    "node-abi": "^4.12.0",
+    "node-fetch": "^3.3.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.2.0",
     "tailwind-merge": "^3.0.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@electron/rebuild": "^4.0.1",
     "@tailwindcss/vite": "^4.0.9",
     "@types/node": "^22.13.8",
     "@types/react": "^19.0.10",
@@ -51,7 +61,7 @@
     "@vitejs/plugin-react": "^4.0.4",
     "code-inspector-plugin": "^0.20.1",
     "cross-env": "^7.0.3",
-    "electron": "^34.3.0",
+    "electron": "^37.2.4",
     "electron-builder": "^25.1.8",
     "electron-extension-installer": "^1.2.0",
     "electron-vite": "^3.0.0",

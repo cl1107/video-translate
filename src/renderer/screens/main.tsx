@@ -1,38 +1,209 @@
-import { Terminal } from 'lucide-react'
-import { useEffect } from 'react'
-
+import { FileText, Settings, Upload, Video } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { TaskList } from "renderer/components/task/TaskList";
+import { Button } from "renderer/components/ui/button";
 import {
-  Alert,
-  AlertTitle,
-  AlertDescription,
-} from 'renderer/components/ui/alert'
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "renderer/components/ui/card";
+import { VideoUploader } from "renderer/components/video/VideoUploader";
+import { TranslationTask } from "shared/types/video";
 
 // The "App" comes from the context bridge in preload/index.ts
-const { App } = window
+const { App } = window;
 
 export function MainScreen() {
-  useEffect(() => {
-    // check the console on dev tools
-    App.sayHelloFromBridge()
-  }, [])
+  const [tasks, setTasks] = useState<TranslationTask[]>([]);
+  const [activeTab, setActiveTab] = useState<"upload" | "tasks" | "settings">(
+    "upload"
+  );
+  const [loading, setLoading] = useState(false);
 
-  const userName = App.username || 'there'
+  // 加载所有任务
+  const loadTasks = useCallback(async () => {
+    try {
+      const allTasks = await App.getAllTasks();
+      setTasks(allTasks);
+    } catch (error) {
+      console.error("加载任务失败:", error);
+    }
+  }, []);
+
+  // 初始化加载任务
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  // 监听任务更新
+  useEffect(() => {
+    const unsubscribeTaskUpdated = App.onTaskUpdated(
+      (updatedTask: TranslationTask) => {
+        setTasks((prevTasks) => {
+          const index = prevTasks.findIndex(
+            (task) => task.id === updatedTask.id
+          );
+          if (index >= 0) {
+            // 更新现有任务
+            const newTasks = [...prevTasks];
+            newTasks[index] = updatedTask;
+            return newTasks;
+          } else {
+            // 添加新任务
+            return [updatedTask, ...prevTasks];
+          }
+        });
+      }
+    );
+
+    const unsubscribeTaskDeleted = App.onTaskDeleted((taskId: string) => {
+      setTasks((prevTasks) => prevTasks.filter((task) => task.id !== taskId));
+    });
+
+    return () => {
+      unsubscribeTaskUpdated();
+      unsubscribeTaskDeleted();
+    };
+  }, []);
+
+  const handleFileUpload = useCallback(async (files: File[]) => {
+    // 对于拖拽上传，我们使用文件选择对话框作为替代
+    handleSelectFiles();
+  }, []);
+
+  const handleSelectFiles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const filePaths = await App.openFileDialog();
+      if (filePaths.length > 0) {
+        const result = await App.uploadFiles(filePaths);
+        if (result.success) {
+          console.log("文件上传成功，任务ID:", result.taskIds);
+          // 切换到任务列表
+          setActiveTab("tasks");
+          // 刷新任务列表
+          await loadTasks();
+        } else {
+          console.error("文件上传失败:", result.error);
+          alert(`文件上传失败: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error("文件选择失败:", error);
+      alert(`文件选择失败: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadTasks]);
+
+  const handleTaskAction = useCallback(
+    async (action: string, taskId: string) => {
+      try {
+        switch (action) {
+          case "pause":
+            await App.pauseTask(taskId);
+            break;
+          case "resume":
+            await App.resumeTask(taskId);
+            break;
+          case "delete":
+            if (confirm("确定要删除这个任务吗？")) {
+              await App.deleteTask(taskId);
+            }
+            break;
+          case "retry":
+            await App.retryTask(taskId);
+            break;
+          default:
+            console.warn("未知的任务操作:", action);
+        }
+
+        // 刷新任务列表
+        await loadTasks();
+      } catch (error) {
+        console.error("任务操作失败:", error);
+        alert(`操作失败: ${error.message}`);
+      }
+    },
+    [loadTasks]
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "upload":
+        return (
+          <div className="space-y-4">
+            <VideoUploader onFilesSelected={handleFileUpload} />
+            <div className="text-center">
+              <Button onClick={handleSelectFiles} disabled={loading} size="lg">
+                <Upload className="h-4 w-4 mr-2" />
+                {loading ? "处理中..." : "或点击选择文件"}
+              </Button>
+            </div>
+          </div>
+        );
+      case "tasks":
+        return <TaskList tasks={tasks} onTaskAction={handleTaskAction} />;
+      case "settings":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>设置</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">设置页面正在开发中...</p>
+            </CardContent>
+          </Card>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
-    <main className="flex flex-col items-center justify-center h-screen bg-black">
-      <Alert className="mt-5 bg-transparent border-transparent text-accent w-fit">
-        <AlertTitle className="text-5xl text-teal-400">
-          Hi, {userName}!
-        </AlertTitle>
+    <div className="min-h-screen bg-background">
+      {/* 顶部导航栏 */}
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Video className="h-6 w-6 text-primary" />
+              <h1 className="text-xl font-semibold">视频翻译助手</h1>
+            </div>
 
-        <AlertDescription className="flex items-center gap-2 text-lg">
-          <Terminal className="size-6 text-fuchsia-300" />
+            <div className="flex space-x-1">
+              <Button
+                variant={activeTab === "upload" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveTab("upload")}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                上传视频
+              </Button>
+              <Button
+                variant={activeTab === "tasks" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveTab("tasks")}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                任务列表 {tasks.length > 0 && `(${tasks.length})`}
+              </Button>
+              <Button
+                variant={activeTab === "settings" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setActiveTab("settings")}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                设置
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
 
-          <span className="text-gray-400">
-            It's time to build something awesome!
-          </span>
-        </AlertDescription>
-      </Alert>
-    </main>
-  )
+      {/* 主要内容区域 */}
+      <main className="container mx-auto px-4 py-6">{renderContent()}</main>
+    </div>
+  );
 }
