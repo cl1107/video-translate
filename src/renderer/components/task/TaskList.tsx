@@ -11,7 +11,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Badge } from "renderer/components/ui/badge";
 import { Button } from "renderer/components/ui/button";
 import {
@@ -24,9 +24,11 @@ import { Progress } from "renderer/components/ui/progress";
 import { TaskStatus, TranslationTask } from "shared/types/video";
 import { TaskLogs } from "./TaskLogs";
 
+const { App } = window;
+
 interface TaskListProps {
   tasks: TranslationTask[];
-  onTaskAction: (action: string, taskId: string) => void;
+  onTasksChange: () => void;
 }
 
 const getStatusIcon = (status: TaskStatus) => {
@@ -105,8 +107,40 @@ const formatDate = (date: Date): string => {
   return date.toLocaleDateString();
 };
 
-export function TaskList({ tasks, onTaskAction }: TaskListProps) {
+export function TaskList({ tasks, onTasksChange }: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+
+  const handleTaskAction = useCallback(
+    async (action: string, taskId: string) => {
+      try {
+        switch (action) {
+          case "pause":
+            await App.pauseTask(taskId);
+            break;
+          case "resume":
+            await App.resumeTask(taskId);
+            break;
+          case "delete":
+            if (confirm("确定要删除这个任务吗？")) {
+              await App.deleteTask(taskId);
+            }
+            break;
+          case "retry":
+            await App.retryTask(taskId);
+            break;
+          default:
+            console.warn("未知的任务操作:", action);
+        }
+
+        // 刷新任务列表
+        onTasksChange();
+      } catch (error) {
+        console.error("任务操作失败:", error);
+        alert(`操作失败: ${error.message || error}`);
+      }
+    },
+    [onTasksChange]
+  );
 
   const toggleTaskExpanded = (taskId: string) => {
     const newExpanded = new Set(expandedTasks);
@@ -236,7 +270,7 @@ export function TaskList({ tasks, onTaskAction }: TaskListProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onTaskAction("pause", task.id)}
+                      onClick={() => handleTaskAction("pause", task.id)}
                     >
                       <Pause className="h-4 w-4 mr-1" />
                       暂停
@@ -247,7 +281,7 @@ export function TaskList({ tasks, onTaskAction }: TaskListProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onTaskAction("resume", task.id)}
+                      onClick={() => handleTaskAction("resume", task.id)}
                     >
                       <Play className="h-4 w-4 mr-1" />
                       继续
@@ -258,7 +292,7 @@ export function TaskList({ tasks, onTaskAction }: TaskListProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onTaskAction("retry", task.id)}
+                      onClick={() => handleTaskAction("retry", task.id)}
                     >
                       <RotateCcw className="h-4 w-4 mr-1" />
                       重试
@@ -269,7 +303,7 @@ export function TaskList({ tasks, onTaskAction }: TaskListProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => onTaskAction("delete", task.id)}
+                  onClick={() => handleTaskAction("delete", task.id)}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
                   删除

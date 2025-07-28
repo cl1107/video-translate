@@ -1,6 +1,6 @@
 import { FileText, Settings, Upload, Video } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { SettingsPanel } from "renderer/components/settings/SettingsPanel";
+import { useNavigate } from "react-router-dom";
 import { TaskList } from "renderer/components/task/TaskList";
 import { Button } from "renderer/components/ui/button";
 import { VideoUploader } from "renderer/components/video/VideoUploader";
@@ -11,9 +11,8 @@ const { App } = window;
 
 export function MainScreen() {
   const [tasks, setTasks] = useState<TranslationTask[]>([]);
-  const [activeTab, setActiveTab] = useState<"upload" | "tasks" | "settings">(
-    "upload"
-  );
+  const [activeTab, setActiveTab] = useState<"upload" | "tasks">("upload");
+  const navigate = useNavigate();
 
   // 加载所有任务
   const loadTasks = useCallback(async () => {
@@ -61,101 +60,118 @@ export function MainScreen() {
     };
   }, []);
 
-  const handleTaskAction = useCallback(
-    async (action: string, taskId: string) => {
-      try {
-        switch (action) {
-          case "pause":
-            await App.pauseTask(taskId);
-            break;
-          case "resume":
-            await App.resumeTask(taskId);
-            break;
-          case "delete":
-            if (confirm("确定要删除这个任务吗？")) {
-              await App.deleteTask(taskId);
-            }
-            break;
-          case "retry":
-            await App.retryTask(taskId);
-            break;
-          default:
-            console.warn("未知的任务操作:", action);
-        }
-
-        // 刷新任务列表
-        await loadTasks();
-      } catch (error) {
-        console.error("任务操作失败:", error);
-        alert(`操作失败: ${error.message}`);
-      }
-    },
-    [loadTasks]
-  );
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "upload":
-        return (
-          <VideoUploader
-            onUploadSuccess={() => {
-              setActiveTab("tasks");
-              loadTasks();
-            }}
-          />
-        );
-      case "tasks":
-        return <TaskList tasks={tasks} onTaskAction={handleTaskAction} />;
-      case "settings":
-        return <SettingsPanel />;
-      default:
-        return null;
-    }
+  const handleUploadSuccess = () => {
+    setActiveTab("tasks");
+    loadTasks();
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50">
       {/* 顶部导航栏 */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-3">
+      <div className="bg-white border-b">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <Video className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-semibold">视频翻译助手</h1>
+              <Video className="h-8 w-8 text-blue-600" />
+              <h1 className="text-2xl font-bold text-gray-900">视频翻译助手</h1>
             </div>
 
-            <div className="flex space-x-1">
+            <div className="flex items-center space-x-4">
+              {/* 标签页导航 */}
+              <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+                <Button
+                  variant={activeTab === "upload" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab("upload")}
+                  className="flex items-center space-x-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>上传视频</span>
+                </Button>
+                <Button
+                  variant={activeTab === "tasks" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab("tasks")}
+                  className="flex items-center space-x-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>任务列表</span>
+                  {tasks.length > 0 && (
+                    <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center">
+                      {tasks.length}
+                    </span>
+                  )}
+                </Button>
+              </div>
+
+              {/* 设置按钮 */}
               <Button
-                variant={activeTab === "upload" ? "default" : "ghost"}
+                variant="outline"
                 size="sm"
-                onClick={() => setActiveTab("upload")}
+                onClick={() => navigate("/settings")}
+                className="flex items-center space-x-2"
               >
-                <Upload className="h-4 w-4 mr-2" />
-                上传视频
-              </Button>
-              <Button
-                variant={activeTab === "tasks" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveTab("tasks")}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                任务列表 {tasks.length > 0 && `(${tasks.length})`}
-              </Button>
-              <Button
-                variant={activeTab === "settings" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveTab("settings")}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                设置
+                <Settings className="h-4 w-4" />
+                <span>设置</span>
               </Button>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* 主要内容区域 */}
-      <main className="container mx-auto px-4 py-6">{renderContent()}</main>
+      <div className="container mx-auto px-6 py-8">
+        {activeTab === "upload" && (
+          <div className="max-w-4xl mx-auto space-y-8">
+            <div className="text-center space-y-4">
+              <h2 className="text-3xl font-bold text-gray-900">
+                上传您的视频文件
+              </h2>
+              <p className="text-xl text-gray-600">
+                支持多种格式，自动生成翻译字幕
+              </p>
+            </div>
+
+            <VideoUploader onUploadSuccess={handleUploadSuccess} />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+              <div className="p-6 bg-white rounded-lg shadow-sm border">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">🎬</span>
+                </div>
+                <h3 className="font-semibold mb-2">智能处理</h3>
+                <p className="text-sm text-gray-600">
+                  自动提取音频，智能分段处理
+                </p>
+              </div>
+              <div className="p-6 bg-white rounded-lg shadow-sm border">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">🎯</span>
+                </div>
+                <h3 className="font-semibold mb-2">高精度识别</h3>
+                <p className="text-sm text-gray-600">
+                  使用 Whisper 模型进行语音转录
+                </p>
+              </div>
+              <div className="p-6 bg-white rounded-lg shadow-sm border">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl">🌐</span>
+                </div>
+                <h3 className="font-semibold mb-2">本地翻译</h3>
+                <p className="text-sm text-gray-600">
+                  本地 Ollama 模型，保护隐私安全
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "tasks" && (
+          <div className="max-w-6xl mx-auto">
+            <TaskList tasks={tasks} onTasksChange={loadTasks} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

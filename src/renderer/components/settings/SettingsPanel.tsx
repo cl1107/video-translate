@@ -1,5 +1,7 @@
 import { AlertCircle, Check, Download, Loader2, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { DependencyChecker } from "renderer/components/system/DependencyChecker";
 import { Alert, AlertDescription } from "renderer/components/ui/alert";
 import { Badge } from "renderer/components/ui/badge";
 import { Button } from "renderer/components/ui/button";
@@ -17,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "renderer/components/ui/select";
-import { Separator } from "renderer/components/ui/separator";
 
 const { App } = window;
 
@@ -44,86 +45,8 @@ interface DownloadProgress {
   [modelName: string]: string;
 }
 
-interface SystemDependency {
-  name: string;
-  available: boolean;
-  version?: string;
-  error?: string;
-}
-
-// SystemStatus 组件
-function SystemStatus() {
-  const [dependencies, setDependencies] = useState<SystemDependency[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const checkDependencies = async () => {
-    setLoading(true);
-    try {
-      const result = await App.checkSystemDependencies();
-      if (result.success) {
-        setDependencies(result.results);
-      }
-    } catch (error) {
-      console.error("检查系统依赖失败:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    checkDependencies();
-  }, []);
-
-  const getStatusBadge = (dep: SystemDependency) => {
-    if (dep.available) {
-      return (
-        <Badge variant="default" className="text-xs">
-          {dep.version ? `v${dep.version}` : "已安装"}
-        </Badge>
-      );
-    } else {
-      return (
-        <Badge variant="destructive" className="text-xs">
-          未安装
-        </Badge>
-      );
-    }
-  };
-
-  const getDisplayName = (name: string) => {
-    switch (name) {
-      case "ffmpeg":
-        return "FFmpeg";
-      case "ffprobe":
-        return "FFprobe";
-      case "node":
-        return "Node.js";
-      case "ollama":
-        return "Ollama";
-      default:
-        return name;
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      {dependencies.map((dep) => (
-        <div key={dep.name} className="flex justify-between text-sm">
-          <span>{getDisplayName(dep.name)}:</span>
-          {getStatusBadge(dep)}
-        </div>
-      ))}
-      {loading && (
-        <div className="flex justify-center items-center py-2">
-          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          <span className="text-sm text-muted-foreground">检查中...</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function SettingsPanel() {
+  const navigate = useNavigate();
   const [whisperModels] = useState<ModelInfo[]>([
     {
       name: "tiny",
@@ -608,46 +531,40 @@ export function SettingsPanel() {
       </Card>
 
       {/* 系统信息 */}
+      <DependencyChecker
+        title="系统依赖状态"
+        description="当前系统环境检查结果"
+      />
+
+      {/* 重置设置 */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            系统信息
+          <CardTitle className="text-red-600">危险操作</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <h4 className="font-medium">重置应用设置</h4>
+            <p className="text-sm text-muted-foreground">
+              这将清除所有应用设置并重新启动依赖检查流程
+            </p>
             <Button
-              variant="outline"
+              variant="destructive"
               size="sm"
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  const result = await App.checkSystemDependencies();
-                  if (result.success) {
-                    const allAvailable = result.results.every(
-                      (r) => r.available
-                    );
-                    setStatus(
-                      allAvailable ? "所有依赖检查通过" : "发现缺失的依赖"
-                    );
-                  } else {
-                    setStatus("系统检查失败");
-                  }
-                } catch (error) {
-                  setStatus("系统检查失败");
-                } finally {
-                  setLoading(false);
-                  setTimeout(() => setStatus(""), 3000);
+              onClick={() => {
+                if (
+                  confirm(
+                    "确定要重置应用设置吗？这将清除所有配置并重新启动应用。"
+                  )
+                ) {
+                  navigate("/");
+                  localStorage.removeItem("setup-completed");
+                  localStorage.removeItem("video-translate-settings");
+                  window.location.reload();
                 }
               }}
-              disabled={loading}
             >
-              检查依赖
+              重置设置
             </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <SystemStatus />
-          <Separator />
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>版本:</span>
-            <span>v0.1.0</span>
           </div>
         </CardContent>
       </Card>
