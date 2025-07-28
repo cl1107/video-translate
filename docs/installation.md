@@ -30,25 +30,21 @@ sudo apt update
 sudo apt install ffmpeg
 ```
 
-### 2. 安装 Whisper
+### 2. Whisper 语音识别
 
-#### 方法一：使用 pip 安装 OpenAI Whisper
+**本项目使用 whisper-node 包，无需单独安装 Whisper！**
 
-```bash
-pip install openai-whisper
-```
+项目已经包含了 `whisper-node` 依赖，它会自动：
 
-#### 方法二：使用 whisper.cpp (推荐，性能更好)
+- 包含预编译的 whisper.cpp 二进制文件
+- 在需要时自动下载 Whisper 模型
+- 提供 Node.js API 接口
 
-```bash
-# macOS
-brew install whisper-cpp
+**不需要执行以下操作：**
 
-# 或从源码编译
-git clone https://github.com/ggerganov/whisper.cpp.git
-cd whisper.cpp
-make
-```
+- ❌ 不需要 `pip install openai-whisper`
+- ❌ 不需要 `brew install whisper-cpp`
+- ❌ 不需要手动编译 whisper.cpp
 
 ### 3. 安装 Ollama
 
@@ -72,15 +68,15 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 ### Whisper 模型
 
-首次使用时，Whisper 会自动下载所需模型。也可以手动下载：
+**无需手动下载！** whisper-node 会在首次使用时自动下载所需的模型文件。
 
-```bash
-# 下载基础模型 (推荐)
-whisper --model base --download_only
+支持的模型：
 
-# 下载大型模型 (更高准确率)
-whisper --model large-v3 --download_only
-```
+- `tiny` (~39MB) - 最快，准确率较低
+- `base` (~142MB) - 平衡速度和准确率（推荐）
+- `small` (~466MB) - 准确率较好
+- `medium` (~1.5GB) - 高准确率
+- `large-v3` (~2.9GB) - 最高准确率
 
 ### Ollama 模型
 
@@ -116,109 +112,84 @@ pnpm dev
    - 切换到"任务列表"查看处理进度
    - 任务状态：提取音频 → 语音识别 → 翻译 → 生成字幕
 
-3. **配置设置**
-   - 点击"设置"标签页
-   - 选择 Whisper 模型（推荐 base 或 small）
-   - 选择 Ollama 翻译模型
-   - 设置源语言和目标语言
-   - 选择输出格式（SRT/VTT/TXT）
+3. **设置配置**
 
-### 3. 高级功能
-
-#### 任务管理
-
-- **暂停/恢复**: 长时间任务可以暂停后恢复
-- **重试**: 失败的任务可以重新处理
-- **删除**: 清理不需要的任务
-
-#### 字幕输出
-
-- **SRT**: 标准字幕格式，兼容性最好
-- **VTT**: Web 字幕格式，支持样式
-- **TXT**: 纯文本格式
-- **硬字幕**: 可选择烧录到视频文件中
-
-## 性能优化建议
-
-### 1. 硬件配置
-
-- **CPU**: 多核处理器，推荐 8 核以上
-- **内存**: 16GB 以上，大模型需要更多内存
-- **GPU**: 支持 CUDA 的显卡可加速 Whisper 处理
-
-### 2. 模型选择
-
-- **Whisper tiny**: 最快，适合实时处理
-- **Whisper base**: 平衡速度和准确率（推荐）
-- **Whisper large-v3**: 最高准确率，但速度较慢
-
-### 3. 批处理
-
-- 同时处理多个文件时，建议逐个添加
-- 长视频会自动分段处理，提高稳定性
+   - 在"设置"页面可以配置：
+     - Whisper 模型选择（推荐使用 base 模型）
+     - 源语言和目标语言
+     - Ollama 翻译模型
 
 ## 故障排除
 
-### 常见问题
+### Whisper 相关问题
 
-#### 1. "Whisper 不可用"
+**问题**: 提示"Whisper 不可用"
+**解决**:
 
-- 确认已安装 Whisper: `whisper --help`
-- 检查 PATH 环境变量
-- 尝试重新安装 Whisper
+1. 确认 `whisper-node` 已安装：`npm list whisper-node`
+2. 重新安装依赖：`pnpm install`
+3. 检查 Node.js 版本是否 >= 18.0.0
 
-#### 2. "Ollama 连接失败"
+**问题**: 模型下载失败
+**解决**:
 
-- 启动 Ollama 服务: `ollama serve`
-- 检查端口 11434 是否被占用
-- 确认已下载所需模型: `ollama list`
+1. 检查网络连接
+2. whisper-node 会自动重试下载
+3. 首次使用某个模型时需要时间下载
 
-#### 3. "FFmpeg 不可用"
+### FFmpeg 相关问题
 
-- 确认已安装 FFmpeg: `ffmpeg -version`
-- 检查 PATH 环境变量
-- 重新安装 FFmpeg
+**问题**: 音频提取失败
+**解决**:
 
-#### 4. 处理速度慢
+1. 确认 FFmpeg 已正确安装：`ffmpeg -version`
+2. 检查视频文件格式是否支持
+3. 确保有足够的磁盘空间
 
-- 选择较小的 Whisper 模型
-- 关闭其他占用 CPU/内存的程序
-- 确保有足够的硬盘空间
+### Ollama 相关问题
 
-### 日志查看
+**问题**: 翻译服务不可用
+**解决**:
 
-- 打开开发者工具 (Ctrl/Cmd + Shift + I)
-- 查看 Console 标签页的错误信息
-- 检查 Network 标签页的网络请求
+1. 确认 Ollama 服务运行：`ollama list`
+2. 下载所需模型：`ollama pull llama3`
+3. 检查 Ollama 服务端口（默认 11434）
 
-## 更新说明
+## 技术说明
 
-### v0.1.0 (当前版本)
+### whisper-node vs 系统 Whisper
 
-- ✅ 基础视频翻译功能
-- ✅ Whisper 语音识别集成
-- ✅ Ollama 本地翻译
-- ✅ 多格式字幕输出
-- ✅ 任务管理和断点续传
-- ✅ 现代化用户界面
+本项目使用 `whisper-node` 而不是系统安装的 Whisper：
 
-### 未来计划
+| 方面 | whisper-node     | 系统 Whisper         |
+| ---- | ---------------- | -------------------- |
+| 安装 | npm 包，自动安装 | 需要 Python/系统安装 |
+| 模型 | 自动下载管理     | 需要手动下载         |
+| 集成 | Node.js API      | 命令行调用           |
+| 性能 | 优化的 C++ 绑定  | Python 实现          |
+| 依赖 | 无外部依赖       | 需要 Python 环境     |
 
-- 🔄 GPU 加速支持
-- 🔄 批量处理优化
-- 🔄 自定义翻译模板
-- 🔄 字幕编辑器
-- 🔄 云端模型支持
+### 性能优化建议
 
-## 技术支持
+1. **模型选择**:
 
-如遇到问题，请提供以下信息：
+   - 开发测试：使用 `tiny` 或 `base` 模型
+   - 生产环境：使用 `small` 或 `medium` 模型
 
-- 操作系统版本
-- Node.js 版本 (`node --version`)
-- 错误日志截图
-- 视频文件格式和大小
+2. **硬件要求**:
 
----
+   - CPU: 至少 4 核心
+   - 内存: 8GB+ (large 模型需要 16GB+)
+   - 存储: SSD 推荐
 
-**享受本地化、私密的视频翻译体验！** 🎉
+3. **批处理优化**:
+   - 音频会自动分段处理
+   - 支持并行处理多个音频段
+
+## 更新日志
+
+### v0.1.0
+
+- 集成 whisper-node 替代系统 Whisper 命令
+- 自动模型下载和管理
+- 优化转录性能和错误处理

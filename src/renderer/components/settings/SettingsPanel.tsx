@@ -1,5 +1,6 @@
-import { Check, Download, Settings } from "lucide-react";
+import { AlertCircle, Check, Download, Loader2, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Alert, AlertDescription } from "renderer/components/ui/alert";
 import { Badge } from "renderer/components/ui/badge";
 import { Button } from "renderer/components/ui/button";
 import {
@@ -32,6 +33,96 @@ interface LanguageInfo {
   name: string;
 }
 
+interface OllamaModel {
+  name: string;
+  size: number;
+  digest: string;
+  modified_at: string;
+}
+
+interface DownloadProgress {
+  [modelName: string]: string;
+}
+
+interface SystemDependency {
+  name: string;
+  available: boolean;
+  version?: string;
+  error?: string;
+}
+
+// SystemStatus 组件
+function SystemStatus() {
+  const [dependencies, setDependencies] = useState<SystemDependency[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const checkDependencies = async () => {
+    setLoading(true);
+    try {
+      const result = await App.checkSystemDependencies();
+      if (result.success) {
+        setDependencies(result.results);
+      }
+    } catch (error) {
+      console.error("检查系统依赖失败:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkDependencies();
+  }, []);
+
+  const getStatusBadge = (dep: SystemDependency) => {
+    if (dep.available) {
+      return (
+        <Badge variant="default" className="text-xs">
+          {dep.version ? `v${dep.version}` : "已安装"}
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="destructive" className="text-xs">
+          未安装
+        </Badge>
+      );
+    }
+  };
+
+  const getDisplayName = (name: string) => {
+    switch (name) {
+      case "ffmpeg":
+        return "FFmpeg";
+      case "ffprobe":
+        return "FFprobe";
+      case "node":
+        return "Node.js";
+      case "ollama":
+        return "Ollama";
+      default:
+        return name;
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {dependencies.map((dep) => (
+        <div key={dep.name} className="flex justify-between text-sm">
+          <span>{getDisplayName(dep.name)}:</span>
+          {getStatusBadge(dep)}
+        </div>
+      ))}
+      {loading && (
+        <div className="flex justify-center items-center py-2">
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          <span className="text-sm text-muted-foreground">检查中...</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel() {
   const [whisperModels] = useState<ModelInfo[]>([
     {
@@ -50,6 +141,19 @@ export function SettingsPanel() {
   ]);
 
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
+  const [ollamaStatus, setOllamaStatus] = useState<{
+    isRunning: boolean;
+    loading: boolean;
+    error?: string;
+  }>({ isRunning: false, loading: true });
+
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>(
+    {}
+  );
+  const [downloadingModels, setDownloadingModels] = useState<Set<string>>(
+    new Set()
+  );
+
   const [languages] = useState<LanguageInfo[]>([
     { code: "auto", name: "自动检测" },
     { code: "en", name: "English" },
@@ -76,15 +180,56 @@ export function SettingsPanel() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
 
+  // 推荐的模型列表
+  const recommendedModels = [
+    {
+      name: "llama3",
+      size: "4.7GB",
+      description: "Meta Llama 3 8B 模型 - 推荐",
+    },
+    {
+      name: "llama3:70b",
+      size: "40GB",
+      description: "Meta Llama 3 70B 模型 - 高性能",
+    },
+    {
+      name: "qwen2",
+      size: "4.4GB",
+      description: "阿里通义千问 7B 模型 - 中文优化",
+    },
+    {
+      name: "gemma2",
+      size: "5.4GB",
+      description: "Google Gemma 2 9B 模型",
+    },
+    {
+      name: "codellama",
+      size: "3.8GB",
+      description: "Code Llama 7B 模型 - 代码理解",
+    },
+  ];
+
   // 加载设置
   useEffect(() => {
     loadSettings();
+    checkOllamaStatus();
     loadOllamaModels();
+
+    // 监听模型下载进度
+    const unsubscribe = App.onOllamaPullProgress((data) => {
+      setDownloadProgress((prev) => ({
+        ...prev,
+        [data.modelName]: data.progress,
+      }));
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const loadSettings = async () => {
     try {
-      // TODO: 从本地存储或配置文件加载设置
       const savedSettings = localStorage.getItem("video-translate-settings");
       if (savedSettings) {
         setSettings(JSON.parse(savedSettings));
@@ -108,72 +253,104 @@ export function SettingsPanel() {
     }
   };
 
-  const loadOllamaModels = async () => {
+  const checkOllamaStatus = async () => {
     try {
-      // TODO: 通过 IPC 获取已安装的 Ollama 模型
-      // const models = await App.getOllamaModels()
-      // setOllamaModels(models)
-
-      // 模拟数据
-      setOllamaModels([
-        {
-          name: "llama3",
-          size: "4.7GB",
-          description: "Meta Llama 3 8B 模型",
-          installed: true,
-        },
-        {
-          name: "llama3:70b",
-          size: "40GB",
-          description: "Meta Llama 3 70B 模型",
-          installed: false,
-        },
-        {
-          name: "qwen2",
-          size: "4.4GB",
-          description: "阿里通义千问 7B 模型",
-          installed: false,
-        },
-        {
-          name: "gemma2",
-          size: "5.4GB",
-          description: "Google Gemma 2 9B 模型",
-          installed: false,
-        },
-      ]);
+      setOllamaStatus((prev) => ({ ...prev, loading: true }));
+      const result = await App.checkOllamaStatus();
+      setOllamaStatus({
+        isRunning: result.isRunning,
+        loading: false,
+        error: result.success ? undefined : "检查状态失败",
+      });
     } catch (error) {
-      console.error("加载 Ollama 模型失败:", error);
+      console.error("检查 Ollama 状态失败:", error);
+      setOllamaStatus({
+        isRunning: false,
+        loading: false,
+        error: "无法连接到 Ollama 服务",
+      });
     }
   };
 
-  const downloadModel = async (
-    modelName: string,
-    type: "whisper" | "ollama"
-  ) => {
+  const loadOllamaModels = async () => {
+    try {
+      const result = await App.getOllamaModels();
+      if (result.success) {
+        // 转换格式并合并推荐模型
+        const installedModels = result.models.map((model: OllamaModel) => ({
+          name: model.name,
+          size: formatBytes(model.size),
+          description: getModelDescription(model.name),
+          installed: true,
+        }));
+
+        // 添加未安装的推荐模型
+        const installedNames = new Set(installedModels.map((m) => m.name));
+        const notInstalledModels = recommendedModels
+          .filter((model) => !installedNames.has(model.name))
+          .map((model) => ({ ...model, installed: false }));
+
+        setOllamaModels([...installedModels, ...notInstalledModels]);
+      } else {
+        console.error("获取 Ollama 模型失败:", result.error);
+        // 如果获取失败，只显示推荐模型
+        setOllamaModels(
+          recommendedModels.map((model) => ({ ...model, installed: false }))
+        );
+      }
+    } catch (error) {
+      console.error("加载 Ollama 模型失败:", error);
+      setOllamaModels(
+        recommendedModels.map((model) => ({ ...model, installed: false }))
+      );
+    }
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${
+      sizes[i]
+    }`;
+  };
+
+  const getModelDescription = (modelName: string): string => {
+    const recommended = recommendedModels.find((m) => m.name === modelName);
+    return recommended?.description || `${modelName} 模型`;
+  };
+
+  const downloadModel = async (modelName: string) => {
+    setDownloadingModels((prev) => new Set(prev).add(modelName));
     setLoading(true);
     setStatus(`正在下载 ${modelName} 模型...`);
 
     try {
-      // TODO: 通过 IPC 下载模型
-      // if (type === 'ollama') {
-      //   await App.downloadOllamaModel(modelName)
-      // } else {
-      //   await App.downloadWhisperModel(modelName)
-      // }
-
-      // 模拟下载过程
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      setStatus(`${modelName} 模型下载完成`);
-      if (type === "ollama") {
-        loadOllamaModels();
+      const result = await App.pullOllamaModel(modelName);
+      if (result.success) {
+        setStatus(`${modelName} 模型下载完成`);
+        // 重新加载模型列表
+        await loadOllamaModels();
+      } else {
+        setStatus(`下载失败: ${result.error}`);
       }
     } catch (error) {
       console.error("下载模型失败:", error);
       setStatus("下载失败");
     } finally {
+      setDownloadingModels((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(modelName);
+        return newSet;
+      });
+      setDownloadProgress((prev) => {
+        const newProgress = { ...prev };
+        delete newProgress[modelName];
+        return newProgress;
+      });
       setLoading(false);
-      setTimeout(() => setStatus(""), 3000);
+      setTimeout(() => setStatus(""), 5000);
     }
   };
 
@@ -197,6 +374,24 @@ export function SettingsPanel() {
           </Button>
         </div>
       </div>
+
+      {/* Ollama 状态检查 */}
+      {!ollamaStatus.isRunning && !ollamaStatus.loading && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Ollama 服务未运行。请确保已安装并启动 Ollama 服务。
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2"
+              onClick={checkOllamaStatus}
+            >
+              重新检查
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Whisper 设置 */}
       <Card>
@@ -262,7 +457,16 @@ export function SettingsPanel() {
       {/* Ollama 设置 */}
       <Card>
         <CardHeader>
-          <CardTitle>翻译设置</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            翻译设置
+            <Badge variant={ollamaStatus.isRunning ? "default" : "destructive"}>
+              {ollamaStatus.loading
+                ? "检查中..."
+                : ollamaStatus.isRunning
+                ? "运行中"
+                : "未运行"}
+            </Badge>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -272,6 +476,7 @@ export function SettingsPanel() {
               onValueChange={(value) =>
                 setSettings((prev) => ({ ...prev, ollamaModel: value }))
               }
+              disabled={!ollamaStatus.isRunning}
             >
               <SelectTrigger>
                 <SelectValue placeholder="选择翻译模型" />
@@ -295,15 +500,24 @@ export function SettingsPanel() {
                         <Badge variant="outline">{model.size}</Badge>
                         {model.installed ? (
                           <Check className="h-3 w-3 text-green-500" />
+                        ) : downloadingModels.has(model.name) ? (
+                          <div className="flex items-center space-x-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {downloadProgress[model.name] && (
+                              <span className="text-xs">
+                                {downloadProgress[model.name]}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => {
                               e.stopPropagation();
-                              downloadModel(model.name, "ollama");
+                              downloadModel(model.name);
                             }}
-                            disabled={loading}
+                            disabled={loading || !ollamaStatus.isRunning}
                           >
                             <Download className="h-3 w-3" />
                           </Button>
@@ -396,21 +610,40 @@ export function SettingsPanel() {
       {/* 系统信息 */}
       <Card>
         <CardHeader>
-          <CardTitle>系统信息</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            系统信息
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const result = await App.checkSystemDependencies();
+                  if (result.success) {
+                    const allAvailable = result.results.every(
+                      (r) => r.available
+                    );
+                    setStatus(
+                      allAvailable ? "所有依赖检查通过" : "发现缺失的依赖"
+                    );
+                  } else {
+                    setStatus("系统检查失败");
+                  }
+                } catch (error) {
+                  setStatus("系统检查失败");
+                } finally {
+                  setLoading(false);
+                  setTimeout(() => setStatus(""), 3000);
+                }
+              }}
+              disabled={loading}
+            >
+              检查依赖
+            </Button>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>FFmpeg:</span>
-            <Badge variant="outline">已安装</Badge>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Whisper:</span>
-            <Badge variant="outline">已安装</Badge>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>Ollama:</span>
-            <Badge variant="outline">运行中</Badge>
-          </div>
+          <SystemStatus />
           <Separator />
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>版本:</span>

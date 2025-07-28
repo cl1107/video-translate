@@ -1,11 +1,12 @@
 import Database from "better-sqlite3";
 import { app } from "electron";
-import path from "path";
+import path from "node:path";
 import {
   TaskStatus,
-  TranscriptionSegment,
-  TranslationTask,
-  VideoFile,
+  type TaskLog,
+  type TranscriptionSegment,
+  type TranslationTask,
+  type VideoFile,
 } from "../../../shared/types/video";
 
 export class DatabaseManager {
@@ -18,6 +19,10 @@ export class DatabaseManager {
     this.dbPath = path.join(userDataPath, "video-translate.db");
 
     this.db = new Database(this.dbPath);
+
+    // 启用外键约束
+    this.db.pragma("foreign_keys = ON");
+
     this.initializeDatabase();
   }
 
@@ -63,6 +68,19 @@ export class DatabaseManager {
         translated_text TEXT NULL,
         confidence REAL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (task_id) REFERENCES translation_tasks (id)
+      )
+    `);
+
+    // 创建任务日志表
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS task_logs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        level TEXT NOT NULL,
+        message TEXT NOT NULL,
+        details TEXT,
         FOREIGN KEY (task_id) REFERENCES translation_tasks (id)
       )
     `);
@@ -122,7 +140,7 @@ export class DatabaseManager {
    * 创建翻译任务
    */
   createTranslationTask(
-    task: Omit<TranslationTask, "videoFile" | "segments" | "subtitles">
+    task: Omit<TranslationTask, "segments" | "subtitles" | "logs">
   ): void {
     const stmt = this.db.prepare(`
       INSERT INTO translation_tasks 
@@ -369,6 +387,75 @@ export class DatabaseManager {
               .run(videoFileId.video_file_id);
           }
         }
+      }
+    });
+
+    transaction();
+  }
+
+  /**
+   * 添加任务日志
+   */
+  addTaskLog(taskId: string, log: Omit<TaskLog, "id">): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO task_logs (id, task_id, timestamp, level, message, details)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const logId = `log_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+    stmt.run(
+      logId,
+      taskId,
+      log.timestamp.toISOString(),
+      log.level,
+      log.message,
+      log.details || null
+    );
+  }
+
+  /**
+   * 获取任务日志
+   */
+  getTaskLogs(taskId: string): TaskLog[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM task_logs 
+      WHERE task_id = ? 
+      ORDER BY timestamp ASC
+    `);
+
+    const rows = stmt.all(taskId) as any[];
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: new Date(row.timestamp),
+      level: row.level,
+      message: row.message,
+      details: row.details,
+    }));
+  }
+
+  /**
+   * 清除任务日志
+   */
+  clearTaskLogs(taskId: string): void {
+    const stmt = this.db.prepare("DELETE FROM task_logs WHERE task_id = ?");
+    stmt.run(taskId);
+  }
+
+  /**
+   * 更新翻译后的段落
+   */
+  updateTranslatedSegments(taskId: string, segments: any[]): void {
+    const stmt = this.db.prepare(`
+      UPDATE transcription_segments 
+      SET translated_text = ? 
+      WHERE id = ?
+    `);
+
+    const transaction = this.db.transaction(() => {
+      for (const segment of segments) {
+        stmt.run(segment.translatedText, segment.id);
       }
     });
 

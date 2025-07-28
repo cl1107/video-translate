@@ -1,15 +1,17 @@
 import {
+  Calendar,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Clock,
-  Download,
   FileVideo,
-  Languages,
   Pause,
   Play,
   RotateCcw,
   Trash2,
   XCircle,
 } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "renderer/components/ui/badge";
 import { Button } from "renderer/components/ui/button";
 import {
@@ -20,10 +22,11 @@ import {
 } from "renderer/components/ui/card";
 import { Progress } from "renderer/components/ui/progress";
 import { TaskStatus, TranslationTask } from "shared/types/video";
+import { TaskLogs } from "./TaskLogs";
 
 interface TaskListProps {
   tasks: TranslationTask[];
-  onTaskAction?: (action: string, taskId: string) => void;
+  onTaskAction: (action: string, taskId: string) => void;
 }
 
 const getStatusIcon = (status: TaskStatus) => {
@@ -98,7 +101,23 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 };
 
+const formatDate = (date: Date): string => {
+  return date.toLocaleDateString();
+};
+
 export function TaskList({ tasks, onTaskAction }: TaskListProps) {
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+
+  const toggleTaskExpanded = (taskId: string) => {
+    const newExpanded = new Set(expandedTasks);
+    if (newExpanded.has(taskId)) {
+      newExpanded.delete(taskId);
+    } else {
+      newExpanded.add(taskId);
+    }
+    setExpandedTasks(newExpanded);
+  };
+
   if (tasks.length === 0) {
     return (
       <Card>
@@ -120,140 +139,146 @@ export function TaskList({ tasks, onTaskAction }: TaskListProps) {
         <Badge variant="outline">{tasks.length} 个任务</Badge>
       </div>
 
-      {tasks.map((task) => (
-        <Card key={task.id}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center space-x-2">
-                <FileVideo className="h-4 w-4" />
-                <span className="truncate">{task.videoFile.name}</span>
-              </CardTitle>
-
-              <div className="flex items-center space-x-2">
-                <Badge variant={getStatusVariant(task.status)}>
-                  {getStatusIcon(task.status)}
-                  <span className="ml-1">{getStatusText(task.status)}</span>
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            {/* 文件信息 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground">
-              <div>
-                <span className="font-medium">文件大小:</span>
-                <br />
-                {formatFileSize(task.videoFile.size)}
-              </div>
-              <div>
-                <span className="font-medium">时长:</span>
-                <br />
-                {formatDuration(task.videoFile.duration)}
-              </div>
-              <div className="flex items-center space-x-1">
-                <Languages className="h-3 w-3" />
-                <span>
-                  {task.sourceLanguage} → {task.targetLanguage}
-                </span>
-              </div>
-              <div>
-                <span className="font-medium">格式:</span>
-                <br />
-                {task.videoFile.format.toUpperCase()}
-              </div>
-            </div>
-
-            {/* 进度条 */}
-            {task.status !== TaskStatus.PENDING &&
-              task.status !== TaskStatus.FAILED && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>进度</span>
-                    <span>{Math.round(task.progress)}%</span>
+      {tasks.map((task) => {
+        const isExpanded = expandedTasks.has(task.id);
+        return (
+          <Card key={task.id} className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <FileVideo className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle className="text-base">
+                      {task.videoFile.name}
+                    </CardTitle>
+                    <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
+                      <span className="flex items-center">
+                        <Clock className="h-4 w-4 mr-1" />
+                        {formatDuration(task.videoFile.duration)}
+                      </span>
+                      <span>{formatFileSize(task.videoFile.size)}</span>
+                      <span className="flex items-center">
+                        <Calendar className="h-4 w-4 mr-1" />
+                        {formatDate(task.createdAt)}
+                      </span>
+                    </div>
                   </div>
-                  <Progress value={task.progress} className="h-2" />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Badge variant={getStatusVariant(task.status)}>
+                    {getStatusText(task.status)}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleTaskExpanded(task.id)}
+                  >
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {/* 进度条 */}
+              {task.status !== TaskStatus.PENDING &&
+                task.status !== TaskStatus.FAILED && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>进度</span>
+                      <span>{Math.round(task.progress)}%</span>
+                    </div>
+                    <Progress value={task.progress} className="h-2" />
+                  </div>
+                )}
+
+              {/* 错误信息 */}
+              {task.errorMessage && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <p className="text-sm text-destructive">
+                    {task.errorMessage}
+                  </p>
                 </div>
               )}
 
-            {/* 错误信息 */}
-            {task.errorMessage && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                <p className="text-sm text-destructive">{task.errorMessage}</p>
-              </div>
-            )}
+              {/* 展开的详细信息 */}
+              {isExpanded && (
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">源语言:</span>{" "}
+                      {task.sourceLanguage}
+                    </div>
+                    <div>
+                      <span className="font-medium">目标语言:</span>{" "}
+                      {task.targetLanguage}
+                    </div>
+                  </div>
 
-            {/* 操作按钮 */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex space-x-2">
-                {task.status === TaskStatus.PAUSED && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onTaskAction?.("resume", task.id)}
-                  >
-                    <Play className="h-3 w-3 mr-1" />
-                    继续
-                  </Button>
-                )}
+                  {/* 任务日志 */}
+                  <TaskLogs taskId={task.id} />
+                </div>
+              )}
 
-                {(task.status === TaskStatus.EXTRACTING_AUDIO ||
+              {/* 操作按钮 */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex space-x-2">
+                  {task.status === TaskStatus.PENDING ||
+                  task.status === TaskStatus.EXTRACTING_AUDIO ||
                   task.status === TaskStatus.TRANSCRIBING ||
                   task.status === TaskStatus.TRANSLATING ||
-                  task.status === TaskStatus.GENERATING_SUBTITLES) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onTaskAction?.("pause", task.id)}
-                  >
-                    <Pause className="h-3 w-3 mr-1" />
-                    暂停
-                  </Button>
-                )}
+                  task.status === TaskStatus.GENERATING_SUBTITLES ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onTaskAction("pause", task.id)}
+                    >
+                      <Pause className="h-4 w-4 mr-1" />
+                      暂停
+                    </Button>
+                  ) : null}
 
-                {task.status === TaskStatus.FAILED && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onTaskAction?.("retry", task.id)}
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    重试
-                  </Button>
-                )}
+                  {task.status === TaskStatus.PAUSED && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onTaskAction("resume", task.id)}
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      继续
+                    </Button>
+                  )}
 
-                {task.status === TaskStatus.COMPLETED && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onTaskAction?.("download", task.id)}
-                  >
-                    <Download className="h-3 w-3 mr-1" />
-                    下载字幕
-                  </Button>
-                )}
+                  {task.status === TaskStatus.FAILED && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onTaskAction("retry", task.id)}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      重试
+                    </Button>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onTaskAction("delete", task.id)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  删除
+                </Button>
               </div>
-
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive hover:text-destructive"
-                onClick={() => onTaskAction?.("delete", task.id)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-
-            {/* 时间信息 */}
-            <div className="text-xs text-muted-foreground pt-2 border-t">
-              创建时间: {task.createdAt.toLocaleString()}
-              {task.completedAt && (
-                <> • 完成时间: {task.completedAt.toLocaleString()}</>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

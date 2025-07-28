@@ -10,6 +10,14 @@ export interface VideoFile {
   createdAt: Date;
 }
 
+export interface TaskLog {
+  id: string;
+  timestamp: Date;
+  level: "info" | "warn" | "error" | "success";
+  message: string;
+  details?: string;
+}
+
 export interface TranslationTask {
   id: string;
   videoFile: VideoFile;
@@ -19,10 +27,11 @@ export interface TranslationTask {
   targetLanguage: string;
   segments: TranscriptionSegment[];
   subtitles: SubtitleEntry[];
+  logs: TaskLog[]; // 新增日志字段
+  errorMessage?: string;
   createdAt: Date;
   updatedAt: Date;
   completedAt?: Date;
-  errorMessage?: string;
 }
 
 export enum TaskStatus {

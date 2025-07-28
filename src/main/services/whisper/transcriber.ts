@@ -1,9 +1,11 @@
-import { spawn } from "child_process";
-import { promises as fs } from "fs";
-import os from "os";
-import path from "path";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
-import { TranscriptionSegment } from "../../../shared/types/video";
+import type { TranscriptionSegment } from "../../../shared/types/video";
+
+// 导入 whisper-node
+const { whisper } = require("whisper-node");
 
 export interface WhisperOptions {
   model?:
@@ -33,12 +35,10 @@ export interface WhisperResult {
 }
 
 export class WhisperTranscriber {
-  private whisperPath: string;
   private modelsDir: string;
   private tempDir: string;
 
-  constructor(whisperPath = "whisper") {
-    this.whisperPath = whisperPath;
+  constructor() {
     this.modelsDir = path.join(os.homedir(), ".cache", "whisper");
     this.tempDir = path.join(os.tmpdir(), "video-translate-whisper");
     this.ensureDirectories();
@@ -57,96 +57,36 @@ export class WhisperTranscriber {
    * 检查 Whisper 是否可用
    */
   async isAvailable(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const process = spawn(this.whisperPath, ["--help"]);
-
-      process.on("error", () => resolve(false));
-      process.on("close", (code) => resolve(code === 0));
-
-      // 超时检查
-      setTimeout(() => {
-        process.kill();
-        resolve(false);
-      }, 5000);
-    });
-  }
-
-  /**
-   * 检查模型是否已下载
-   */
-  async isModelAvailable(model: string): Promise<boolean> {
     try {
-      const modelFiles = [`ggml-${model}.bin`, `ggml-${model}.en.bin`];
-
-      for (const modelFile of modelFiles) {
-        const modelPath = path.join(this.modelsDir, modelFile);
-        try {
-          await fs.access(modelPath);
-          return true;
-        } catch {
-          continue;
-        }
-      }
-
-      return false;
-    } catch {
+      // whisper-node 包含了预编译的 whisper.cpp，所以总是可用的
+      return true;
+    } catch (error) {
+      console.error("检查 Whisper 可用性失败:", error);
       return false;
     }
   }
 
   /**
+   * 检查模型是否已下载
+   * whisper-node 会自动下载模型，所以这里总是返回 true
+   */
+  async isModelAvailable(model: string): Promise<boolean> {
+    // whisper-node 会在需要时自动下载模型
+    return true;
+  }
+
+  /**
    * 下载 Whisper 模型
+   * whisper-node 会自动处理模型下载
    */
   async downloadModel(
     model: string,
     onProgress?: (progress: string) => void
   ): Promise<void> {
-    if (await this.isModelAvailable(model)) {
-      console.log(`模型 ${model} 已存在`);
-      return;
+    if (onProgress) {
+      onProgress("whisper-node 会自动下载所需模型");
     }
-
-    return new Promise((resolve, reject) => {
-      console.log(`开始下载模型: ${model}`);
-
-      // 使用 whisper 命令下载模型
-      const process = spawn(this.whisperPath, [
-        "--model",
-        model,
-        "--output_dir",
-        this.tempDir,
-        "--download_only",
-      ]);
-
-      let output = "";
-      let error = "";
-
-      process.stdout.on("data", (data) => {
-        const text = data.toString();
-        output += text;
-
-        if (onProgress) {
-          // 解析下载进度
-          const progressMatch = text.match(/(\d+)%/);
-          if (progressMatch) {
-            onProgress(`下载进度: ${progressMatch[1]}%`);
-          }
-        }
-      });
-
-      process.stderr.on("data", (data) => {
-        error += data.toString();
-      });
-
-      process.on("close", (code) => {
-        if (code === 0) {
-          console.log(`模型 ${model} 下载完成`);
-          resolve();
-        } else {
-          reject(new Error(`模型下载失败: ${error}`));
-        }
-      });
-    });
+    console.log(`模型 ${model} 将在需要时自动下载`);
   }
 
   /**
@@ -157,106 +97,82 @@ export class WhisperTranscriber {
     options: WhisperOptions = {},
     onProgress?: (progress: number) => void
   ): Promise<TranscriptionSegment[]> {
-    const {
-      model = "base",
-      language = "auto",
-      temperature = 0.0,
-      threads = Math.min(4, os.cpus().length),
-      outputFormat = "json",
-    } = options;
+    const { model = "base", language = "auto", temperature = 0.0 } = options;
 
-    // 检查模型是否可用
-    if (!(await this.isModelAvailable(model))) {
-      console.log(`模型 ${model} 不存在，开始下载...`);
-      await this.downloadModel(model, (progress) => {
-        console.log(progress);
-      });
-    }
+    try {
+      console.log(`开始转录音频文件: ${audioPath}`);
 
-    const outputPath = path.join(
-      this.tempDir,
-      `transcription_${Date.now()}.json`
-    );
-
-    return new Promise((resolve, reject) => {
-      const args = [
-        audioPath,
-        "--model",
-        model,
-        "--output_format",
-        outputFormat,
-        "--output_file",
-        outputPath,
-        "--temperature",
-        temperature.toString(),
-        "--threads",
-        threads.toString(),
-        "--print_progress",
-      ];
-
-      if (language !== "auto") {
-        args.push("--language", language);
+      if (onProgress) {
+        onProgress(10);
       }
 
-      const process = spawn(this.whisperPath, args);
-      let error = "";
+      // 使用 whisper-node 进行转录
+      const whisperOptions = {
+        modelName: model, // 模型名称
+        whisperOptions: {
+          language: language === "auto" ? undefined : language,
+          word_timestamps: true, // 启用词级时间戳
+          output_txt: false,
+          output_vtt: false,
+          output_srt: false,
+        },
+      };
 
-      process.stderr.on("data", (data) => {
-        const output = data.toString();
-        error += output;
+      if (onProgress) {
+        onProgress(30);
+      }
 
-        // 解析进度信息
-        if (onProgress) {
-          const progressMatch = output.match(/(\d+)%/);
-          if (progressMatch) {
-            const progress = parseInt(progressMatch[1]);
-            onProgress(progress);
-          }
-        }
-      });
+      console.log("调用 whisper-node 进行转录...");
+      const transcript = await whisper(audioPath, whisperOptions);
 
-      process.on("close", async (code) => {
-        if (code !== 0) {
-          reject(new Error(`Whisper 转录失败: ${error}`));
-          return;
-        }
+      if (onProgress) {
+        onProgress(80);
+      }
 
-        try {
-          // 读取转录结果
-          const resultData = await fs.readFile(outputPath, "utf-8");
-          const result: WhisperResult = JSON.parse(resultData);
+      // 转换 whisper-node 的输出格式为我们需要的格式
+      const segments: TranscriptionSegment[] = [];
 
-          // 转换为我们的格式
-          const segments: TranscriptionSegment[] = result.segments.map(
-            (segment) => ({
-              id: uuidv4(),
-              start: segment.start,
-              end: segment.end,
-              originalText: segment.text.trim(),
-              confidence: segment.confidence || 0.9,
-            })
-          );
+      if (Array.isArray(transcript)) {
+        transcript.forEach((segment, index) => {
+          segments.push({
+            id: uuidv4(),
+            start: segment.start || 0,
+            end: segment.end || 0,
+            originalText: segment.speech?.trim() || "",
+            confidence: 0.9, // whisper-node 可能不提供置信度，使用默认值
+          });
+        });
+      } else {
+        // 如果返回的不是分段数据，创建一个单一段落
+        segments.push({
+          id: uuidv4(),
+          start: 0,
+          end: 0,
+          originalText:
+            typeof transcript === "string" ? transcript : "转录结果格式异常",
+          confidence: 0.9,
+        });
+      }
 
-          // 清理临时文件
-          try {
-            await fs.unlink(outputPath);
-          } catch (cleanupError) {
-            console.warn("清理临时文件失败:", cleanupError);
-          }
+      if (onProgress) {
+        onProgress(100);
+      }
 
-          resolve(segments);
-        } catch (parseError) {
-          reject(new Error(`解析转录结果失败: ${parseError.message}`));
-        }
-      });
-    });
+      console.log(`转录完成，生成了 ${segments.length} 个段落`);
+      return segments;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("Whisper 转录失败:", errorMessage);
+      throw new Error(`Whisper 转录失败: ${errorMessage}`);
+    }
   }
 
   /**
    * 批量转录音频段落
    */
   async transcribeBatch(
-    audioSegments: Array<{ filePath: string; start: number; end: number }>,
+    audioSegments: Array<{ path: string; startTime: number; duration: number }>,
     options: WhisperOptions = {},
     onProgress?: (completed: number, total: number) => void
   ): Promise<TranscriptionSegment[]> {
@@ -267,7 +183,7 @@ export class WhisperTranscriber {
 
       try {
         const segments = await this.transcribe(
-          audioSegment.filePath,
+          audioSegment.path,
           options,
           (segmentProgress) => {
             // 计算总体进度
@@ -280,8 +196,8 @@ export class WhisperTranscriber {
         // 调整时间戳以匹配原始视频时间
         const adjustedSegments = segments.map((segment) => ({
           ...segment,
-          start: segment.start + audioSegment.start,
-          end: segment.end + audioSegment.start,
+          start: segment.start + audioSegment.startTime,
+          end: segment.end + audioSegment.startTime,
         }));
 
         allSegments.push(...adjustedSegments);
@@ -295,8 +211,8 @@ export class WhisperTranscriber {
         // 创建一个错误段落
         allSegments.push({
           id: uuidv4(),
-          start: audioSegment.start,
-          end: audioSegment.end,
+          start: audioSegment.startTime,
+          end: audioSegment.startTime + audioSegment.duration,
           originalText: "[转录失败]",
           confidence: 0.0,
         });

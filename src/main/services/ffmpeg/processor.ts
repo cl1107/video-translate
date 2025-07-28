@@ -15,19 +15,19 @@ export interface VideoInfo {
 }
 
 export interface AudioSegment {
-  id: string;
-  filePath: string;
-  start: number;
-  end: number;
+  path: string;
+  startTime: number;
   duration: number;
 }
 
 export class FFmpegProcessor {
   private ffmpegPath: string;
+  private ffprobePath: string;
   private tempDir: string;
 
-  constructor(ffmpegPath = "ffmpeg") {
+  constructor(ffmpegPath = "ffmpeg", ffprobePath = "ffprobe") {
     this.ffmpegPath = ffmpegPath;
+    this.ffprobePath = ffprobePath;
     this.tempDir = path.join(os.tmpdir(), "video-translate");
     this.ensureTempDir();
   }
@@ -59,9 +59,39 @@ export class FFmpegProcessor {
   }
 
   /**
+   * 检查 FFprobe 是否可用
+   */
+  async isFFprobeAvailable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const process = spawn(this.ffprobePath, ["-version"]);
+
+      process.on("error", () => resolve(false));
+      process.on("close", (code) => resolve(code === 0));
+
+      // 超时检查
+      setTimeout(() => {
+        process.kill();
+        resolve(false);
+      }, 5000);
+    });
+  }
+
+  /**
    * 获取视频文件信息
    */
   async getVideoInfo(videoPath: string): Promise<VideoInfo> {
+    // 首先检查 ffprobe 是否可用
+    const isFFprobeAvailable = await this.isFFprobeAvailable();
+    if (!isFFprobeAvailable) {
+      throw new Error(
+        "FFprobe 不可用。请确保已安装 FFmpeg 并且 ffprobe 命令在系统 PATH 中。\n" +
+          "安装方法：\n" +
+          "- macOS: brew install ffmpeg\n" +
+          "- Ubuntu/Debian: sudo apt install ffmpeg\n" +
+          "- Windows: 从 https://ffmpeg.org/download.html 下载并添加到 PATH"
+      );
+    }
+
     return new Promise((resolve, reject) => {
       const args = [
         "-i",
@@ -75,7 +105,7 @@ export class FFmpegProcessor {
         "json",
       ];
 
-      const process = spawn("ffprobe", args);
+      const process = spawn(this.ffprobePath, args);
       let output = "";
       let error = "";
 
@@ -85,6 +115,10 @@ export class FFmpegProcessor {
 
       process.stderr.on("data", (data) => {
         error += data.toString();
+      });
+
+      process.on("error", (err) => {
+        reject(new Error(`FFprobe 执行失败: ${err.message}`));
       });
 
       process.on("close", (code) => {
@@ -241,10 +275,8 @@ export class FFmpegProcessor {
           );
 
           segments.push({
-            id: `segment_${segmentIndex}`,
-            filePath: segmentPath,
-            start: segmentStart,
-            end: segmentEnd,
+            path: segmentPath,
+            startTime: segmentStart,
             duration: segmentEnd - segmentStart,
           });
 
@@ -260,10 +292,8 @@ export class FFmpegProcessor {
         );
 
         segments.push({
-          id: `segment_${segmentIndex}`,
-          filePath: segmentPath,
-          start: currentStart,
-          end: silence.start,
+          path: segmentPath,
+          startTime: currentStart,
           duration: silence.start - currentStart,
         });
       }

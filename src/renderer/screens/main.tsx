@@ -14,7 +14,6 @@ export function MainScreen() {
   const [activeTab, setActiveTab] = useState<"upload" | "tasks" | "settings">(
     "upload"
   );
-  const [loading, setLoading] = useState(false);
 
   // 加载所有任务
   const loadTasks = useCallback(async () => {
@@ -62,36 +61,6 @@ export function MainScreen() {
     };
   }, []);
 
-  const handleFileUpload = useCallback(async (files: File[]) => {
-    // 对于拖拽上传，我们使用文件选择对话框作为替代
-    handleSelectFiles();
-  }, []);
-
-  const handleSelectFiles = useCallback(async () => {
-    setLoading(true);
-    try {
-      const filePaths = await App.openFileDialog();
-      if (filePaths.length > 0) {
-        const result = await App.uploadFiles(filePaths);
-        if (result.success) {
-          console.log("文件上传成功，任务ID:", result.taskIds);
-          // 切换到任务列表
-          setActiveTab("tasks");
-          // 刷新任务列表
-          await loadTasks();
-        } else {
-          console.error("文件上传失败:", result.error);
-          alert(`文件上传失败: ${result.error}`);
-        }
-      }
-    } catch (error) {
-      console.error("文件选择失败:", error);
-      alert(`文件选择失败: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadTasks]);
-
   const handleTaskAction = useCallback(
     async (action: string, taskId: string) => {
       try {
@@ -128,15 +97,12 @@ export function MainScreen() {
     switch (activeTab) {
       case "upload":
         return (
-          <div className="space-y-4">
-            <VideoUploader onFilesSelected={handleFileUpload} />
-            <div className="text-center">
-              <Button onClick={handleSelectFiles} disabled={loading} size="lg">
-                <Upload className="h-4 w-4 mr-2" />
-                {loading ? "处理中..." : "或点击选择文件"}
-              </Button>
-            </div>
-          </div>
+          <VideoUploader
+            onUploadSuccess={() => {
+              setActiveTab("tasks");
+              loadTasks();
+            }}
+          />
         );
       case "tasks":
         return <TaskList tasks={tasks} onTaskAction={handleTaskAction} />;

@@ -1,11 +1,11 @@
 import { AlertCircle, FileVideo, Upload, Video } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Alert, AlertDescription } from "renderer/components/ui/alert";
 import { Button } from "renderer/components/ui/button";
 import { Card, CardContent } from "renderer/components/ui/card";
 
 interface VideoUploaderProps {
-  onFilesSelected: (files: File[]) => void;
+  onUploadSuccess?: () => void;
 }
 
 const SUPPORTED_VIDEO_FORMATS = [
@@ -18,10 +18,9 @@ const SUPPORTED_VIDEO_FORMATS = [
   "video/flv",
 ];
 
-export function VideoUploader({ onFilesSelected }: VideoUploaderProps) {
+export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -33,62 +32,40 @@ export function VideoUploader({ onFilesSelected }: VideoUploaderProps) {
     }
   }, []);
 
-  const validateFiles = (files: FileList | File[]): File[] => {
-    const validFiles: File[] = [];
-    const fileArray = Array.from(files);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    setError(null);
 
-    for (const file of fileArray) {
-      if (!SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
-        setError(
-          `不支持的文件格式: ${file.name}. 请上传视频文件 (MP4, AVI, MOV, MKV, WebM, WMV, FLV)`
-        );
-        continue;
-      }
-
-      // 检查文件大小 (限制为 2GB)
-      if (file.size > 2 * 1024 * 1024 * 1024) {
-        setError(`文件过大: ${file.name}. 请上传小于 2GB 的文件`);
-        continue;
-      }
-
-      validFiles.push(file);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      // 对于拖拽上传，我们也使用系统文件对话框
+      openFileDialog();
     }
+  }, []);
 
-    return validFiles;
-  };
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragActive(false);
-      setError(null);
-
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const validFiles = validateFiles(e.dataTransfer.files);
-        if (validFiles.length > 0) {
-          onFilesSelected(validFiles);
+  const openFileDialog = async () => {
+    try {
+      // 直接调用系统文件选择对话框
+      const filePaths = await (window as any).App.openFileDialog();
+      if (filePaths.length > 0) {
+        const result = await (window as any).App.uploadFiles(filePaths);
+        if (result.success) {
+          console.log("文件上传成功，任务ID:", result.taskIds);
+          onUploadSuccess?.();
+        } else {
+          console.error("文件上传失败:", result.error);
+          setError(`文件上传失败: ${result.error}`);
         }
       }
-    },
-    [onFilesSelected]
-  );
-
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setError(null);
-      if (e.target.files && e.target.files.length > 0) {
-        const validFiles = validateFiles(e.target.files);
-        if (validFiles.length > 0) {
-          onFilesSelected(validFiles);
-        }
-      }
-    },
-    [onFilesSelected]
-  );
-
-  const openFileDialog = () => {
-    fileInputRef.current?.click();
+    } catch (error) {
+      console.error("文件选择失败:", error);
+      setError(
+        `文件选择失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   };
 
   return (
@@ -140,15 +117,6 @@ export function VideoUploader({ onFilesSelected }: VideoUploaderProps) {
           </p>
         </CardContent>
       </Card>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="video/*"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
     </div>
   );
 }

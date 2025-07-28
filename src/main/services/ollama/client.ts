@@ -62,6 +62,13 @@ export class OllamaClient {
   }
 
   /**
+   * 检查 Ollama 是否可用（别名方法）
+   */
+  async isAvailable(): Promise<boolean> {
+    return this.isRunning();
+  }
+
+  /**
    * 启动 Ollama 守护进程
    */
   async startDaemon(): Promise<boolean> {
@@ -230,7 +237,9 @@ export class OllamaClient {
       return response.trim();
     } catch (error) {
       console.error("Translation error:", error);
-      throw new Error(`翻译失败: ${error.message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(`翻译失败: ${errorMessage}`);
     }
   }
 

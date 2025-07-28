@@ -1,50 +1,115 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { TranslationTask } from "../shared/types/video";
+import type { TranslationTask } from "../shared/types/video";
 
 declare global {
   interface Window {
-    App: typeof API;
+    App: {
+      // 文件操作
+      openFileDialog: () => Promise<string[]>;
+      uploadFiles: (
+        filePaths: string[]
+      ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>;
+
+      // 任务管理
+      getAllTasks: () => Promise<TranslationTask[]>;
+      getTask: (taskId: string) => Promise<TranslationTask | null>;
+      pauseTask: (taskId: string) => Promise<{ success: boolean }>;
+      resumeTask: (taskId: string) => Promise<{ success: boolean }>;
+      deleteTask: (taskId: string) => Promise<{ success: boolean }>;
+      retryTask: (taskId: string) => Promise<{ success: boolean }>;
+      getTaskLogs: (taskId: string) => Promise<any[]>;
+
+      // Ollama 服务
+      getOllamaModels: () => Promise<{
+        success: boolean;
+        models: any[];
+        error?: string;
+      }>;
+      checkOllamaStatus: () => Promise<{
+        success: boolean;
+        isRunning: boolean;
+      }>;
+      pullOllamaModel: (
+        modelName: string
+      ) => Promise<{ success: boolean; error?: string }>;
+
+      // 系统检查
+      checkSystemDependencies: () => Promise<{
+        success: boolean;
+        results: Array<{
+          name: string;
+          available: boolean;
+          version?: string;
+          error?: string;
+        }>;
+        suggestions: string[];
+        error?: string;
+      }>;
+
+      // 统计信息
+      getStatistics: () => Promise<any>;
+
+      // 事件监听
+      onTaskUpdated: (callback: (task: TranslationTask) => void) => () => void;
+      onTaskDeleted: (callback: (taskId: string) => void) => () => void;
+      onOllamaPullProgress: (
+        callback: (data: { modelName: string; progress: string }) => void
+      ) => () => void;
+    };
   }
 }
 
-const API = {
-  sayHelloFromBridge: () => console.log("\nHello from bridgeAPI! 👋\n\n"),
-  username: process.env.USER,
-
-  // 文件处理
+const api = {
+  // 文件操作
+  openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
   uploadFiles: (filePaths: string[]) =>
     ipcRenderer.invoke("upload-files", filePaths),
 
-  openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
-
   // 任务管理
-  getAllTasks: (): Promise<TranslationTask[]> =>
-    ipcRenderer.invoke("get-all-tasks"),
-
-  getTask: (taskId: string): Promise<TranslationTask | null> =>
-    ipcRenderer.invoke("get-task", taskId),
-
+  getAllTasks: () => ipcRenderer.invoke("get-all-tasks"),
+  getTask: (taskId: string) => ipcRenderer.invoke("get-task", taskId),
   pauseTask: (taskId: string) => ipcRenderer.invoke("pause-task", taskId),
-
   resumeTask: (taskId: string) => ipcRenderer.invoke("resume-task", taskId),
-
   deleteTask: (taskId: string) => ipcRenderer.invoke("delete-task", taskId),
-
   retryTask: (taskId: string) => ipcRenderer.invoke("retry-task", taskId),
+  getTaskLogs: (taskId: string) => ipcRenderer.invoke("get-task-logs", taskId),
+
+  // Ollama 服务
+  getOllamaModels: () => ipcRenderer.invoke("get-ollama-models"),
+  checkOllamaStatus: () => ipcRenderer.invoke("check-ollama-status"),
+  pullOllamaModel: (modelName: string) =>
+    ipcRenderer.invoke("pull-ollama-model", modelName),
+
+  // 系统检查
+  checkSystemDependencies: () =>
+    ipcRenderer.invoke("check-system-dependencies"),
 
   // 统计信息
   getStatistics: () => ipcRenderer.invoke("get-statistics"),
 
   // 事件监听
   onTaskUpdated: (callback: (task: TranslationTask) => void) => {
-    ipcRenderer.on("task-updated", (event, task) => callback(task));
-    return () => ipcRenderer.removeAllListeners("task-updated");
+    const listener = (event: any, task: TranslationTask) => callback(task);
+    ipcRenderer.on("task-updated", listener);
+    return () => ipcRenderer.removeListener("task-updated", listener);
   },
 
   onTaskDeleted: (callback: (taskId: string) => void) => {
-    ipcRenderer.on("task-deleted", (event, taskId) => callback(taskId));
-    return () => ipcRenderer.removeAllListeners("task-deleted");
+    const listener = (event: any, taskId: string) => callback(taskId);
+    ipcRenderer.on("task-deleted", listener);
+    return () => ipcRenderer.removeListener("task-deleted", listener);
+  },
+
+  onOllamaPullProgress: (
+    callback: (data: { modelName: string; progress: string }) => void
+  ) => {
+    const listener = (
+      event: any,
+      data: { modelName: string; progress: string }
+    ) => callback(data);
+    ipcRenderer.on("ollama-pull-progress", listener);
+    return () => ipcRenderer.removeListener("ollama-pull-progress", listener);
   },
 };
 
-contextBridge.exposeInMainWorld("App", API);
+contextBridge.exposeInMainWorld("App", api);
