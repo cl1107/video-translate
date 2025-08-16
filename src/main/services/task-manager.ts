@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { BrowserWindow } from "electron";
+import type { BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
@@ -33,10 +33,17 @@ export class TaskManager {
     this.initializeServices();
   }
 
+/**
+ * 设置主窗口实例
+ * @param window - Electron 浏览器窗口实例
+ */
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
   }
 
+/**
+ * 初始化所有必需的服务（Ollama、Whisper）
+ */
   private async initializeServices(): Promise<void> {
     try {
       // 初始化 Ollama
@@ -59,6 +66,13 @@ export class TaskManager {
   /**
    * 添加任务日志
    */
+/**
+ * 添加任务日志记录
+ * @param taskId - 任务ID
+ * @param level - 日志级别（info、warn、error、success）
+ * @param message - 日志消息
+ * @param details - 详细信息（可选）
+ */
   private addTaskLog(
     taskId: string,
     level: TaskLog["level"],
@@ -100,13 +114,19 @@ export class TaskManager {
       if (!this.tempLogs.has(taskId)) {
         this.tempLogs.set(taskId, []);
       }
-      this.tempLogs.get(taskId)!.push({ ...log, id: `log_${Date.now()}` });
+      this.tempLogs.get(taskId)?.push({ ...log, id: `log_${Date.now()}` });
     }
   }
 
   /**
    * 创建翻译任务
    */
+/**
+ * 创建新的翻译任务
+ * @param options - 创建任务的选项配置
+ * @returns 返回新创建的任务ID
+ * @throws 当文件不存在或验证失败时抛出错误
+ */
   async createTask(options: CreateTaskOptions): Promise<string> {
     const taskId = uuidv4();
 
@@ -220,6 +240,12 @@ export class TaskManager {
   /**
    * 处理翻译任务
    */
+/**
+ * 处理翻译任务的主要流程
+ * @param taskId - 要处理的任务ID
+ * @param ollamaModel - 使用的Ollama模型名称（默认：qwen3:4b-instruct）
+ * @param whisperModel - 使用的Whisper模型名称（默认：base）
+ */
   private async processTask(
     taskId: string,
     ollamaModel = "qwen3:4b-instruct",
@@ -615,6 +641,11 @@ export class TaskManager {
   /**
    * 将语言名称转换为 Whisper 语言代码
    */
+/**
+ * 将语言名称转换为Whisper支持的语言代码
+ * @param language - 语言名称（如：English、Chinese等）
+ * @returns 返回Whisper支持的语言代码，如果不支持则返回"auto"
+ */
   private getWhisperLanguageCode(language: string): string {
     const languageMap: Record<string, string> = {
       English: "en",
@@ -642,6 +673,13 @@ export class TaskManager {
   /**
    * 更新任务状态
    */
+/**
+ * 更新任务状态和进度
+ * @param taskId - 任务ID
+ * @param status - 新的任务状态
+ * @param progress - 任务进度（0-100，可选）
+ * @param errorMessage - 错误消息（可选，用于失败状态）
+ */
   private async updateTaskStatus(
     taskId: string,
     status: TaskStatus,
@@ -673,6 +711,10 @@ export class TaskManager {
   /**
    * 通知前端任务更新
    */
+/**
+ * 通知前端任务状态更新
+ * @param task - 已更新的翻译任务对象
+ */
   private notifyTaskUpdate(task: TranslationTask): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("task-updated", task);
@@ -682,6 +724,9 @@ export class TaskManager {
   /**
    * 从数据库加载未完成的任务
    */
+/**
+ * 从数据库加载未完成的任务到内存
+ */
   private loadActiveTasks(): void {
     const tasks = databaseManager.getAllTranslationTasks();
     for (const task of tasks) {
@@ -692,6 +737,10 @@ export class TaskManager {
   /**
    * 获取所有任务
    */
+/**
+ * 获取所有翻译任务
+ * @returns 返回所有翻译任务的数组
+ */
   getAllTasks(): TranslationTask[] {
     return databaseManager.getAllTranslationTasks();
   }
@@ -699,6 +748,11 @@ export class TaskManager {
   /**
    * 获取特定任务
    */
+/**
+ * 根据任务ID获取特定任务
+ * @param taskId - 任务ID
+ * @returns 返回找到的任务对象，如果不存在则返回null
+ */
   getTask(taskId: string): TranslationTask | null {
     return databaseManager.getTranslationTask(taskId);
   }
@@ -706,6 +760,10 @@ export class TaskManager {
   /**
    * 暂停任务
    */
+/**
+ * 暂停正在运行的任务
+ * @param taskId - 要暂停的任务ID
+ */
   pauseTask(taskId: string): void {
     const task = this.activeTasks.get(taskId);
     if (
@@ -720,6 +778,10 @@ export class TaskManager {
   /**
    * 恢复任务
    */
+/**
+ * 恢复已暂停的任务
+ * @param taskId - 要恢复的任务ID
+ */
   resumeTask(taskId: string): void {
     const task = this.activeTasks.get(taskId);
     if (task && task.status === TaskStatus.PAUSED) {
@@ -731,6 +793,10 @@ export class TaskManager {
   /**
    * 删除任务
    */
+/**
+ * 删除指定的任务
+ * @param taskId - 要删除的任务ID
+ */
   deleteTask(taskId: string): void {
     // 从活动任务中移除
     this.activeTasks.delete(taskId);
@@ -747,6 +813,10 @@ export class TaskManager {
   /**
    * 重试失败的任务
    */
+/**
+ * 重试失败的任务
+ * @param taskId - 要重试的任务ID
+ */
   retryTask(taskId: string): void {
     const task = databaseManager.getTranslationTask(taskId);
     if (task && task.status === TaskStatus.FAILED) {
@@ -762,6 +832,11 @@ export class TaskManager {
   /**
    * 获取任务日志
    */
+/**
+ * 获取指定任务的日志记录
+ * @param taskId - 任务ID
+ * @returns 返回任务的日志记录数组
+ */
   getTaskLogs(taskId: string) {
     return databaseManager.getTaskLogs(taskId);
   }
@@ -769,6 +844,10 @@ export class TaskManager {
   /**
    * 获取统计信息
    */
+/**
+ * 获取任务统计信息
+ * @returns 返回包含任务统计数据的对象
+ */
   getStatistics() {
     return databaseManager.getStatistics();
   }
@@ -776,6 +855,9 @@ export class TaskManager {
   /**
    * 清理资源
    */
+/**
+ * 清理所有资源和服务
+ */
   cleanup(): void {
     // 停止所有活动任务
     this.activeTasks.clear();

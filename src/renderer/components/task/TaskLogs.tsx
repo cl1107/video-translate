@@ -40,7 +40,6 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
         return <XCircle className="h-4 w-4 text-red-500" />;
       case "warn":
         return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case "info":
       default:
         return <Info className="h-4 w-4 text-blue-500" />;
     }
@@ -54,7 +53,6 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
         return "bg-red-50 border-red-200";
       case "warn":
         return "bg-yellow-50 border-yellow-200";
-      case "info":
       default:
         return "bg-blue-50 border-blue-200";
     }

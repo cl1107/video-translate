@@ -21,7 +21,7 @@ import {
   CardTitle,
 } from "renderer/components/ui/card";
 import { Progress } from "renderer/components/ui/progress";
-import { TaskStatus, TranslationTask } from "shared/types/video";
+import { TaskStatus, type TranslationTask } from "shared/types/video";
 import { TaskLogs } from "./TaskLogs";
 
 const { App } = window;
@@ -87,7 +87,7 @@ const formatFileSize = (bytes: number): string => {
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
 };
 
 const formatDuration = (seconds: number): string => {

@@ -14,6 +14,9 @@ export class DatabaseManager {
   private db: Database.Database;
   private dbPath: string;
 
+/**
+ * 数据库管理器构造函数，初始化SQLite数据库连接并创建必要的表结构
+ */
   constructor() {
     // 数据库文件存储在用户数据目录
     const userDataPath = app.getPath("userData");
@@ -27,6 +30,9 @@ export class DatabaseManager {
     this.initializeDatabase();
   }
 
+/**
+ * 初始化数据库表结构，创建所有必需的表和索引
+ */
   private initializeDatabase(): void {
     // 创建视频文件表
     this.db.exec(`
@@ -97,6 +103,10 @@ export class DatabaseManager {
   /**
    * 保存视频文件信息
    */
+/**
+ * 保存视频文件信息到数据库
+ * @param videoFile - 视频文件对象
+ */
   saveVideoFile(videoFile: VideoFile): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO video_files
@@ -118,6 +128,11 @@ export class DatabaseManager {
   /**
    * 获取视频文件信息
    */
+/**
+ * 根据ID获取视频文件信息
+ * @param id - 视频文件ID
+ * @returns 返回视频文件对象，如果不存在则返回null
+ */
   getVideoFile(id: string): VideoFile | null {
     const stmt = this.db.prepare(`
       SELECT * FROM video_files WHERE id = ?
@@ -140,6 +155,10 @@ export class DatabaseManager {
   /**
    * 创建翻译任务
    */
+/**
+ * 创建新的翻译任务记录
+ * @param task - 翻译任务对象（不包含segments、subtitles、logs字段）
+ */
   createTranslationTask(
     task: Omit<TranslationTask, "segments" | "subtitles" | "logs">
   ): void {
@@ -166,6 +185,13 @@ export class DatabaseManager {
   /**
    * 更新任务状态
    */
+/**
+ * 更新翻译任务状态
+ * @param taskId - 任务ID
+ * @param status - 新的任务状态
+ * @param progress - 任务进度（可选，0-100）
+ * @param errorMessage - 错误消息（可选）
+ */
   updateTaskStatus(
     taskId: string,
     status: TaskStatus,
@@ -203,6 +229,11 @@ export class DatabaseManager {
   /**
    * 获取翻译任务
    */
+/**
+ * 根据ID获取翻译任务详情
+ * @param taskId - 任务ID
+ * @returns 返回完整的翻译任务对象，包含视频信息和转录段落，如果不存在则返回null
+ */
   getTranslationTask(taskId: string): TranslationTask | null {
     const stmt = this.db.prepare(`
       SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
@@ -246,6 +277,10 @@ export class DatabaseManager {
   /**
    * 获取所有翻译任务
    */
+/**
+ * 获取所有翻译任务列表
+ * @returns 返回按创建时间倒序排列的翻译任务数组
+ */
   getAllTranslationTasks(): TranslationTask[] {
     const stmt = this.db.prepare(`
       SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
@@ -289,6 +324,11 @@ export class DatabaseManager {
   /**
    * 保存转录段落
    */
+/**
+ * 保存转录段落到数据库
+ * @param taskId - 关联的任务ID
+ * @param segments - 转录段落数组
+ */
   saveTranscriptionSegments(
     taskId: string,
     segments: TranscriptionSegment[]
@@ -321,6 +361,11 @@ export class DatabaseManager {
   /**
    * 获取转录段落
    */
+/**
+ * 获取指定任务的所有转录段落
+ * @param taskId - 任务ID
+ * @returns 返回按开始时间排序的转录段落数组
+ */
   getTranscriptionSegments(taskId: string): TranscriptionSegment[] {
     const stmt = this.db.prepare(`
       SELECT * FROM transcription_segments
@@ -343,6 +388,11 @@ export class DatabaseManager {
   /**
    * 更新段落翻译
    */
+/**
+ * 更新单个段落的翻译文本
+ * @param segmentId - 段落ID
+ * @param translatedText - 翻译后的文本
+ */
   updateSegmentTranslation(segmentId: string, translatedText: string): void {
     const stmt = this.db.prepare(`
       UPDATE transcription_segments
@@ -356,6 +406,11 @@ export class DatabaseManager {
   /**
    * 删除翻译任务
    */
+/**
+ * 删除翻译任务及其相关数据
+ * @param taskId - 要删除的任务ID
+ * @note 此操作会删除任务的所有日志、转录段落，并在没有其他任务引用时删除视频文件记录
+ */
   deleteTranslationTask(taskId: string): void {
     const transaction = this.db.transaction(() => {
       // 首先获取视频文件ID，在删除任务之前
@@ -379,7 +434,7 @@ export class DatabaseManager {
       taskStmt.run(taskId);
 
       // 检查是否需要删除视频文件记录
-      if (videoFileId && videoFileId.video_file_id) {
+      if (videoFileId?.video_file_id) {
         // 检查是否还有其他任务使用这个视频文件
         const countStmt = this.db.prepare(`
           SELECT COUNT(*) as count FROM translation_tasks WHERE video_file_id = ?
@@ -401,6 +456,11 @@ export class DatabaseManager {
   /**
    * 添加任务日志
    */
+/**
+ * 添加任务日志记录
+ * @param taskId - 任务ID
+ * @param log - 日志对象（不包含id字段）
+ */
   addTaskLog(taskId: string, log: Omit<TaskLog, "id">): void {
     const stmt = this.db.prepare(`
       INSERT INTO task_logs (id, task_id, timestamp, level, message, details)
@@ -423,6 +483,11 @@ export class DatabaseManager {
   /**
    * 获取任务日志
    */
+/**
+ * 获取指定任务的所有日志记录
+ * @param taskId - 任务ID
+ * @returns 返回按时间戳排序的日志记录数组
+ */
   getTaskLogs(taskId: string): TaskLog[] {
     const stmt = this.db.prepare(`
       SELECT * FROM task_logs
@@ -443,6 +508,10 @@ export class DatabaseManager {
   /**
    * 清除任务日志
    */
+/**
+ * 清除指定任务的所有日志记录
+ * @param taskId - 任务ID
+ */
   clearTaskLogs(taskId: string): void {
     const stmt = this.db.prepare("DELETE FROM task_logs WHERE task_id = ?");
     stmt.run(taskId);
@@ -451,6 +520,11 @@ export class DatabaseManager {
   /**
    * 更新翻译后的段落
    */
+/**
+ * 批量更新段落的翻译文本
+ * @param taskId - 任务ID
+ * @param segments - 包含翻译结果的段落数组
+ */
   updateTranslatedSegments(taskId: string, segments: any[]): void {
     const stmt = this.db.prepare(`
       UPDATE transcription_segments
@@ -470,6 +544,10 @@ export class DatabaseManager {
   /**
    * 获取数据库统计信息
    */
+/**
+ * 获取数据库统计信息
+ * @returns 返回包含任务和视频统计数据的对象
+ */
   getStatistics(): {
     totalTasks: number;
     completedTasks: number;
@@ -507,6 +585,9 @@ export class DatabaseManager {
   /**
    * 清理数据库
    */
+/**
+ * 清理数据库，执行VACUUM操作优化数据库文件
+ */
   cleanup(): void {
     this.db.exec("VACUUM");
   }
@@ -514,6 +595,9 @@ export class DatabaseManager {
   /**
    * 关闭数据库连接
    */
+/**
+ * 关闭数据库连接
+ */
   close(): void {
     this.db.close();
   }

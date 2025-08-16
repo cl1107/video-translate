@@ -7,7 +7,11 @@ import type { TranscriptionSegment } from "../../../shared/types/video";
 // 导入 whisper-node
 const { whisper } = require("whisper-node");
 
+/**
+ * Whisper转录选项接口
+ */
 export interface WhisperOptions {
+  /** 使用的模型名称 */
   model?:
     | "tiny"
     | "base"
@@ -16,21 +20,36 @@ export interface WhisperOptions {
     | "large"
     | "large-v2"
     | "large-v3";
+  /** 语言代码（如：en、zh、auto） */
   language?: string;
+  /** 温度参数，控制随机性 */
   temperature?: number;
+  /** 线程数 */
   threads?: number;
+  /** 输出格式 */
   outputFormat?: "json" | "txt" | "vtt" | "srt";
 }
 
+/**
+ * Whisper转录结果接口
+ */
 export interface WhisperResult {
+  /** 转录段落数组 */
   segments: Array<{
+    /** 段落ID */
     id: number;
+    /** 开始时间（秒） */
     start: number;
+    /** 结束时间（秒） */
     end: number;
+    /** 转录文本 */
     text: string;
+    /** 置信度（可选） */
     confidence?: number;
   }>;
+  /** 完整转录文本 */
   text: string;
+  /** 检测到的语言 */
   language: string;
 }
 
@@ -38,12 +57,18 @@ export class WhisperTranscriber {
   private modelsDir: string;
   private tempDir: string;
 
+/**
+ * Whisper转录器构造函数
+ */
   constructor() {
     this.modelsDir = path.join(os.homedir(), ".cache", "whisper");
     this.tempDir = path.join(os.tmpdir(), "video-translate-whisper");
     this.ensureDirectories();
   }
 
+/**
+ * 确保模型和临时目录存在
+ */
   private async ensureDirectories(): Promise<void> {
     try {
       await fs.mkdir(this.modelsDir, { recursive: true });
@@ -56,6 +81,10 @@ export class WhisperTranscriber {
   /**
    * 检查 Whisper 是否可用
    */
+/**
+ * 检查Whisper是否可用
+ * @returns 返回true表示Whisper可用，false表示不可用
+ */
   async isAvailable(): Promise<boolean> {
     try {
       // whisper-node 包含了预编译的 whisper.cpp，所以总是可用的
@@ -70,6 +99,11 @@ export class WhisperTranscriber {
    * 检查模型是否已下载
    * whisper-node 会自动下载模型，所以这里总是返回 true
    */
+/**
+ * 检查指定模型是否可用
+ * @param model - 模型名称
+ * @returns 返回true表示模型可用（whisper-node会自动下载模型）
+ */
   async isModelAvailable(model: string): Promise<boolean> {
     // whisper-node 会在需要时自动下载模型
     return true;
@@ -79,6 +113,11 @@ export class WhisperTranscriber {
    * 下载 Whisper 模型
    * whisper-node 会自动处理模型下载
    */
+/**
+ * 下载Whisper模型（whisper-node会自动处理）
+ * @param model - 模型名称
+ * @param onProgress - 进度回调函数（可选）
+ */
   async downloadModel(
     model: string,
     onProgress?: (progress: string) => void
@@ -92,6 +131,14 @@ export class WhisperTranscriber {
   /**
    * 转录音频文件
    */
+/**
+ * 转录音频文件
+ * @param audioPath - 音频文件路径
+ * @param options - 转录选项（可选）
+ * @param onProgress - 进度回调函数（可选）
+ * @returns 返回转录段落数组
+ * @throws 当转录失败时抛出错误
+ */
   async transcribe(
     audioPath: string,
     options: WhisperOptions = {},
@@ -200,6 +247,13 @@ export class WhisperTranscriber {
   /**
    * 批量转录音频段落
    */
+/**
+ * 批量转录音频段落
+ * @param audioSegments - 音频段落数组
+ * @param options - 转录选项（可选）
+ * @param onProgress - 进度回调函数（可选）
+ * @returns 返回按时间排序的转录段落数组
+ */
   async transcribeBatch(
     audioSegments: Array<{ path: string; startTime: number; duration: number }>,
     options: WhisperOptions = {},
@@ -254,6 +308,10 @@ export class WhisperTranscriber {
   /**
    * 获取支持的语言列表
    */
+/**
+ * 获取支持的语言列表
+ * @returns 返回支持的语言代码和名称数组
+ */
   getSupportedLanguages(): Array<{ code: string; name: string }> {
     return [
       { code: "auto", name: "自动检测" },
@@ -277,9 +335,16 @@ export class WhisperTranscriber {
   /**
    * 获取可用的模型列表
    */
+/**
+ * 获取可用的模型列表
+ * @returns 返回可用模型的详细信息数组
+ */
   getAvailableModels(): Array<{
+    /** 模型名称 */
     name: string;
+    /** 模型大小 */
     size: string;
+    /** 模型描述 */
     description: string;
   }> {
     return [
@@ -314,6 +379,9 @@ export class WhisperTranscriber {
   /**
    * 清理临时文件
    */
+/**
+ * 清理临时文件
+ */
   async cleanup(): Promise<void> {
     try {
       const files = await fs.readdir(this.tempDir);

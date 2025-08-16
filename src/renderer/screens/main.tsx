@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { TaskList } from "renderer/components/task/TaskList";
 import { Button } from "renderer/components/ui/button";
 import { VideoUploader } from "renderer/components/video/VideoUploader";
-import { TranslationTask } from "shared/types/video";
+import type { TranslationTask } from "shared/types/video";
 
 // The "App" comes from the context bridge in preload/index.ts
 const { App } = window;
@@ -42,10 +42,9 @@ export function MainScreen() {
             const newTasks = [...prevTasks];
             newTasks[index] = updatedTask;
             return newTasks;
-          } else {
-            // 添加新任务
-            return [updatedTask, ...prevTasks];
           }
+          // 添加新任务
+          return [updatedTask, ...prevTasks];
         });
       }
     );
