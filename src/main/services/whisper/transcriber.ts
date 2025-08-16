@@ -131,19 +131,48 @@ export class WhisperTranscriber {
 
       // 转换 whisper-node 的输出格式为我们需要的格式
       const segments: TranscriptionSegment[] = [];
+      console.log("Whisper 返回数据类型:", typeof transcript);
+      console.log("Whisper 返回数据结构:", JSON.stringify(transcript, null, 2));
 
       if (Array.isArray(transcript)) {
+        console.log(`Whisper 返回 ${transcript.length} 个段落`);
         transcript.forEach((segment, index) => {
           segments.push({
             id: uuidv4(),
             start: segment.start || 0,
             end: segment.end || 0,
-            originalText: segment.speech?.trim() || "",
+            originalText: segment.speech?.trim() || segment.text?.trim() || "",
             confidence: 0.9, // whisper-node 可能不提供置信度，使用默认值
           });
         });
+      } else if (transcript && typeof transcript === 'object') {
+        // 处理对象形式的返回结果
+        console.log("处理对象形式的返回结果");
+        if (transcript.segments && Array.isArray(transcript.segments)) {
+          transcript.segments.forEach((segment, index) => {
+            segments.push({
+              id: uuidv4(),
+              start: segment.start || 0,
+              end: segment.end || 0,
+              originalText: segment.text?.trim() || segment.speech?.trim() || "",
+              confidence: segment.confidence || 0.9,
+            });
+          });
+        } else if (transcript.text) {
+          // 单个文本结果
+          segments.push({
+            id: uuidv4(),
+            start: 0,
+            end: 0,
+            originalText: transcript.text.trim(),
+            confidence: 0.9,
+          });
+        } else {
+          console.log("无法识别的返回结果结构");
+        }
       } else {
         // 如果返回的不是分段数据，创建一个单一段落
+        console.log("创建默认段落，原始数据:", transcript);
         segments.push({
           id: uuidv4(),
           start: 0,

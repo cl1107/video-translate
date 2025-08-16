@@ -322,14 +322,14 @@ export class TaskManager {
         taskId,
         "info",
         "开始语音识别...",
-        `使用模型: ${whisperModel}, 源语言: ${task.sourceLanguage}`
+        `使用模型: ${whisperModel}, 源语言: ${task.sourceLanguage}，目标语言: ${task.targetLanguage}`
       );
 
       const segments = await whisperTranscriber.transcribeBatch(
         audioSegments,
         {
           model: whisperModel as any,
-          language: this.getWhisperLanguageCode(task.sourceLanguage),
+          language: task.sourceLanguage,
           temperature: 0.0,
         },
         (completed, total) => {

@@ -182,6 +182,49 @@ export class FFmpegProcessor {
   }
 
   /**
+   * 获取媒体文件时长（支持音频和视频文件）
+   */
+  async getMediaDuration(mediaPath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const args = [
+        "-i",
+        mediaPath,
+        "-hide_banner",
+        "-show_format",
+        "-of",
+        "json",
+      ];
+      const process = spawn(this.ffprobePath, args);
+      let output = "";
+      let error = "";
+      process.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+      process.stderr.on("data", (data) => {
+        error += data.toString();
+      });
+      process.on("error", (err) => {
+        reject(new Error(`FFprobe 执行失败: ${err.message}`));
+      });
+      process.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`FFprobe failed: ${error}`));
+          return;
+        }
+        try {
+          const data = JSON.parse(output);
+          const duration = parseFloat(data.format.duration) || 0;
+          resolve(duration);
+        } catch (parseError) {
+          reject(
+            new Error(`Failed to parse media duration: ${parseError.message}`)
+          );
+        }
+      });
+    });
+  }
+
+  /**
    * 提取音频轨道
    */
   async extractAudio(
@@ -327,6 +370,40 @@ export class FFmpegProcessor {
       currentStart = silence.end;
     }
 
+    // 处理最后一个静音区间到音频末尾的剩余部分
+    const audioDuration = await this.getMediaDuration(audioPath);
+    if (currentStart < audioDuration && (audioDuration - currentStart) > 0.5) {
+      console.log(`Creating final segment from ${currentStart}s to end (${audioDuration}s)`);
+      const segmentPath = await this.extractAudioSegment(
+        audioPath,
+        currentStart,
+        -1,
+        segmentIndex++
+      );
+      segments.push({
+        path: segmentPath,
+        startTime: currentStart,
+        duration: audioDuration - currentStart,
+      });
+    }
+
+    // 如果没有静音区间或者还有剩余音频，将整个音频作为一个段落
+    if (segments.length === 0) {
+      console.log("No silence detected or no segments created, creating single segment for entire audio");
+      const segmentPath = await this.extractAudioSegment(
+        audioPath,
+        0,
+        -1, // -1 表示到文件末尾
+        segmentIndex++
+      );
+      segments.push({
+        path: segmentPath,
+        startTime: 0,
+        duration: await this.getMediaDuration(audioPath),
+      });
+    }
+
+    console.log(`Audio segmentation complete: ${segments.length} segments created`);
     return segments;
   }
 
