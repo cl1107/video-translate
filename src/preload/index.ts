@@ -7,7 +7,8 @@ declare global {
       // 文件操作
       openFileDialog: () => Promise<string[]>;
       uploadFiles: (
-        filePaths: string[]
+        filePaths: string[],
+        settings: { sourceLanguage: string; targetLanguage: string }
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>;
 
       // 任务管理
@@ -62,8 +63,8 @@ declare global {
 const api = {
   // 文件操作
   openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
-  uploadFiles: (filePaths: string[]) =>
-    ipcRenderer.invoke("upload-files", filePaths),
+  uploadFiles: (filePaths: string[], settings: { sourceLanguage: string; targetLanguage: string }) =>
+    ipcRenderer.invoke("upload-files", filePaths, settings),
 
   // 任务管理
   getAllTasks: () => ipcRenderer.invoke("get-all-tasks"),

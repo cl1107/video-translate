@@ -13,15 +13,15 @@ import { MainWindow } from "./windows/main";
 // IPC 处理器
 function setupIpcHandlers() {
   // 文件上传处理
-  ipcMain.handle("upload-files", async (event, filePaths: string[]) => {
+  ipcMain.handle("upload-files", async (event, filePaths: string[], settings: { sourceLanguage: string; targetLanguage: string }) => {
     try {
       const taskIds: string[] = [];
 
       for (const filePath of filePaths) {
         const taskId = await taskManager.createTask({
           filePath,
-          sourceLanguage: "English",
-          targetLanguage: "Chinese",
+          sourceLanguage: settings.sourceLanguage,
+          targetLanguage: settings.targetLanguage,
         });
         taskIds.push(taskId);
       }

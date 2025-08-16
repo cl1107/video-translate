@@ -49,7 +49,17 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       // 直接调用系统文件选择对话框
       const filePaths = await (window as any).App.openFileDialog();
       if (filePaths.length > 0) {
-        const result = await (window as any).App.uploadFiles(filePaths);
+        // 从localStorage读取设置
+        const savedSettings = localStorage.getItem("video-translate-settings");
+        const settings = savedSettings ? JSON.parse(savedSettings) : {
+          sourceLanguage: "auto",
+          targetLanguage: "zh"
+        };
+        
+        const result = await (window as any).App.uploadFiles(filePaths, {
+          sourceLanguage: settings.sourceLanguage,
+          targetLanguage: settings.targetLanguage
+        });
         if (result.success) {
           console.log("文件上传成功，任务ID:", result.taskIds);
           onUploadSuccess?.();
