@@ -106,29 +106,9 @@ export function SettingsPanel() {
   // 推荐的模型列表
   const recommendedModels = [
     {
-      name: "llama3",
-      size: "4.7GB",
-      description: "Meta Llama 3 8B 模型 - 推荐",
-    },
-    {
-      name: "llama3:70b",
-      size: "40GB",
-      description: "Meta Llama 3 70B 模型 - 高性能",
-    },
-    {
-      name: "qwen2",
-      size: "4.4GB",
-      description: "阿里通义千问 7B 模型 - 中文优化",
-    },
-    {
-      name: "gemma2",
-      size: "5.4GB",
-      description: "Google Gemma 2 9B 模型",
-    },
-    {
-      name: "codellama",
-      size: "3.8GB",
-      description: "Code Llama 7B 模型 - 代码理解",
+      name: "seed-x-instruct:latest",
+      size: "4.6GB",
+      description: "字节跳动专门的翻译模型，推荐",
     },
   ];
 

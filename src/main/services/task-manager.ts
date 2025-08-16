@@ -2,12 +2,12 @@ import { BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
-import {
-  TaskStatus,
-  type TaskLog,
-  type TranslationTask,
-  type VideoFile,
+import type {
+  TaskLog,
+  TranslationTask,
+  VideoFile,
 } from "../../shared/types/video";
+import { TaskStatus } from "../../shared/types/video";
 import { databaseManager } from "./database/manager";
 import { ffmpegProcessor } from "./ffmpeg/processor";
 import { ollamaClient } from "./ollama/client";
@@ -176,19 +176,21 @@ export class TaskManager {
       this.activeTasks.set(task.id, task);
 
       // 将缓存的日志保存到数据库
-      if (this.tempLogs && this.tempLogs.has(taskId)) {
-        const cachedLogs = this.tempLogs.get(taskId)!;
-        for (const log of cachedLogs) {
-          try {
-            databaseManager.addTaskLog(taskId, log);
-          } catch (error) {
-            console.error("保存缓存日志失败:", error);
+      if (this.tempLogs?.has(taskId)) {
+        const cachedLogs = this.tempLogs.get(taskId);
+        if (cachedLogs) {
+          for (const log of cachedLogs) {
+            try {
+              databaseManager.addTaskLog(taskId, log);
+            } catch (error) {
+              console.error("保存缓存日志失败:", error);
+            }
           }
+          // 将缓存的日志添加到任务对象
+          task.logs = cachedLogs;
+          // 清除缓存
+          this.tempLogs.delete(taskId);
         }
-        // 将缓存的日志添加到任务对象
-        task.logs = cachedLogs;
-        // 清除缓存
-        this.tempLogs.delete(taskId);
       }
 
       this.addTaskLog(
@@ -272,7 +274,7 @@ export class TaskManager {
         taskId,
         "info",
         "开始提取音频...",
-        `视频文件: ${task.videoFile.name}`
+        `视频文件: ${task.videoFile.name}，路径: ${task.videoFile.path}`
       );
 
       const audioPath = await ffmpegProcessor.extractAudio(
@@ -404,9 +406,10 @@ export class TaskManager {
       databaseManager.updateTranslatedSegments(taskId, mergedSegments);
 
       // 生成字幕文件
-      const subtitleGenerator = (await import("../utils/subtitle-generator"))
-        .subtitleGenerator;
-      const subtitles = subtitleGenerator.generateSRT(mergedSegments);
+      const { SubtitleGenerator } = await import("../utils/subtitle-generator");
+      const subtitleEntries =
+        SubtitleGenerator.segmentsToSubtitles(mergedSegments);
+      const subtitles = SubtitleGenerator.generateSRT(subtitleEntries);
 
       this.addTaskLog(
         taskId,
@@ -511,9 +514,9 @@ export class TaskManager {
    */
   private loadActiveTasks(): void {
     const tasks = databaseManager.getAllTranslationTasks();
-    tasks.forEach((task) => {
+    for (const task of tasks) {
       this.activeTasks.set(task.id, task);
-    });
+    }
   }
 
   /**

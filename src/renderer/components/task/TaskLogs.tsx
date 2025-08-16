@@ -99,11 +99,12 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
             暂无日志记录
           </div>
         ) : (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto" style={{ userSelect: 'text' }}>
             {logs.map((log) => (
               <div
                 key={log.id}
                 className={`p-3 rounded-lg border ${getLogBgColor(log.level)}`}
+                style={{ userSelect: 'text' }}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0 mt-0.5">
@@ -111,15 +112,15 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-gray-900" style={{ userSelect: 'text' }}>
                         {log.message}
                       </div>
-                      <div className="text-xs text-gray-500 ml-2">
+                      <div className="text-xs text-gray-500 ml-2" style={{ userSelect: 'text' }}>
                         {formatTime(log.timestamp)}
                       </div>
                     </div>
                     {log.details && (
-                      <div className="mt-1 text-xs text-gray-600 break-all">
+                      <div className="mt-1 text-xs text-gray-600 break-all" style={{ userSelect: 'text' }}>
                         {log.details}
                       </div>
                     )}

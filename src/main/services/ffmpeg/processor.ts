@@ -35,8 +35,14 @@ export class FFmpegProcessor {
   private async ensureTempDir(): Promise<void> {
     try {
       await fs.mkdir(this.tempDir, { recursive: true });
+      console.log(`Temp directory ensured: ${this.tempDir}`);
+      
+      // 验证目录是否可写
+      await fs.access(this.tempDir, fs.constants.W_OK);
     } catch (error) {
-      console.error("Failed to create temp directory:", error);
+      console.error("Failed to create or access temp directory:", error);
+      console.error(`Temp directory path: ${this.tempDir}`);
+      throw error;
     }
   }
 
@@ -183,8 +189,16 @@ export class FFmpegProcessor {
     outputPath?: string,
     onProgress?: (progress: number) => void
   ): Promise<string> {
+    // 确保临时目录存在
+    await this.ensureTempDir();
+    
     const audioPath =
       outputPath || path.join(this.tempDir, `audio_${Date.now()}.wav`);
+    
+    console.log(`Starting audio extraction:`);
+    console.log(`  Input: ${videoPath}`);
+    console.log(`  Output: ${audioPath}`);
+    console.log(`  Temp dir: ${this.tempDir}`);
 
     return new Promise((resolve, reject) => {
       const args = [
@@ -225,13 +239,25 @@ export class FFmpegProcessor {
         }
       });
 
-      process.on("close", (code) => {
+      process.on("close", async (code) => {
         if (code !== 0) {
           reject(new Error(`Audio extraction failed: ${error}`));
           return;
         }
 
-        resolve(audioPath);
+        // 验证文件是否真的被创建
+        try {
+          await fs.access(audioPath);
+          const stats = await fs.stat(audioPath);
+          if (stats.size === 0) {
+            reject(new Error(`Audio file was created but is empty: ${audioPath}`));
+            return;
+          }
+          console.log(`Audio extraction successful: ${audioPath} (${stats.size} bytes)`);
+          resolve(audioPath);
+        } catch (fileError) {
+          reject(new Error(`Audio file was not created or is not accessible: ${audioPath}. Error: ${fileError}`));
+        }
       });
     });
   }

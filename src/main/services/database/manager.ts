@@ -98,7 +98,7 @@ export class DatabaseManager {
    */
   saveVideoFile(videoFile: VideoFile): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO video_files 
+      INSERT OR REPLACE INTO video_files
       (id, name, path, size, duration, format, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
@@ -143,7 +143,7 @@ export class DatabaseManager {
     task: Omit<TranslationTask, "segments" | "subtitles" | "logs">
   ): void {
     const stmt = this.db.prepare(`
-      INSERT INTO translation_tasks 
+      INSERT INTO translation_tasks
       (id, video_file_id, status, progress, source_language, target_language, created_at, updated_at, completed_at, error_message)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -190,7 +190,7 @@ export class DatabaseManager {
     }
 
     const stmt = this.db.prepare(`
-      UPDATE translation_tasks 
+      UPDATE translation_tasks
       SET ${updates.join(", ")}
       WHERE id = ?
     `);
@@ -204,7 +204,7 @@ export class DatabaseManager {
    */
   getTranslationTask(taskId: string): TranslationTask | null {
     const stmt = this.db.prepare(`
-      SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size, 
+      SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
              v.duration as video_duration, v.format as video_format, v.created_at as video_created_at
       FROM translation_tasks t
       JOIN video_files v ON t.video_file_id = v.id
@@ -234,6 +234,7 @@ export class DatabaseManager {
       targetLanguage: row.target_language,
       segments,
       subtitles: [], // 从段落生成
+      logs: [],
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
@@ -246,7 +247,7 @@ export class DatabaseManager {
    */
   getAllTranslationTasks(): TranslationTask[] {
     const stmt = this.db.prepare(`
-      SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size, 
+      SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
              v.duration as video_duration, v.format as video_format, v.created_at as video_created_at
       FROM translation_tasks t
       JOIN video_files v ON t.video_file_id = v.id
@@ -262,22 +263,23 @@ export class DatabaseManager {
         id: row.id,
         videoFile: {
           id: row.video_file_id,
-          name: row.video_name,
-          path: row.video_path,
-          size: row.video_size,
-          duration: row.video_duration,
-          format: row.video_format,
-          createdAt: new Date(row.video_created_at),
+          name: row.name,
+          path: row.path,
+          size: row.size,
+          duration: row.duration,
+          format: row.format,
+          createdAt: new Date(row.created_at),
         },
         status: row.status as TaskStatus,
         progress: row.progress,
         sourceLanguage: row.source_language,
         targetLanguage: row.target_language,
-        segments,
+        segments: segments,
         subtitles: [],
+        logs: [],
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
-        completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+        completedAt: row.completed_at ? new Date(row.completed_at) : null,
         errorMessage: row.error_message,
       };
     });
@@ -291,7 +293,7 @@ export class DatabaseManager {
     segments: TranscriptionSegment[]
   ): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO transcription_segments 
+      INSERT OR REPLACE INTO transcription_segments
       (id, task_id, start_time, end_time, original_text, translated_text, confidence)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
@@ -320,8 +322,8 @@ export class DatabaseManager {
    */
   getTranscriptionSegments(taskId: string): TranscriptionSegment[] {
     const stmt = this.db.prepare(`
-      SELECT * FROM transcription_segments 
-      WHERE task_id = ? 
+      SELECT * FROM transcription_segments
+      WHERE task_id = ?
       ORDER BY start_time ASC
     `);
 
@@ -342,8 +344,8 @@ export class DatabaseManager {
    */
   updateSegmentTranslation(segmentId: string, translatedText: string): void {
     const stmt = this.db.prepare(`
-      UPDATE transcription_segments 
-      SET translated_text = ? 
+      UPDATE transcription_segments
+      SET translated_text = ?
       WHERE id = ?
     `);
 
@@ -355,6 +357,15 @@ export class DatabaseManager {
    */
   deleteTranslationTask(taskId: string): void {
     const transaction = this.db.transaction(() => {
+      // 首先获取视频文件ID，在删除任务之前
+      const videoFileStmt = this.db.prepare(`
+        SELECT video_file_id FROM translation_tasks WHERE id = ?
+      `);
+      const videoFileId = videoFileStmt.get(taskId) as any;
+
+      // 删除任务日志
+      this.db.prepare("DELETE FROM task_logs WHERE task_id = ?").run(taskId);
+
       // 删除转录段落
       this.db
         .prepare("DELETE FROM transcription_segments WHERE task_id = ?")
@@ -364,28 +375,21 @@ export class DatabaseManager {
       const taskStmt = this.db.prepare(
         "DELETE FROM translation_tasks WHERE id = ?"
       );
-      const result = taskStmt.run(taskId);
+      taskStmt.run(taskId);
 
-      // 如果任务被删除，检查是否需要删除视频文件记录
-      if (result.changes > 0) {
-        const videoFileStmt = this.db.prepare(`
-          SELECT video_file_id FROM translation_tasks WHERE id = ?
+      // 检查是否需要删除视频文件记录
+      if (videoFileId && videoFileId.video_file_id) {
+        // 检查是否还有其他任务使用这个视频文件
+        const countStmt = this.db.prepare(`
+          SELECT COUNT(*) as count FROM translation_tasks WHERE video_file_id = ?
         `);
-        const videoFileId = videoFileStmt.get(taskId) as any;
+        const count = countStmt.get(videoFileId?.video_file_id) as any;
 
-        if (videoFileId) {
-          // 检查是否还有其他任务使用这个视频文件
-          const countStmt = this.db.prepare(`
-            SELECT COUNT(*) as count FROM translation_tasks WHERE video_file_id = ?
-          `);
-          const count = countStmt.get(videoFileId.video_file_id) as any;
-
-          if (count.count === 0) {
-            // 没有其他任务使用，可以删除视频文件记录
-            this.db
-              .prepare("DELETE FROM video_files WHERE id = ?")
-              .run(videoFileId.video_file_id);
-          }
+        if (count.count === 0) {
+          // 没有其他任务使用，可以删除视频文件记录
+          this.db
+            .prepare("DELETE FROM video_files WHERE id = ?")
+            .run(videoFileId.video_file_id);
         }
       }
     });
@@ -420,8 +424,8 @@ export class DatabaseManager {
    */
   getTaskLogs(taskId: string): TaskLog[] {
     const stmt = this.db.prepare(`
-      SELECT * FROM task_logs 
-      WHERE task_id = ? 
+      SELECT * FROM task_logs
+      WHERE task_id = ?
       ORDER BY timestamp ASC
     `);
 
@@ -448,8 +452,8 @@ export class DatabaseManager {
    */
   updateTranslatedSegments(taskId: string, segments: any[]): void {
     const stmt = this.db.prepare(`
-      UPDATE transcription_segments 
-      SET translated_text = ? 
+      UPDATE transcription_segments
+      SET translated_text = ?
       WHERE id = ?
     `);
 
@@ -474,7 +478,7 @@ export class DatabaseManager {
     const taskStats = this.db
       .prepare(
         `
-      SELECT 
+      SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
