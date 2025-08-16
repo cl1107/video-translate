@@ -68,7 +68,7 @@ pnpm build
 
 ```bash
 # Ollama 翻译模型
-ollama pull llama3
+ollama pull qwen3:4b-instruct
 
 # Whisper 会在首次使用时自动下载
 ```

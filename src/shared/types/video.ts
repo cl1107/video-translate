@@ -7,12 +7,12 @@ export interface VideoFile {
   size: number;
   duration: number;
   format: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 export interface TaskLog {
   id: string;
-  timestamp: Date;
+  timestamp: string;
   level: "info" | "warn" | "error" | "success";
   message: string;
   details?: string;
@@ -29,9 +29,9 @@ export interface TranslationTask {
   subtitles: SubtitleEntry[];
   logs: TaskLog[]; // 新增日志字段
   errorMessage?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt?: Date;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
 }
 
 export enum TaskStatus {

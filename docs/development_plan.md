@@ -57,7 +57,7 @@
 3. Whisper Service 并行识别片段 → 得到 **`segments.json`** (起止时间 + 原文)。
 4. 调用 Ollama 翻译：
    ```bash
-   curl localhost:11434/api/generate -d '{"model":"llama3-8b","prompt":"<翻译指令>"}'
+   curl localhost:11434/api/generate -d '{"model":"qwen3:4b-instruct","prompt":"<翻译指令>"}'
    ```
 5. 合并翻译结果 → 生成 `subtitles.srt` / `vtt`。
 6. 可选：`ffmpeg` 烧录硬字幕，或仅导出文本字幕。
@@ -98,45 +98,45 @@
 
 ```ts
 // src/main/llm/ollama.ts
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
-export async function translate(text: string, targetLang = 'zh') {
+export async function translate(text: string, targetLang = "zh") {
   const prompt = `Translate the following to ${targetLang}:\n\n${text}`;
-  const res = await fetch('http://127.0.0.1:11434/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'llama3', prompt }),
+  const res = await fetch("http://127.0.0.1:11434/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "qwen3:4b-instruct", prompt }),
   });
   const chunks = [];
   for await (const chunk of res.body as any) {
     chunks.push(chunk);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks).toString("utf8");
 }
 ```
 
 ```ts
 // src/main/asr/whisper.ts
-import { spawn } from 'child_process';
+import { spawn } from "child_process";
 
 export function transcribeSegment(
   wavPath: string
 ): Promise<{ start: number; end: number; text: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn('./bin/whisper', [
-      '-m',
-      'models/ggml-large.bin',
-      '-f',
+    const p = spawn("./bin/whisper", [
+      "-m",
+      "models/ggml-large.bin",
+      "-f",
       wavPath,
-      '-otxt',
+      "-otxt",
     ]);
-    let output = '';
-    p.stdout.on('data', (d) => (output += d));
-    p.on('close', (code) => {
+    let output = "";
+    p.stdout.on("data", (d) => (output += d));
+    p.on("close", (code) => {
       if (code === 0)
         parseWhisper(output)
           ? resolve(parseWhisper(output))
-          : reject(new Error('fail'));
+          : reject(new Error("fail"));
     });
   });
 }

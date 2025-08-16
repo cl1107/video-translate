@@ -93,7 +93,7 @@ export function SettingsPanel() {
 
   const [settings, setSettings] = useState({
     whisperModel: "base",
-    ollamaModel: "llama3",
+    ollamaModel: "qwen3:4b-instruct",
     sourceLanguage: "auto",
     targetLanguage: "zh",
     outputFormat: "srt" as "srt" | "vtt" | "txt",
@@ -106,9 +106,9 @@ export function SettingsPanel() {
   // 推荐的模型列表
   const recommendedModels = [
     {
-      name: "seed-x-instruct:latest",
-      size: "4.6GB",
-      description: "字节跳动专门的翻译模型，推荐",
+      name: "qwen3:4b-instruct",
+      size: "2.5GB",
+      description: "qwen3:4b-instruct",
     },
   ];
 
@@ -214,9 +214,7 @@ export function SettingsPanel() {
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${Number.parseFloat((bytes / k ** i).toFixed(1))} ${
-      sizes[i]
-    }`;
+    return `${Number.parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
   };
 
   const getModelDescription = (modelName: string): string => {

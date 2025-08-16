@@ -82,7 +82,7 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 ```bash
 # 下载 Llama 3 模型 (推荐)
-ollama pull llama3
+ollama pull qwen3:4b-instruct
 
 # 下载其他模型
 ollama pull qwen2        # 阿里通义千问
@@ -152,7 +152,7 @@ pnpm dev
 **解决**:
 
 1. 确认 Ollama 服务运行：`ollama list`
-2. 下载所需模型：`ollama pull llama3`
+2. 下载所需模型：`ollama pull qwen3:4b-instruct`
 3. 检查 Ollama 服务端口（默认 11434）
 
 ## 技术说明

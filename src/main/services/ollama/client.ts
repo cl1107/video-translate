@@ -186,18 +186,44 @@ export class OllamaClient {
   async generate(request: OllamaGenerateRequest): Promise<string> {
     try {
       const fetchFn = await getFetch();
-      const response = await fetchFn(`${this.baseUrl}/api/generate`, {
+      const url = `${this.baseUrl}/api/generate`;
+      console.log("🚀 ~ OllamaClient ~ generate ~ url:", url);
+      console.log(
+        "🚀 ~ OllamaClient ~ generate ~ request:",
+        JSON.stringify(request, null, 2)
+      );
+
+      const requestBody = {
+        ...request,
+        stream: false, // 使用非流式响应以简化处理
+      };
+      console.log(
+        "🚀 ~ OllamaClient ~ generate ~ requestBody:",
+        JSON.stringify(requestBody, null, 2)
+      );
+
+      const response = await fetchFn(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...request,
-          stream: false, // 使用非流式响应以简化处理
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log(
+        "🚀 ~ OllamaClient ~ generate ~ response status:",
+        response.status
+      );
       if (!response.ok) {
+        console.log(
+          "🚀 ~ OllamaClient ~ generate ~ response headers:",
+          response.headers
+        );
+        const errorText = await response.text();
+        console.log(
+          "🚀 ~ OllamaClient ~ generate ~ error response:",
+          errorText
+        );
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -216,7 +242,7 @@ export class OllamaClient {
     text: string,
     sourceLanguage: string,
     targetLanguage: string,
-    model = "llama3"
+    model = "qwen3:4b-instruct"
   ): Promise<string> {
     const systemPrompt = `You are a professional translator. Translate the following text from ${sourceLanguage} to ${targetLanguage}. Only return the translated text without any explanations or additional content.`;
 
@@ -250,7 +276,7 @@ export class OllamaClient {
     texts: string[],
     sourceLanguage: string,
     targetLanguage: string,
-    model = "llama3",
+    model = "qwen3:4b-instruct",
     onProgress?: (completed: number, total: number) => void
   ): Promise<string[]> {
     const results: string[] = [];

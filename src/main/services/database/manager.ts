@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { app } from "electron";
 import path from "node:path";
+import dayjs from "dayjs";
 import {
   TaskStatus,
   type TaskLog,
@@ -110,7 +111,7 @@ export class DatabaseManager {
       videoFile.size,
       videoFile.duration,
       videoFile.format,
-      videoFile.createdAt.toISOString()
+      videoFile.createdAt
     );
   }
 
@@ -132,7 +133,7 @@ export class DatabaseManager {
       size: row.size,
       duration: row.duration,
       format: row.format,
-      createdAt: new Date(row.created_at),
+      createdAt: row.created_at,
     };
   }
 
@@ -155,9 +156,9 @@ export class DatabaseManager {
       task.progress,
       task.sourceLanguage,
       task.targetLanguage,
-      task.createdAt.toISOString(),
-      task.updatedAt.toISOString(),
-      task.completedAt?.toISOString() || null,
+      task.createdAt,
+      task.updatedAt,
+      task.completedAt || null,
       task.errorMessage || null
     );
   }
@@ -172,7 +173,7 @@ export class DatabaseManager {
     errorMessage?: string
   ): void {
     const updates: string[] = ["status = ?", "updated_at = ?"];
-    const values: any[] = [status, new Date().toISOString()];
+    const values: any[] = [status, dayjs().format('YYYY-MM-DD HH:mm:ss')];
 
     if (progress !== undefined) {
       updates.push("progress = ?");
@@ -186,7 +187,7 @@ export class DatabaseManager {
 
     if (status === TaskStatus.COMPLETED) {
       updates.push("completed_at = ?");
-      values.push(new Date().toISOString());
+      values.push(dayjs().format('YYYY-MM-DD HH:mm:ss'));
     }
 
     const stmt = this.db.prepare(`
@@ -235,9 +236,9 @@ export class DatabaseManager {
       segments,
       subtitles: [], // 从段落生成
       logs: [],
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at,
       errorMessage: row.error_message,
     };
   }
@@ -263,12 +264,12 @@ export class DatabaseManager {
         id: row.id,
         videoFile: {
           id: row.video_file_id,
-          name: row.name,
-          path: row.path,
-          size: row.size,
-          duration: row.duration,
-          format: row.format,
-          createdAt: new Date(row.created_at),
+          name: row.video_name,
+          path: row.video_path,
+          size: row.video_size,
+          duration: row.video_duration,
+          format: row.video_format,
+          createdAt: row.video_created_at,
         },
         status: row.status as TaskStatus,
         progress: row.progress,
@@ -277,9 +278,9 @@ export class DatabaseManager {
         segments: segments,
         subtitles: [],
         logs: [],
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at),
-        completedAt: row.completed_at ? new Date(row.completed_at) : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        completedAt: row.completed_at,
         errorMessage: row.error_message,
       };
     });
@@ -412,7 +413,7 @@ export class DatabaseManager {
     stmt.run(
       logId,
       taskId,
-      log.timestamp.toISOString(),
+      log.timestamp,
       log.level,
       log.message,
       log.details || null
@@ -432,7 +433,7 @@ export class DatabaseManager {
     const rows = stmt.all(taskId) as any[];
     return rows.map((row) => ({
       id: row.id,
-      timestamp: new Date(row.timestamp),
+      timestamp: row.timestamp,
       level: row.level,
       message: row.message,
       details: row.details,

@@ -43,6 +43,7 @@
     "better-sqlite3": "^12.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dayjs": "^1.11.13",
     "electron-router-dom": "^2.1.0",
     "lucide-react": "^0.477.0",
     "node-abi": "^4.12.0",

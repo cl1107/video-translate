@@ -103,8 +103,8 @@ const formatDuration = (seconds: number): string => {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 };
 
-const formatDate = (date: Date): string => {
-  return date.toLocaleDateString();
+const formatDate = (date: string): string => {
+  return date.split(' ')[0]; // 只返回日期部分，去掉时间
 };
 
 export function TaskList({ tasks, onTasksChange }: TaskListProps) {

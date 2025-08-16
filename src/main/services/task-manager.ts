@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import { BrowserWindow } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -65,7 +66,7 @@ export class TaskManager {
     details?: string
   ): void {
     const log: Omit<TaskLog, "id"> = {
-      timestamp: new Date(),
+      timestamp: dayjs().format("YYYY-MM-DD HH:mm:ss"),
       level,
       message,
       details,
@@ -148,7 +149,7 @@ export class TaskManager {
         size: stats.size,
         duration: videoInfo.duration,
         format: videoInfo.format,
-        createdAt: new Date(),
+        createdAt: dayjs().format("YYYY-MM-DD HH:mm:ss"),
       };
 
       // 保存到数据库
@@ -165,8 +166,8 @@ export class TaskManager {
         segments: [],
         subtitles: [],
         logs: [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: dayjs().format("YYYY-MM-DD HH:mm:ss"),
+        updatedAt: dayjs().format("YYYY-MM-DD HH:mm:ss"),
       };
 
       // 保存任务到数据库
@@ -221,7 +222,7 @@ export class TaskManager {
    */
   private async processTask(
     taskId: string,
-    ollamaModel = "llama3",
+    ollamaModel = "qwen3:4b-instruct",
     whisperModel = "base"
   ): Promise<void> {
     const task = this.activeTasks.get(taskId);
@@ -353,6 +354,26 @@ export class TaskManager {
         `识别出 ${segments.length} 个文本段落`
       );
 
+      // 验证转录结果
+      if (!segments || segments.length === 0) {
+        throw new Error("语音识别未产生任何结果");
+      }
+
+      // 检查是否有有效的文本内容
+      const validSegments = segments.filter(
+        (s) => s.originalText && s.originalText.trim().length > 0
+      );
+      if (validSegments.length === 0) {
+        throw new Error("语音识别结果为空或格式异常");
+      }
+
+      this.addTaskLog(
+        taskId,
+        "info",
+        "转录结果验证",
+        `共 ${segments.length} 个段落，其中 ${validSegments.length} 个有效段落`
+      );
+
       // 保存转录段落
       databaseManager.saveTranscriptionSegments(taskId, segments);
 
@@ -392,9 +413,9 @@ export class TaskManager {
         `翻译了 ${translatedTexts.length} 个文本段落`
       );
 
-      // 步骤 8: 生成字幕
+      // 步骤 8: 生成字幕文件
       await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 90);
-      this.addTaskLog(taskId, "info", "开始生成字幕...");
+      this.addTaskLog(taskId, "info", "开始生成字幕文件...");
 
       // 合并转录和翻译结果
       const mergedSegments = segments.map((segment, index) => ({
@@ -409,24 +430,173 @@ export class TaskManager {
       const { SubtitleGenerator } = await import("../utils/subtitle-generator");
       const subtitleEntries =
         SubtitleGenerator.segmentsToSubtitles(mergedSegments);
-      const subtitles = SubtitleGenerator.generateSRT(subtitleEntries);
 
       this.addTaskLog(
         taskId,
         "success",
         "字幕生成完成",
-        `生成了 ${subtitles.length} 条字幕`
+        `生成了 ${subtitleEntries.length} 条字幕`
       );
 
-      // 步骤 9: 完成任务
+      // 步骤 9: 保存字幕文件
+      await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 95);
+      this.addTaskLog(taskId, "info", "开始保存字幕文件...");
+
+      // 创建输出目录
+      const outputDir = path.join(path.dirname(task.videoFile.path), "output");
+      await fs.mkdir(outputDir, { recursive: true });
+
+      // 生成文件名
+      const baseName = path.basename(
+        task.videoFile.path,
+        path.extname(task.videoFile.path)
+      );
+      const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+
+      // 保存多种格式的字幕文件
+      const subtitlePaths: string[] = [];
+
+      // SRT 格式
+      const srtPath = path.join(outputDir, `${baseName}_${timestamp}.srt`);
+      const savedSrtPath = await SubtitleGenerator.saveSubtitle(
+        subtitleEntries,
+        srtPath,
+        "srt"
+      );
+      subtitlePaths.push(savedSrtPath);
+
+      // VTT 格式
+      const vttPath = path.join(outputDir, `${baseName}_${timestamp}.vtt`);
+      const savedVttPath = await SubtitleGenerator.saveSubtitle(
+        subtitleEntries,
+        vttPath,
+        "vtt"
+      );
+      subtitlePaths.push(savedVttPath);
+
+      // TXT 格式
+      const txtPath = path.join(outputDir, `${baseName}_${timestamp}.txt`);
+      const savedTxtPath = await SubtitleGenerator.saveSubtitle(
+        subtitleEntries,
+        txtPath,
+        "txt"
+      );
+      subtitlePaths.push(savedTxtPath);
+
+      this.addTaskLog(
+        taskId,
+        "success",
+        "字幕文件保存完成",
+        `已保存到: ${outputDir}`
+      );
+
+      // 步骤 10: 可选 - 烧录硬字幕（如果启用）
+      const burnSubtitles = false; // TODO: 从设置中获取此选项
+      let videoOutputPath = "";
+
+      if (burnSubtitles) {
+        await this.updateTaskStatus(
+          taskId,
+          TaskStatus.GENERATING_SUBTITLES,
+          97
+        );
+        this.addTaskLog(taskId, "info", "开始烧录硬字幕...");
+
+        try {
+          // 使用 SRT 文件烧录字幕
+          videoOutputPath = path.join(
+            outputDir,
+            `${baseName}_${timestamp}_subtitled.mp4`
+          );
+
+          await ffmpegProcessor.burnSubtitles(
+            task.videoFile.path,
+            savedSrtPath,
+            videoOutputPath,
+            (progress) => {
+              const currentProgress = 97 + progress * 0.03;
+              this.updateTaskStatus(
+                taskId,
+                TaskStatus.GENERATING_SUBTITLES,
+                currentProgress
+              );
+              if (progress % 20 === 0) {
+                this.addTaskLog(
+                  taskId,
+                  "info",
+                  `硬字幕烧录进度: ${progress.toFixed(1)}%`
+                );
+              }
+            }
+          );
+
+          subtitlePaths.push(videoOutputPath);
+          this.addTaskLog(
+            taskId,
+            "success",
+            "硬字幕烧录完成",
+            `输出视频: ${videoOutputPath}`
+          );
+        } catch (burnError) {
+          this.addTaskLog(
+            taskId,
+            "warn",
+            "硬字幕烧录失败",
+            burnError instanceof Error ? burnError.message : String(burnError)
+          );
+        }
+      }
+
+      // 步骤 11: 清理临时文件
+      this.addTaskLog(taskId, "info", "开始清理临时文件...");
+
+      // 清理音频文件和分段
+      try {
+        const cleanedFiles: string[] = [];
+
+        if (audioPath) {
+          await fs.unlink(audioPath);
+          cleanedFiles.push(audioPath);
+        }
+
+        // 清理音频分段文件
+        const audioDir = path.dirname(audioPath);
+        const audioFiles = await fs.readdir(audioDir);
+        for (const file of audioFiles) {
+          if (file.startsWith("segment_")) {
+            const segmentPath = path.join(audioDir, file);
+            await fs.unlink(segmentPath);
+            cleanedFiles.push(segmentPath);
+          }
+        }
+
+        this.addTaskLog(
+          taskId,
+          "success",
+          "临时文件清理完成",
+          `清理的文件: ${cleanedFiles.join(", ")}`
+        );
+      } catch (cleanupError) {
+        this.addTaskLog(
+          taskId,
+          "warn",
+          "部分临时文件清理失败",
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : String(cleanupError)
+        );
+      }
+
+      // 步骤 12: 完成任务
       await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100);
       this.addTaskLog(
         taskId,
         "success",
         "翻译任务完成",
-        `总耗时: ${((Date.now() - task.createdAt.getTime()) / 1000).toFixed(
-          1
-        )} 秒`
+        `总耗时: ${(
+          (Date.now() - dayjs(task.createdAt).valueOf()) /
+          1000
+        ).toFixed(1)} 秒\n输出文件: ${subtitlePaths.join(", ")}`
       );
     } catch (error) {
       const errorMessage =
@@ -487,10 +657,10 @@ export class TaskManager {
       task.status = status;
       if (progress !== undefined) task.progress = progress;
       if (errorMessage !== undefined) task.errorMessage = errorMessage;
-      task.updatedAt = new Date();
+      task.updatedAt = dayjs().format("YYYY-MM-DD HH:mm:ss");
 
       if (status === TaskStatus.COMPLETED || status === TaskStatus.FAILED) {
-        task.completedAt = new Date();
+        task.completedAt = dayjs().format("YYYY-MM-DD HH:mm:ss");
         // 从活动任务中移除
         this.activeTasks.delete(taskId);
       }
