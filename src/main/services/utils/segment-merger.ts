@@ -81,7 +81,6 @@ export class SegmentMerger {
       case MergeStrategy.LENGTH_BASED:
         processedSegments = this.mergeByLength(processedSegments, mergedOptions);
         break;
-      case MergeStrategy.HYBRID:
       default:
         processedSegments = this.mergeHybrid(processedSegments, mergedOptions);
         break;
