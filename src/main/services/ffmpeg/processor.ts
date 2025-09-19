@@ -559,13 +559,19 @@ export class FFmpegProcessor {
         audioPath,
         "-ss",
         start.toString(),
-        "-t",
-        (end - start).toString(),
+      ];
+      
+      // 只有当 end 不为 -1 时才添加持续时间参数
+      if (end !== -1) {
+        args.push("-t", (end - start).toString());
+      }
+      
+      args.push(
         "-acodec",
         "copy",
         "-y",
         segmentPath,
-      ];
+      );
 
       const process = spawn(this.ffmpegPath, args);
       let error = "";

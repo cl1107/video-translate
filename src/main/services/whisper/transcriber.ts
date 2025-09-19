@@ -51,24 +51,50 @@ export interface WhisperResult {
   text: string;
   /** 检测到的语言 */
   language: string;
+  /** 生成的文件路径 */
+  files?: {
+    /** TXT 文件路径 */
+    txt?: string;
+    /** SRT 文件路径 */
+    srt?: string;
+    /** VTT 文件路径 */
+    vtt?: string;
+  };
+}
+
+/**
+ * 扩展的转录结果接口，包含字幕文件信息
+ */
+export interface TranscriptionResult {
+  /** 转录段落数组 */
+  segments: TranscriptionSegment[];
+  /** 生成的字幕文件路径 */
+  subtitleFiles?: {
+    /** TXT 文件路径 */
+    txt?: string;
+    /** SRT 文件路径 */
+    srt?: string;
+    /** VTT 文件路径 */
+    vtt?: string;
+  };
 }
 
 export class WhisperTranscriber {
   private modelsDir: string;
   private tempDir: string;
 
-/**
- * Whisper转录器构造函数
- */
+  /**
+   * Whisper转录器构造函数
+   */
   constructor() {
     this.modelsDir = path.join(os.homedir(), ".cache", "whisper");
     this.tempDir = path.join(os.tmpdir(), "video-translate-whisper");
     this.ensureDirectories();
   }
 
-/**
- * 确保模型和临时目录存在
- */
+  /**
+   * 确保模型和临时目录存在
+   */
   private async ensureDirectories(): Promise<void> {
     try {
       await fs.mkdir(this.modelsDir, { recursive: true });
@@ -79,12 +105,9 @@ export class WhisperTranscriber {
   }
 
   /**
-   * 检查 Whisper 是否可用
+   * 检查Whisper是否可用
+   * @returns 返回true表示Whisper可用，false表示不可用
    */
-/**
- * 检查Whisper是否可用
- * @returns 返回true表示Whisper可用，false表示不可用
- */
   async isAvailable(): Promise<boolean> {
     try {
       // whisper-node 包含了预编译的 whisper.cpp，所以总是可用的
@@ -96,28 +119,20 @@ export class WhisperTranscriber {
   }
 
   /**
-   * 检查模型是否已下载
-   * whisper-node 会自动下载模型，所以这里总是返回 true
+   * 检查指定模型是否可用
+   * @param model - 模型名称
+   * @returns 返回true表示模型可用（whisper-node会自动下载模型）
    */
-/**
- * 检查指定模型是否可用
- * @param model - 模型名称
- * @returns 返回true表示模型可用（whisper-node会自动下载模型）
- */
   async isModelAvailable(model: string): Promise<boolean> {
     // whisper-node 会在需要时自动下载模型
     return true;
   }
 
   /**
-   * 下载 Whisper 模型
-   * whisper-node 会自动处理模型下载
+   * 下载Whisper模型（whisper-node会自动处理）
+   * @param model - 模型名称
+   * @param onProgress - 进度回调函数（可选）
    */
-/**
- * 下载Whisper模型（whisper-node会自动处理）
- * @param model - 模型名称
- * @param onProgress - 进度回调函数（可选）
- */
   async downloadModel(
     model: string,
     onProgress?: (progress: string) => void
@@ -130,20 +145,17 @@ export class WhisperTranscriber {
 
   /**
    * 转录音频文件
+   * @param audioPath - 音频文件路径
+   * @param options - 转录选项（可选）
+   * @param onProgress - 进度回调函数（可选）
+   * @returns 返回转录结果，包含段落数组和字幕文件路径
+   * @throws 当转录失败时抛出错误
    */
-/**
- * 转录音频文件
- * @param audioPath - 音频文件路径
- * @param options - 转录选项（可选）
- * @param onProgress - 进度回调函数（可选）
- * @returns 返回转录段落数组
- * @throws 当转录失败时抛出错误
- */
   async transcribe(
     audioPath: string,
     options: WhisperOptions = {},
     onProgress?: (progress: number) => void
-  ): Promise<TranscriptionSegment[]> {
+  ): Promise<TranscriptionResult> {
     const { model = "base", language = "auto", temperature = 0.0 } = options;
 
     try {
@@ -158,10 +170,10 @@ export class WhisperTranscriber {
         modelName: model, // 模型名称
         whisperOptions: {
           language: language === "auto" ? undefined : language,
-          word_timestamps: true, // 启用词级时间戳
-          output_txt: false,
-          output_vtt: false,
-          output_srt: false,
+          word_timestamps: false, // 启用词级时间戳
+          gen_file_txt: true,      // 生成 .txt 文件
+          gen_file_subtitle: true, // 生成 .srt 文件
+          gen_file_vtt: true,      // 生成 .vtt 文件
         },
       };
 
@@ -181,6 +193,32 @@ export class WhisperTranscriber {
       console.log("Whisper 返回数据类型:", typeof transcript);
       console.log("Whisper 返回数据结构:", JSON.stringify(transcript, null, 2));
 
+      // 检查是否有生成的字幕文件
+      let subtitleFiles: { txt?: string; srt?: string; vtt?: string } = {};
+      if (transcript && typeof transcript === "object") {
+        // whisper-node 可能会在与音频文件相同的目录中生成字幕文件
+        const audioDir = path.dirname(audioPath);
+        const audioBaseName = path.basename(audioPath, path.extname(audioPath));
+        
+        // 检查可能生成的字幕文件
+        const possibleFiles = {
+          txt: path.join(audioDir, `${audioBaseName}.txt`),
+          srt: path.join(audioDir, `${audioBaseName}.srt`),
+          vtt: path.join(audioDir, `${audioBaseName}.vtt`),
+        };
+
+        // 检查文件是否存在
+        for (const [format, filePath] of Object.entries(possibleFiles)) {
+          try {
+            await fs.access(filePath);
+            subtitleFiles[format as keyof typeof subtitleFiles] = filePath;
+            console.log(`找到字幕文件: ${filePath}`);
+          } catch {
+            // 文件不存在，忽略
+          }
+        }
+      }
+
       if (Array.isArray(transcript)) {
         console.log(`Whisper 返回 ${transcript.length} 个段落`);
         transcript.forEach((segment, index) => {
@@ -192,7 +230,7 @@ export class WhisperTranscriber {
             confidence: 0.9, // whisper-node 可能不提供置信度，使用默认值
           });
         });
-      } else if (transcript && typeof transcript === 'object') {
+      } else if (transcript && typeof transcript === "object") {
         // 处理对象形式的返回结果
         console.log("处理对象形式的返回结果");
         if (transcript.segments && Array.isArray(transcript.segments)) {
@@ -201,7 +239,8 @@ export class WhisperTranscriber {
               id: uuidv4(),
               start: segment.start || 0,
               end: segment.end || 0,
-              originalText: segment.text?.trim() || segment.speech?.trim() || "",
+              originalText:
+                segment.text?.trim() || segment.speech?.trim() || "",
               confidence: segment.confidence || 0.9,
             });
           });
@@ -235,7 +274,19 @@ export class WhisperTranscriber {
       }
 
       console.log(`转录完成，生成了 ${segments.length} 个段落`);
-      return segments;
+      
+      // 返回包含字幕文件信息的结果
+      const result: TranscriptionResult = {
+        segments,
+      };
+      
+      // 如果有字幕文件，添加到结果中
+      if (Object.keys(subtitleFiles).length > 0) {
+        result.subtitleFiles = subtitleFiles;
+        console.log("生成的字幕文件:", subtitleFiles);
+      }
+      
+      return result;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -246,14 +297,11 @@ export class WhisperTranscriber {
 
   /**
    * 批量转录音频段落
+   * @param audioSegments - 音频段落数组
+   * @param options - 转录选项（可选）
+   * @param onProgress - 进度回调函数（可选）
+   * @returns 返回按时间排序的转录段落数组
    */
-/**
- * 批量转录音频段落
- * @param audioSegments - 音频段落数组
- * @param options - 转录选项（可选）
- * @param onProgress - 进度回调函数（可选）
- * @returns 返回按时间排序的转录段落数组
- */
   async transcribeBatch(
     audioSegments: Array<{ path: string; startTime: number; duration: number }>,
     options: WhisperOptions = {},
@@ -265,7 +313,7 @@ export class WhisperTranscriber {
       const audioSegment = audioSegments[i];
 
       try {
-        const segments = await this.transcribe(
+        const result = await this.transcribe(
           audioSegment.path,
           options,
           (segmentProgress) => {
@@ -277,7 +325,7 @@ export class WhisperTranscriber {
         );
 
         // 调整时间戳以匹配原始视频时间
-        const adjustedSegments = segments.map((segment) => ({
+        const adjustedSegments = result.segments.map((segment) => ({
           ...segment,
           start: segment.start + audioSegment.startTime,
           end: segment.end + audioSegment.startTime,
@@ -307,11 +355,8 @@ export class WhisperTranscriber {
 
   /**
    * 获取支持的语言列表
+   * @returns 返回支持的语言代码和名称数组
    */
-/**
- * 获取支持的语言列表
- * @returns 返回支持的语言代码和名称数组
- */
   getSupportedLanguages(): Array<{ code: string; name: string }> {
     return [
       { code: "auto", name: "自动检测" },
@@ -334,11 +379,8 @@ export class WhisperTranscriber {
 
   /**
    * 获取可用的模型列表
+   * @returns 返回可用模型的详细信息数组
    */
-/**
- * 获取可用的模型列表
- * @returns 返回可用模型的详细信息数组
- */
   getAvailableModels(): Array<{
     /** 模型名称 */
     name: string;
@@ -379,9 +421,6 @@ export class WhisperTranscriber {
   /**
    * 清理临时文件
    */
-/**
- * 清理临时文件
- */
   async cleanup(): Promise<void> {
     try {
       const files = await fs.readdir(this.tempDir);

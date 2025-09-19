@@ -33,17 +33,17 @@ export class TaskManager {
     this.initializeServices();
   }
 
-/**
- * 设置主窗口实例
- * @param window - Electron 浏览器窗口实例
- */
+  /**
+   * 设置主窗口实例
+   * @param window - Electron 浏览器窗口实例
+   */
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window;
   }
 
-/**
- * 初始化所有必需的服务（Ollama、Whisper）
- */
+  /**
+   * 初始化所有必需的服务（Ollama、Whisper）
+   */
   private async initializeServices(): Promise<void> {
     try {
       // 初始化 Ollama
@@ -66,13 +66,13 @@ export class TaskManager {
   /**
    * 添加任务日志
    */
-/**
- * 添加任务日志记录
- * @param taskId - 任务ID
- * @param level - 日志级别（info、warn、error、success）
- * @param message - 日志消息
- * @param details - 详细信息（可选）
- */
+  /**
+   * 添加任务日志记录
+   * @param taskId - 任务ID
+   * @param level - 日志级别（info、warn、error、success）
+   * @param message - 日志消息
+   * @param details - 详细信息（可选）
+   */
   private addTaskLog(
     taskId: string,
     level: TaskLog["level"],
@@ -121,12 +121,12 @@ export class TaskManager {
   /**
    * 创建翻译任务
    */
-/**
- * 创建新的翻译任务
- * @param options - 创建任务的选项配置
- * @returns 返回新创建的任务ID
- * @throws 当文件不存在或验证失败时抛出错误
- */
+  /**
+   * 创建新的翻译任务
+   * @param options - 创建任务的选项配置
+   * @returns 返回新创建的任务ID
+   * @throws 当文件不存在或验证失败时抛出错误
+   */
   async createTask(options: CreateTaskOptions): Promise<string> {
     const taskId = uuidv4();
 
@@ -240,12 +240,12 @@ export class TaskManager {
   /**
    * 处理翻译任务
    */
-/**
- * 处理翻译任务的主要流程
- * @param taskId - 要处理的任务ID
- * @param ollamaModel - 使用的Ollama模型名称（默认：qwen3:4b-instruct）
- * @param whisperModel - 使用的Whisper模型名称（默认：base）
- */
+  /**
+   * 处理翻译任务的主要流程
+   * @param taskId - 要处理的任务ID
+   * @param ollamaModel - 使用的Ollama模型名称（默认：qwen3:4b-instruct）
+   * @param whisperModel - 使用的Whisper模型名称（默认：base）
+   */
   private async processTask(
     taskId: string,
     ollamaModel = "qwen3:4b-instruct",
@@ -400,230 +400,271 @@ export class TaskManager {
         `共 ${segments.length} 个段落，其中 ${validSegments.length} 个有效段落`
       );
 
-      // 保存转录段落
-      databaseManager.saveTranscriptionSegments(taskId, segments);
-
-      // 步骤 7: 翻译
-      await this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, 60);
-      this.addTaskLog(
-        taskId,
-        "info",
-        "开始翻译...",
-        `从 ${task.sourceLanguage} 翻译到 ${task.targetLanguage}`
-      );
-
-      const originalTexts = segments.map((s) => s.originalText);
-      const translatedTexts = await ollamaClient.translateBatch(
-        originalTexts,
-        task.sourceLanguage,
-        task.targetLanguage,
-        ollamaModel,
-        (completed, total) => {
-          const progress = 60 + (completed / total) * 30;
-          this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, progress);
-          this.addTaskLog(
-            taskId,
-            "info",
-            `翻译进度: ${completed}/${total} (${(
-              (completed / total) *
-              100
-            ).toFixed(1)}%)`
-          );
-        }
-      );
-
-      this.addTaskLog(
-        taskId,
-        "success",
-        "翻译完成",
-        `翻译了 ${translatedTexts.length} 个文本段落`
-      );
-
-      // 步骤 8: 生成字幕文件
-      await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 90);
-      this.addTaskLog(taskId, "info", "开始生成字幕文件...");
-
-      // 合并转录和翻译结果
-      const mergedSegments = segments.map((segment, index) => ({
-        ...segment,
-        translatedText: translatedTexts[index] || "",
-      }));
-
-      // 更新数据库中的翻译结果
-      databaseManager.updateTranslatedSegments(taskId, mergedSegments);
-
-      // 生成字幕文件
-      const { SubtitleGenerator } = await import("../utils/subtitle-generator");
-      const subtitleEntries =
-        SubtitleGenerator.segmentsToSubtitles(mergedSegments);
-
-      this.addTaskLog(
-        taskId,
-        "success",
-        "字幕生成完成",
-        `生成了 ${subtitleEntries.length} 条字幕`
-      );
-
-      // 步骤 9: 保存字幕文件
-      await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 95);
-      this.addTaskLog(taskId, "info", "开始保存字幕文件...");
-
-      // 创建输出目录
-      const outputDir = path.join(path.dirname(task.videoFile.path), "output");
-      await fs.mkdir(outputDir, { recursive: true });
-
-      // 生成文件名
-      const baseName = path.basename(
-        task.videoFile.path,
-        path.extname(task.videoFile.path)
-      );
-      const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
-
-      // 保存多种格式的字幕文件
-      const subtitlePaths: string[] = [];
-
-      // SRT 格式
-      const srtPath = path.join(outputDir, `${baseName}_${timestamp}.srt`);
-      const savedSrtPath = await SubtitleGenerator.saveSubtitle(
-        subtitleEntries,
-        srtPath,
-        "srt"
-      );
-      subtitlePaths.push(savedSrtPath);
-
-      // VTT 格式
-      const vttPath = path.join(outputDir, `${baseName}_${timestamp}.vtt`);
-      const savedVttPath = await SubtitleGenerator.saveSubtitle(
-        subtitleEntries,
-        vttPath,
-        "vtt"
-      );
-      subtitlePaths.push(savedVttPath);
-
-      // TXT 格式
-      const txtPath = path.join(outputDir, `${baseName}_${timestamp}.txt`);
-      const savedTxtPath = await SubtitleGenerator.saveSubtitle(
-        subtitleEntries,
-        txtPath,
-        "txt"
-      );
-      subtitlePaths.push(savedTxtPath);
-
-      this.addTaskLog(
-        taskId,
-        "success",
-        "字幕文件保存完成",
-        `已保存到: ${outputDir}`
-      );
-
-      // 步骤 10: 可选 - 烧录硬字幕（如果启用）
-      const burnSubtitles = false; // TODO: 从设置中获取此选项
-      let videoOutputPath = "";
-
-      if (burnSubtitles) {
-        await this.updateTaskStatus(
-          taskId,
-          TaskStatus.GENERATING_SUBTITLES,
-          97
-        );
-        this.addTaskLog(taskId, "info", "开始烧录硬字幕...");
-
-        try {
-          // 使用 SRT 文件烧录字幕
-          videoOutputPath = path.join(
-            outputDir,
-            `${baseName}_${timestamp}_subtitled.mp4`
-          );
-
-          await ffmpegProcessor.burnSubtitles(
-            task.videoFile.path,
-            savedSrtPath,
-            videoOutputPath,
-            (progress) => {
-              const currentProgress = 97 + progress * 0.03;
-              this.updateTaskStatus(
-                taskId,
-                TaskStatus.GENERATING_SUBTITLES,
-                currentProgress
-              );
-              if (progress % 20 === 0) {
-                this.addTaskLog(
-                  taskId,
-                  "info",
-                  `硬字幕烧录进度: ${progress.toFixed(1)}%`
-                );
-              }
-            }
-          );
-
-          subtitlePaths.push(videoOutputPath);
-          this.addTaskLog(
-            taskId,
-            "success",
-            "硬字幕烧录完成",
-            `输出视频: ${videoOutputPath}`
-          );
-        } catch (burnError) {
-          this.addTaskLog(
-            taskId,
-            "warn",
-            "硬字幕烧录失败",
-            burnError instanceof Error ? burnError.message : String(burnError)
-          );
-        }
-      }
-
-      // 步骤 11: 清理临时文件
-      this.addTaskLog(taskId, "info", "开始清理临时文件...");
-
-      // 清理音频文件和分段
+      // 保存转录结果到临时文件
       try {
-        const cleanedFiles: string[] = [];
+        const tempDir = path.join(path.dirname(task.videoFile.path), "temp");
+        await fs.mkdir(tempDir, { recursive: true });
 
-        if (audioPath) {
-          await fs.unlink(audioPath);
-          cleanedFiles.push(audioPath);
-        }
+        const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+        const baseName = path.basename(
+          task.videoFile.path,
+          path.extname(task.videoFile.path)
+        );
+        const transcriptFilePath = path.join(
+          tempDir,
+          `${baseName}_${timestamp}_transcript.txt`
+        );
+        console.log(`segments: ${segments}`);
+        // 格式化转录文本
+        const transcriptContent = segments
+          .map((segment, index) => {
+            return `[${index + 1}] ${segment.start.toFixed(
+              2
+            )}s - ${segment.end.toFixed(2)}s\n${segment.originalText}\n`;
+          })
+          .join("\n");
 
-        // 清理音频分段文件
-        const audioDir = path.dirname(audioPath);
-        const audioFiles = await fs.readdir(audioDir);
-        for (const file of audioFiles) {
-          if (file.startsWith("segment_")) {
-            const segmentPath = path.join(audioDir, file);
-            await fs.unlink(segmentPath);
-            cleanedFiles.push(segmentPath);
-          }
-        }
+        await fs.writeFile(transcriptFilePath, transcriptContent, "utf-8");
 
         this.addTaskLog(
           taskId,
-          "success",
-          "临时文件清理完成",
-          `清理的文件: ${cleanedFiles.join(", ")}`
+          "info",
+          "转录结果已保存",
+          `临时文件: ${transcriptFilePath}`
         );
-      } catch (cleanupError) {
+      } catch (error) {
         this.addTaskLog(
           taskId,
           "warn",
-          "部分临时文件清理失败",
-          cleanupError instanceof Error
-            ? cleanupError.message
-            : String(cleanupError)
+          "转录结果保存失败",
+          error instanceof Error ? error.message : String(error)
         );
       }
 
-      // 步骤 12: 完成任务
-      await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100);
-      this.addTaskLog(
-        taskId,
-        "success",
-        "翻译任务完成",
-        `总耗时: ${(
-          (Date.now() - dayjs(task.createdAt).valueOf()) /
-          1000
-        ).toFixed(1)} 秒\n输出文件: ${subtitlePaths.join(", ")}`
-      );
+      // 保存转录段落
+      databaseManager.saveTranscriptionSegments(taskId, segments);
+
+      // // 步骤 7: 翻译
+      // await this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, 60);
+      // this.addTaskLog(
+      //   taskId,
+      //   "info",
+      //   "开始翻译...",
+      //   `从 ${task.sourceLanguage} 翻译到 ${task.targetLanguage}`
+      // );
+
+      // const originalTexts = segments.map((s) => s.originalText);
+      // const translatedTexts = await ollamaClient.translateBatch(
+      //   originalTexts,
+      //   task.sourceLanguage,
+      //   task.targetLanguage,
+      //   ollamaModel,
+      //   (completed, total) => {
+      //     const progress = 60 + (completed / total) * 30;
+      //     this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, progress);
+      //     this.addTaskLog(
+      //       taskId,
+      //       "info",
+      //       `翻译进度: ${completed}/${total} (${(
+      //         (completed / total) *
+      //         100
+      //       ).toFixed(1)}%)`
+      //     );
+      //   }
+      // );
+
+      // this.addTaskLog(
+      //   taskId,
+      //   "success",
+      //   "翻译完成",
+      //   `翻译了 ${translatedTexts.length} 个文本段落`
+      // );
+
+      // // 步骤 8: 生成字幕文件
+      // await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 90);
+      // this.addTaskLog(taskId, "info", "开始生成字幕文件...");
+
+      // // 合并转录和翻译结果
+      // const mergedSegments = segments.map((segment, index) => ({
+      //   ...segment,
+      //   translatedText: translatedTexts[index] || "",
+      // }));
+
+      // // 更新数据库中的翻译结果
+      // databaseManager.updateTranslatedSegments(taskId, mergedSegments);
+
+      // // 生成字幕文件
+      // const { SubtitleGenerator } = await import("../utils/subtitle-generator");
+      // const subtitleEntries =
+      //   SubtitleGenerator.segmentsToSubtitles(mergedSegments);
+
+      // this.addTaskLog(
+      //   taskId,
+      //   "success",
+      //   "字幕生成完成",
+      //   `生成了 ${subtitleEntries.length} 条字幕`
+      // );
+
+      // // 步骤 9: 保存字幕文件
+      // await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 95);
+      // this.addTaskLog(taskId, "info", "开始保存字幕文件...");
+
+      // // 创建输出目录
+      // const outputDir = path.join(path.dirname(task.videoFile.path), "output");
+      // await fs.mkdir(outputDir, { recursive: true });
+
+      // // 生成文件名
+      // const baseName = path.basename(
+      //   task.videoFile.path,
+      //   path.extname(task.videoFile.path)
+      // );
+      // const timestamp = dayjs().format("YYYY-MM-DD_HH-mm-ss");
+
+      // // 保存多种格式的字幕文件
+      // const subtitlePaths: string[] = [];
+
+      // // SRT 格式
+      // const srtPath = path.join(outputDir, `${baseName}_${timestamp}.srt`);
+      // const savedSrtPath = await SubtitleGenerator.saveSubtitle(
+      //   subtitleEntries,
+      //   srtPath,
+      //   "srt"
+      // );
+      // subtitlePaths.push(savedSrtPath);
+
+      // // VTT 格式
+      // const vttPath = path.join(outputDir, `${baseName}_${timestamp}.vtt`);
+      // const savedVttPath = await SubtitleGenerator.saveSubtitle(
+      //   subtitleEntries,
+      //   vttPath,
+      //   "vtt"
+      // );
+      // subtitlePaths.push(savedVttPath);
+
+      // // TXT 格式
+      // const txtPath = path.join(outputDir, `${baseName}_${timestamp}.txt`);
+      // const savedTxtPath = await SubtitleGenerator.saveSubtitle(
+      //   subtitleEntries,
+      //   txtPath,
+      //   "txt"
+      // );
+      // subtitlePaths.push(savedTxtPath);
+
+      // this.addTaskLog(
+      //   taskId,
+      //   "success",
+      //   "字幕文件保存完成",
+      //   `已保存到: ${outputDir}`
+      // );
+
+      // // 步骤 10: 可选 - 烧录硬字幕（如果启用）
+      // const burnSubtitles = false; // TODO: 从设置中获取此选项
+      // let videoOutputPath = "";
+
+      // if (burnSubtitles) {
+      //   await this.updateTaskStatus(
+      //     taskId,
+      //     TaskStatus.GENERATING_SUBTITLES,
+      //     97
+      //   );
+      //   this.addTaskLog(taskId, "info", "开始烧录硬字幕...");
+
+      //   try {
+      //     // 使用 SRT 文件烧录字幕
+      //     videoOutputPath = path.join(
+      //       outputDir,
+      //       `${baseName}_${timestamp}_subtitled.mp4`
+      //     );
+
+      //     await ffmpegProcessor.burnSubtitles(
+      //       task.videoFile.path,
+      //       savedSrtPath,
+      //       videoOutputPath,
+      //       (progress) => {
+      //         const currentProgress = 97 + progress * 0.03;
+      //         this.updateTaskStatus(
+      //           taskId,
+      //           TaskStatus.GENERATING_SUBTITLES,
+      //           currentProgress
+      //         );
+      //         if (progress % 20 === 0) {
+      //           this.addTaskLog(
+      //             taskId,
+      //             "info",
+      //             `硬字幕烧录进度: ${progress.toFixed(1)}%`
+      //           );
+      //         }
+      //       }
+      //     );
+
+      //     subtitlePaths.push(videoOutputPath);
+      //     this.addTaskLog(
+      //       taskId,
+      //       "success",
+      //       "硬字幕烧录完成",
+      //       `输出视频: ${videoOutputPath}`
+      //     );
+      //   } catch (burnError) {
+      //     this.addTaskLog(
+      //       taskId,
+      //       "warn",
+      //       "硬字幕烧录失败",
+      //       burnError instanceof Error ? burnError.message : String(burnError)
+      //     );
+      //   }
+      // }
+
+      // // 步骤 11: 清理临时文件
+      // this.addTaskLog(taskId, "info", "开始清理临时文件...");
+
+      // // 清理音频文件和分段
+      // try {
+      //   const cleanedFiles: string[] = [];
+
+      //   if (audioPath) {
+      //     await fs.unlink(audioPath);
+      //     cleanedFiles.push(audioPath);
+      //   }
+
+      //   // 清理音频分段文件
+      //   const audioDir = path.dirname(audioPath);
+      //   const audioFiles = await fs.readdir(audioDir);
+      //   for (const file of audioFiles) {
+      //     if (file.startsWith("segment_")) {
+      //       const segmentPath = path.join(audioDir, file);
+      //       await fs.unlink(segmentPath);
+      //       cleanedFiles.push(segmentPath);
+      //     }
+      //   }
+
+      //   this.addTaskLog(
+      //     taskId,
+      //     "success",
+      //     "临时文件清理完成",
+      //     `清理的文件: ${cleanedFiles.join(", ")}`
+      //   );
+      // } catch (cleanupError) {
+      //   this.addTaskLog(
+      //     taskId,
+      //     "warn",
+      //     "部分临时文件清理失败",
+      //     cleanupError instanceof Error
+      //       ? cleanupError.message
+      //       : String(cleanupError)
+      //   );
+      // }
+
+      // // 步骤 12: 完成任务
+      // await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100);
+      // this.addTaskLog(
+      //   taskId,
+      //   "success",
+      //   "翻译任务完成",
+      //   `总耗时: ${(
+      //     (Date.now() - dayjs(task.createdAt).valueOf()) /
+      //     1000
+      //   ).toFixed(1)} 秒\n输出文件: ${subtitlePaths.join(", ")}`
+      // );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -641,11 +682,11 @@ export class TaskManager {
   /**
    * 将语言名称转换为 Whisper 语言代码
    */
-/**
- * 将语言名称转换为Whisper支持的语言代码
- * @param language - 语言名称（如：English、Chinese等）
- * @returns 返回Whisper支持的语言代码，如果不支持则返回"auto"
- */
+  /**
+   * 将语言名称转换为Whisper支持的语言代码
+   * @param language - 语言名称（如：English、Chinese等）
+   * @returns 返回Whisper支持的语言代码，如果不支持则返回"auto"
+   */
   private getWhisperLanguageCode(language: string): string {
     const languageMap: Record<string, string> = {
       English: "en",
@@ -673,13 +714,13 @@ export class TaskManager {
   /**
    * 更新任务状态
    */
-/**
- * 更新任务状态和进度
- * @param taskId - 任务ID
- * @param status - 新的任务状态
- * @param progress - 任务进度（0-100，可选）
- * @param errorMessage - 错误消息（可选，用于失败状态）
- */
+  /**
+   * 更新任务状态和进度
+   * @param taskId - 任务ID
+   * @param status - 新的任务状态
+   * @param progress - 任务进度（0-100，可选）
+   * @param errorMessage - 错误消息（可选，用于失败状态）
+   */
   private async updateTaskStatus(
     taskId: string,
     status: TaskStatus,
@@ -711,10 +752,10 @@ export class TaskManager {
   /**
    * 通知前端任务更新
    */
-/**
- * 通知前端任务状态更新
- * @param task - 已更新的翻译任务对象
- */
+  /**
+   * 通知前端任务状态更新
+   * @param task - 已更新的翻译任务对象
+   */
   private notifyTaskUpdate(task: TranslationTask): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send("task-updated", task);
@@ -724,9 +765,9 @@ export class TaskManager {
   /**
    * 从数据库加载未完成的任务
    */
-/**
- * 从数据库加载未完成的任务到内存
- */
+  /**
+   * 从数据库加载未完成的任务到内存
+   */
   private loadActiveTasks(): void {
     const tasks = databaseManager.getAllTranslationTasks();
     for (const task of tasks) {
@@ -737,10 +778,10 @@ export class TaskManager {
   /**
    * 获取所有任务
    */
-/**
- * 获取所有翻译任务
- * @returns 返回所有翻译任务的数组
- */
+  /**
+   * 获取所有翻译任务
+   * @returns 返回所有翻译任务的数组
+   */
   getAllTasks(): TranslationTask[] {
     return databaseManager.getAllTranslationTasks();
   }
@@ -748,11 +789,11 @@ export class TaskManager {
   /**
    * 获取特定任务
    */
-/**
- * 根据任务ID获取特定任务
- * @param taskId - 任务ID
- * @returns 返回找到的任务对象，如果不存在则返回null
- */
+  /**
+   * 根据任务ID获取特定任务
+   * @param taskId - 任务ID
+   * @returns 返回找到的任务对象，如果不存在则返回null
+   */
   getTask(taskId: string): TranslationTask | null {
     return databaseManager.getTranslationTask(taskId);
   }
@@ -760,10 +801,10 @@ export class TaskManager {
   /**
    * 暂停任务
    */
-/**
- * 暂停正在运行的任务
- * @param taskId - 要暂停的任务ID
- */
+  /**
+   * 暂停正在运行的任务
+   * @param taskId - 要暂停的任务ID
+   */
   pauseTask(taskId: string): void {
     const task = this.activeTasks.get(taskId);
     if (
@@ -778,10 +819,10 @@ export class TaskManager {
   /**
    * 恢复任务
    */
-/**
- * 恢复已暂停的任务
- * @param taskId - 要恢复的任务ID
- */
+  /**
+   * 恢复已暂停的任务
+   * @param taskId - 要恢复的任务ID
+   */
   resumeTask(taskId: string): void {
     const task = this.activeTasks.get(taskId);
     if (task && task.status === TaskStatus.PAUSED) {
@@ -793,10 +834,10 @@ export class TaskManager {
   /**
    * 删除任务
    */
-/**
- * 删除指定的任务
- * @param taskId - 要删除的任务ID
- */
+  /**
+   * 删除指定的任务
+   * @param taskId - 要删除的任务ID
+   */
   deleteTask(taskId: string): void {
     // 从活动任务中移除
     this.activeTasks.delete(taskId);
@@ -813,10 +854,10 @@ export class TaskManager {
   /**
    * 重试失败的任务
    */
-/**
- * 重试失败的任务
- * @param taskId - 要重试的任务ID
- */
+  /**
+   * 重试失败的任务
+   * @param taskId - 要重试的任务ID
+   */
   retryTask(taskId: string): void {
     const task = databaseManager.getTranslationTask(taskId);
     if (task && task.status === TaskStatus.FAILED) {
@@ -832,11 +873,11 @@ export class TaskManager {
   /**
    * 获取任务日志
    */
-/**
- * 获取指定任务的日志记录
- * @param taskId - 任务ID
- * @returns 返回任务的日志记录数组
- */
+  /**
+   * 获取指定任务的日志记录
+   * @param taskId - 任务ID
+   * @returns 返回任务的日志记录数组
+   */
   getTaskLogs(taskId: string) {
     return databaseManager.getTaskLogs(taskId);
   }
@@ -844,10 +885,10 @@ export class TaskManager {
   /**
    * 获取统计信息
    */
-/**
- * 获取任务统计信息
- * @returns 返回包含任务统计数据的对象
- */
+  /**
+   * 获取任务统计信息
+   * @returns 返回包含任务统计数据的对象
+   */
   getStatistics() {
     return databaseManager.getStatistics();
   }
@@ -855,9 +896,9 @@ export class TaskManager {
   /**
    * 清理资源
    */
-/**
- * 清理所有资源和服务
- */
+  /**
+   * 清理所有资源和服务
+   */
   cleanup(): void {
     // 停止所有活动任务
     this.activeTasks.clear();
