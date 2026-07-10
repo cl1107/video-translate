@@ -19,6 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "renderer/components/ui/select";
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+  normalizeOllamaModel,
+} from "../../../shared/settings";
+import { DEFAULT_OLLAMA_MODEL } from "../../../shared/constants";
 
 const { App } = window;
 
@@ -92,14 +98,7 @@ export function SettingsPanel() {
     { code: "ru", name: "Русский" },
   ]);
 
-  const [settings, setSettings] = useState({
-    asrEngine: "sensevoice",
-    ollamaModel: "kaelri/hy-mt2:1.8b",
-    sourceLanguage: "auto",
-    targetLanguage: "zh",
-    outputFormat: "srt" as "srt" | "vtt" | "txt",
-    burnSubtitles: false,
-  });
+  const [settings, setSettings] = useState(DEFAULT_APP_SETTINGS);
 
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string>("");
@@ -107,8 +106,8 @@ export function SettingsPanel() {
   // 推荐的模型列表
   const recommendedModels = [
     {
-      name: "kaelri/hy-mt2:1.8b",
-      size: "~1.1GB",
+      name: DEFAULT_OLLAMA_MODEL,
+      size: "~1.5GB",
       description: "Hunyuan-MT 翻译专用小模型（默认）",
     },
   ];
@@ -117,7 +116,7 @@ export function SettingsPanel() {
   useEffect(() => {
     loadSettings();
     checkOllamaStatus();
-    loadOllamaModels();
+    void loadOllamaModels();
     loadAsrStatus();
 
     // 监听模型下载进度
@@ -137,21 +136,19 @@ export function SettingsPanel() {
     try {
       const savedSettings = localStorage.getItem("video-translate-settings");
       if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        setSettings((prev) => ({
-          ...prev,
-          ...parsed,
-          // 兼容旧 whisperModel 字段
-          asrEngine:
-            parsed.asrEngine ||
-            (parsed.whisperModel === "funasr-nano"
-              ? "funasr-nano"
-              : "sensevoice"),
-          ollamaModel: parsed.ollamaModel || "kaelri/hy-mt2:1.8b",
-        }));
+        const normalized = normalizeAppSettings(JSON.parse(savedSettings));
+        setSettings(normalized);
+        // 写回清洗后的设置，避免下次仍读到旧 qwen 模型
+        localStorage.setItem(
+          "video-translate-settings",
+          JSON.stringify(normalized)
+        );
+      } else {
+        setSettings({ ...DEFAULT_APP_SETTINGS });
       }
     } catch (error) {
       console.error("加载设置失败:", error);
+      setSettings({ ...DEFAULT_APP_SETTINGS });
     }
   };
 
@@ -168,9 +165,11 @@ export function SettingsPanel() {
 
   const saveSettings = async () => {
     try {
+      const normalized = normalizeAppSettings(settings);
+      setSettings(normalized);
       localStorage.setItem(
         "video-translate-settings",
-        JSON.stringify(settings)
+        JSON.stringify(normalized)
       );
       setStatus("设置已保存");
       setTimeout(() => setStatus(""), 3000);
@@ -203,7 +202,6 @@ export function SettingsPanel() {
     try {
       const result = await App.getOllamaModels();
       if (result.success) {
-        // 转换格式并合并推荐模型
         const installedModels = result.models.map((model: OllamaModel) => ({
           name: model.name,
           size: formatBytes(model.size),
@@ -211,16 +209,38 @@ export function SettingsPanel() {
           installed: true,
         }));
 
-        // 添加未安装的推荐模型
         const installedNames = new Set(installedModels.map((m) => m.name));
         const notInstalledModels = recommendedModels
           .filter((model) => !installedNames.has(model.name))
           .map((model) => ({ ...model, installed: false }));
 
-        setOllamaModels([...installedModels, ...notInstalledModels]);
+        const models = [...installedModels, ...notInstalledModels];
+        setOllamaModels(models);
+
+        // 当前选中模型不在列表 / 未安装时，自动切到默认或第一个已安装模型
+        setSettings((prev) => {
+          const current = normalizeOllamaModel(prev.ollamaModel);
+          const installed = models.filter((m) => m.installed).map((m) => m.name);
+          let next = current;
+          if (!installed.includes(current)) {
+            next = installed.includes(DEFAULT_OLLAMA_MODEL)
+              ? DEFAULT_OLLAMA_MODEL
+              : installed[0] || DEFAULT_OLLAMA_MODEL;
+          }
+          if (next !== prev.ollamaModel) {
+            const updated = { ...prev, ollamaModel: next };
+            localStorage.setItem(
+              "video-translate-settings",
+              JSON.stringify(updated)
+            );
+            return updated;
+          }
+          return prev.ollamaModel === current
+            ? prev
+            : { ...prev, ollamaModel: current };
+        });
       } else {
         console.error("获取 Ollama 模型失败:", result.error);
-        // 如果获取失败，只显示推荐模型
         setOllamaModels(
           recommendedModels.map((model) => ({ ...model, installed: false }))
         );
@@ -420,11 +440,20 @@ export function SettingsPanel() {
           <div className="space-y-2">
             <Label htmlFor="ollama-model">Ollama 模型</Label>
             <Select
-              value={settings.ollamaModel}
-              onValueChange={(value) =>
-                setSettings((prev) => ({ ...prev, ollamaModel: value }))
+              value={
+                ollamaModels.some(
+                  (m) => m.name === settings.ollamaModel && m.installed
+                )
+                  ? settings.ollamaModel
+                  : undefined
               }
-              disabled={!ollamaStatus.isRunning}
+              onValueChange={(value) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  ollamaModel: normalizeOllamaModel(value),
+                }))
+              }
+              disabled={!ollamaStatus.isRunning || ollamaModels.length === 0}
             >
               <SelectTrigger>
                 <SelectValue placeholder="选择翻译模型" />

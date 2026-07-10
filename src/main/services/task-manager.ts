@@ -16,6 +16,7 @@ import {
   DEFAULT_OLLAMA_MODEL,
   type AsrEngineId,
 } from "../../shared/constants";
+import { normalizeOllamaModel } from "../../shared/settings";
 import { databaseManager } from "./database/manager";
 import { ffmpegProcessor } from "./ffmpeg/processor";
 import { ollamaClient } from "./ollama/client";
@@ -248,7 +249,7 @@ export class TaskManager {
         context.transcription.segments,
         task.sourceLanguage,
         task.targetLanguage,
-        runtime.ollamaModel ?? DEFAULT_OLLAMA_MODEL
+        normalizeOllamaModel(runtime.ollamaModel ?? DEFAULT_OLLAMA_MODEL)
       );
 
       context.subtitles = SubtitleGenerator.segmentsToSubtitles(

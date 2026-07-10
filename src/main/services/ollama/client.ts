@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { DEFAULT_OLLAMA_MODEL } from "../../../shared/constants";
+import { languageDisplayName } from "../../../shared/settings";
 import type { OllamaModel } from "../../../shared/types/video";
 
 // 使用动态导入来处理 node-fetch ES 模块
@@ -315,25 +317,35 @@ export class OllamaClient {
     text: string,
     sourceLanguage: string,
     targetLanguage: string,
-    model = "kaelri/hy-mt2:1.8b"
+    model = DEFAULT_OLLAMA_MODEL
   ): Promise<string> {
-    const systemPrompt = `You are a professional translator. Translate the following text from ${sourceLanguage} to ${targetLanguage}. Only return the translated text without any explanations or additional content.`;
+    const trimmed = text.trim();
+    if (!trimmed) return "";
 
-    const prompt = `Translate this text from ${sourceLanguage} to ${targetLanguage}:\n\n${text}`;
+    // 纯标点不翻译
+    if (/^[\s。！？!?；;…、，,.．:：\-—～~「」『』（）()【】\[\]]+$/u.test(trimmed)) {
+      return trimmed;
+    }
+
+    const src = languageDisplayName(sourceLanguage);
+    const tgt = languageDisplayName(targetLanguage);
+
+    // 面向 hy-mt2 等翻译专用模型：指令简短，强制目标语
+    const systemPrompt = `你是专业字幕翻译。把用户给出的文本从${src}翻译成${tgt}。只输出译文，不要解释，不要原文，不要引号。`;
+    const prompt = `源语言：${src}\n目标语言：${tgt}\n\n原文：\n${trimmed}\n\n译文：`;
 
     try {
       const response = await this.generate({
-        model,
+        model: model || DEFAULT_OLLAMA_MODEL,
         prompt,
         system: systemPrompt,
         options: {
-          temperature: 0.3, // 较低的温度以获得更一致的翻译
+          temperature: 0.1,
           max_tokens: 2000,
         },
       });
 
-      // 清理响应，移除可能的前缀或后缀
-      return response.trim();
+      return cleanTranslation(response, trimmed);
     } catch (error) {
       console.error("Translation error:", error);
       const errorMessage =
@@ -358,9 +370,10 @@ export class OllamaClient {
     texts: string[],
     sourceLanguage: string,
     targetLanguage: string,
-    model = "kaelri/hy-mt2:1.8b",
+    model = DEFAULT_OLLAMA_MODEL,
     onProgress?: (completed: number, total: number) => void
   ): Promise<string[]> {
+    const resolvedModel = model || DEFAULT_OLLAMA_MODEL;
     const results: string[] = [];
 
     for (let i = 0; i < texts.length; i++) {
@@ -369,7 +382,7 @@ export class OllamaClient {
           texts[i],
           sourceLanguage,
           targetLanguage,
-          model
+          resolvedModel
         );
         results.push(translated);
 
@@ -377,13 +390,23 @@ export class OllamaClient {
           onProgress(i + 1, texts.length);
         }
       } catch (error) {
-        console.error(`Error translating segment ${i}:`, error);
+        console.error(`Error translating segment ${i} with ${resolvedModel}:`, error);
         results.push(texts[i]); // 翻译失败时保留原文
       }
     }
 
     return results;
   }
+}
+
+function cleanTranslation(raw: string, original: string): string {
+  let text = (raw || "").trim();
+  // 去掉常见包裹
+  text = text.replace(/^["「『]|["」』]$/g, "").trim();
+  // 去掉「译文：」前缀
+  text = text.replace(/^(译文|翻译|Translation)\s*[:：]\s*/i, "").trim();
+  if (!text) return original;
+  return text;
 }
 
 // 单例实例

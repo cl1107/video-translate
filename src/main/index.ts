@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain } from "electron";
 import type { AsrEngineId } from "../shared/constants";
+import { normalizeOllamaModel } from "../shared/settings";
 import { ollamaClient } from "./services/ollama/client";
 import { sherpaTranscriber } from "./services/asr/sherpa-transcriber";
 import { taskManager } from "./services/task-manager";
@@ -36,7 +37,7 @@ function setupIpcHandlers() {
           filePath,
           sourceLanguage: settings.sourceLanguage,
           targetLanguage: settings.targetLanguage,
-          ollamaModel: settings.ollamaModel,
+          ollamaModel: normalizeOllamaModel(settings.ollamaModel),
           asrEngine: settings.asrEngine,
           burnSubtitles: settings.burnSubtitles,
         });

@@ -3,6 +3,10 @@ import { useCallback, useState } from "react";
 import { Alert, AlertDescription } from "renderer/components/ui/alert";
 import { Button } from "renderer/components/ui/button";
 import { Card, CardContent } from "renderer/components/ui/card";
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+} from "../../../shared/settings";
 
 interface VideoUploaderProps {
   onUploadSuccess?: () => void;
@@ -49,24 +53,22 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       // 直接调用系统文件选择对话框
       const filePaths = await (window as any).App.openFileDialog();
       if (filePaths.length > 0) {
-        // 从localStorage读取设置
+        // 从 localStorage 读取并清洗设置（迁移旧 qwen 默认模型等）
         const savedSettings = localStorage.getItem("video-translate-settings");
-        const settings = savedSettings
-          ? JSON.parse(savedSettings)
-          : {
-              sourceLanguage: "auto",
-              targetLanguage: "zh",
-              ollamaModel: "kaelri/hy-mt2:1.8b",
-              asrEngine: "sensevoice",
-              burnSubtitles: false,
-            };
+        const settings = normalizeAppSettings(
+          savedSettings ? JSON.parse(savedSettings) : DEFAULT_APP_SETTINGS
+        );
+        localStorage.setItem(
+          "video-translate-settings",
+          JSON.stringify(settings)
+        );
 
         const result = await (window as any).App.uploadFiles(filePaths, {
-          sourceLanguage: settings.sourceLanguage ?? "auto",
-          targetLanguage: settings.targetLanguage ?? "zh",
+          sourceLanguage: settings.sourceLanguage,
+          targetLanguage: settings.targetLanguage,
           ollamaModel: settings.ollamaModel,
-          asrEngine: settings.asrEngine ?? "sensevoice",
-          burnSubtitles: settings.burnSubtitles ?? false,
+          asrEngine: settings.asrEngine,
+          burnSubtitles: settings.burnSubtitles,
         });
         if (result.success) {
           console.log("文件上传成功，任务ID:", result.taskIds);
