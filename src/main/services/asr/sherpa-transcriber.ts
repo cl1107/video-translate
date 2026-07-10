@@ -187,6 +187,18 @@ export class SherpaTranscriber {
     return map[key] || map[language] || "auto";
   }
 
+  /**
+   * Electron/N-API 不允许将 external ArrayBuffer 直接传给原生 addon。
+   * sherpa readWave 返回的 samples 常是 external buffer，这里拷贝一份。
+   */
+  private copySamples(samples: Float32Array | ArrayLike<number>): Float32Array {
+    const source =
+      samples instanceof Float32Array ? samples : new Float32Array(samples);
+    const copy = new Float32Array(source.length);
+    copy.set(source);
+    return copy;
+  }
+
   private recognizeFile(
     recognizer: OfflineRecognizer,
     audioPath: string
@@ -195,7 +207,7 @@ export class SherpaTranscriber {
     const stream = recognizer.createStream();
     stream.acceptWaveform({
       sampleRate: wave.sampleRate,
-      samples: wave.samples,
+      samples: this.copySamples(wave.samples),
     });
     recognizer.decode(stream);
     return recognizer.getResult(stream) as RawAsrResult;
