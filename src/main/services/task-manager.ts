@@ -20,6 +20,7 @@ import { databaseManager } from "./database/manager";
 import { ffmpegProcessor } from "./ffmpeg/processor";
 import { ollamaClient } from "./ollama/client";
 import { SubtitleGenerator } from "../utils/subtitle-generator";
+import { ensureSenseVoiceModel } from "./asr/model-downloader";
 import {
   sherpaTranscriber,
   type AsrTranscriptionResult,
@@ -77,10 +78,14 @@ export class TaskManager {
         await ollamaClient.startDaemon();
       }
 
-      if (!(await sherpaTranscriber.isAvailable(DEFAULT_ASR_ENGINE))) {
-        console.warn(
-          "SenseVoice / sherpa-onnx 不可用，请确认模型位于 models/asr/"
-        );
+      // 后台确保默认 ASR 模型（已存在则秒过，缺失则自动下载）
+      const asrReady = await ensureSenseVoiceModel((p) => {
+        if (p.stage === "downloading" || p.stage === "extracting") {
+          console.log(`[ASR] ${p.message}`);
+        }
+      });
+      if (!asrReady.available) {
+        console.warn("SenseVoice 自动准备失败:", asrReady.error);
       }
     } catch (error) {
       console.error("服务初始化失败:", error);
@@ -283,13 +288,22 @@ export class TaskManager {
     this.addTaskLog(taskId, "success", "FFmpeg 可用性检查通过");
 
     this.addTaskLog(taskId, "info", "检查 sherpa-onnx ASR 可用性...");
-    const asrOk =
+    let asrOk =
       (await sherpaTranscriber.isAvailable("sensevoice")) ||
       (await sherpaTranscriber.isAvailable("funasr-nano"));
     if (!asrOk) {
-      throw new Error(
-        "ASR 模型不可用：请将 SenseVoice 官方模型放到 models/asr/（见 models/asr/README.md）"
-      );
+      this.addTaskLog(taskId, "info", "SenseVoice 模型缺失，开始自动下载...");
+      const ensured = await ensureSenseVoiceModel((p) => {
+        if (p.message) {
+          this.addTaskLog(taskId, "info", p.message);
+        }
+      });
+      asrOk = ensured.available;
+      if (!asrOk) {
+        throw new Error(
+          `ASR 模型不可用：${ensured.error || "自动下载失败，请检查网络后重试"}`
+        );
+      }
     }
     this.addTaskLog(taskId, "success", "ASR 可用性检查通过");
 

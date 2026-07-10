@@ -96,6 +96,8 @@ export function DependencyChecker({
         return "Node.js";
       case "ollama":
         return "Ollama";
+      case "sherpa-onnx-asr":
+        return "语音识别 (SenseVoice)";
       default:
         return name;
     }
@@ -111,6 +113,8 @@ export function DependencyChecker({
         return "JavaScript 运行环境";
       case "ollama":
         return "本地大语言模型服务";
+      case "sherpa-onnx-asr":
+        return "sherpa-onnx 本地 ASR，缺失时自动下载 SenseVoice";
       default:
         return "";
     }

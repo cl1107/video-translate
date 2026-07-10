@@ -2,18 +2,11 @@
 
 本项目使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 做本地语音识别。
 
-## SenseVoice Small（默认，已支持）
+## 默认行为：自动下载
 
-官方 int8 模型（推荐）：
+**无需手动安装。** 应用在依赖检查 / 启动 / 首次任务时会自动下载并解压 **SenseVoice Small** 到本目录。
 
-```bash
-cd models/asr
-curl -L -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
-tar xvf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2
-ln -sfn sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17 sensevoice-small
-```
-
-期望结构：
+手动放模型也可以，路径任选其一：
 
 ```
 models/asr/sensevoice-small/
@@ -21,25 +14,23 @@ models/asr/sensevoice-small/
   tokens.txt
 ```
 
-> 注意：闪电说等 App 自带的 `model.onnx + tokens.json` 是 FunASR 原生导出，通常缺少 sherpa-onnx 需要的 ONNX metadata，**不能直接使用**。请使用上述官方转换模型。
+或：
 
-## Fun-ASR-Nano（可选）
+```
+models/asr/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/
+```
+
+> 注意：闪电说等 App 自带的 `model.onnx + tokens.json` 是 FunASR 原生导出，通常缺少 sherpa-onnx 需要的 ONNX metadata，**不能直接使用**。
+
+## Fun-ASR-Nano（可选，暂不自动下载）
+
+体积较大（约 950MB），需要时手动下载：
 
 ```bash
 cd models/asr
 curl -L -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2
 tar xvf sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2
 ln -sfn sherpa-onnx-funasr-nano-int8-2025-12-30 funasr-nano
-```
-
-期望结构：
-
-```
-models/asr/funasr-nano/
-  encoder_adaptor.int8.onnx
-  llm.int8.onnx
-  embedding.int8.onnx
-  Qwen3-0.6B/
 ```
 
 也可通过环境变量指定模型根目录：

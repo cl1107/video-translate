@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { ensureSenseVoiceModel } from "../services/asr/model-downloader";
+import { sherpaTranscriber } from "../services/asr/sherpa-transcriber";
 
 export interface SystemCheckResult {
   name: string;
@@ -37,7 +39,6 @@ function checkCommand(
 
     process.on("close", (code) => {
       if (code === 0) {
-        // 尝试从输出中提取版本信息
         const versionMatch =
           (output + error).match(/version\s+(\d+\.\d+\.\d+)/i) ||
           (output + error).match(/(\d+\.\d+\.\d+)/);
@@ -56,7 +57,6 @@ function checkCommand(
       }
     });
 
-    // 超时检查
     setTimeout(() => {
       process.kill();
       resolve({
@@ -69,16 +69,36 @@ function checkCommand(
 }
 
 /**
- * 检查所有系统依赖
+ * 检查 sherpa-onnx ASR；若默认 SenseVoice 缺失则自动下载。
  */
-async function checkSherpaAsr(): Promise<SystemCheckResult> {
+async function checkSherpaAsr(
+  autoDownload = true
+): Promise<SystemCheckResult> {
   try {
-    const { sherpaTranscriber } = require("../services/asr/sherpa-transcriber") as {
-      sherpaTranscriber: {
-        isAvailable: (engine?: string) => Promise<boolean>;
+    // 先确认原生模块能加载
+    try {
+      require.resolve("sherpa-onnx-node");
+    } catch {
+      return {
+        name: "sherpa-onnx-asr",
+        available: false,
+        error: "未安装 sherpa-onnx-node 依赖，请执行 pnpm install",
       };
-    };
-    const senseOk = await sherpaTranscriber.isAvailable("sensevoice");
+    }
+
+    let senseOk = await sherpaTranscriber.isAvailable("sensevoice");
+    if (!senseOk && autoDownload) {
+      const result = await ensureSenseVoiceModel();
+      senseOk = result.available;
+      if (!senseOk) {
+        return {
+          name: "sherpa-onnx-asr",
+          available: false,
+          error: result.error || "SenseVoice 模型自动下载失败",
+        };
+      }
+    }
+
     const nanoOk = await sherpaTranscriber.isAvailable("funasr-nano");
     if (senseOk || nanoOk) {
       return {
@@ -87,6 +107,7 @@ async function checkSherpaAsr(): Promise<SystemCheckResult> {
         version: senseOk ? "sensevoice" : "funasr-nano",
       };
     }
+
     return {
       name: "sherpa-onnx-asr",
       available: false,
@@ -101,16 +122,25 @@ async function checkSherpaAsr(): Promise<SystemCheckResult> {
   }
 }
 
-export async function checkSystemDependencies(): Promise<SystemCheckResult[]> {
-  const checks = await Promise.all([
+/**
+ * 检查所有系统依赖
+ * @param options.autoDownloadAsr 默认 true，缺失 SenseVoice 时自动下载
+ */
+export async function checkSystemDependencies(options?: {
+  autoDownloadAsr?: boolean;
+}): Promise<SystemCheckResult[]> {
+  const autoDownloadAsr = options?.autoDownloadAsr ?? true;
+
+  // ASR 可能触发下载，单独串行，避免和其他检查抢带宽时误报
+  const [ffmpeg, ffprobe, node, ollama] = await Promise.all([
     checkCommand("ffmpeg"),
     checkCommand("ffprobe"),
     checkCommand("node", ["--version"]),
     checkCommand("ollama", ["--version"]),
-    checkSherpaAsr(),
   ]);
 
-  return checks;
+  const asr = await checkSherpaAsr(autoDownloadAsr);
+  return [ffmpeg, ffprobe, node, ollama, asr];
 }
 
 /**
@@ -126,9 +156,9 @@ export function getInstallationSuggestions(
       switch (result.name) {
         case "sherpa-onnx-asr":
           suggestions.push(
-            "安装 ASR 模型（SenseVoice）:\n" +
-              "cd models/asr && curl -L -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2 && tar xvf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2\n" +
-              "详见 models/asr/README.md"
+            "ASR 模型未就绪：应用会在检查时自动下载 SenseVoice。" +
+              "若仍失败，请检查网络后点击「重新检查」。" +
+              (result.error ? `\n详情: ${result.error}` : "")
           );
           break;
         case "ffmpeg":
@@ -158,5 +188,5 @@ export function getInstallationSuggestions(
     }
   }
 
-  return [...new Set(suggestions)]; // 去重
+  return [...new Set(suggestions)];
 }
