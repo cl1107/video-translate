@@ -8,7 +8,13 @@ declare global {
       openFileDialog: () => Promise<string[]>;
       uploadFiles: (
         filePaths: string[],
-        settings: { sourceLanguage: string; targetLanguage: string }
+        settings: {
+          sourceLanguage: string;
+          targetLanguage: string;
+          ollamaModel?: string;
+          asrEngine?: "sensevoice" | "funasr-nano";
+          burnSubtitles?: boolean;
+        }
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>;
 
       // 任务管理
@@ -33,6 +39,18 @@ declare global {
       pullOllamaModel: (
         modelName: string
       ) => Promise<{ success: boolean; error?: string }>;
+
+      // ASR 状态
+      getAsrStatus: () => Promise<{
+        success: boolean;
+        models: Array<{
+          engine: string;
+          available: boolean;
+          path?: string;
+          detail?: string;
+        }>;
+        error?: string;
+      }>;
 
       // 系统检查
       checkSystemDependencies: () => Promise<{
@@ -63,8 +81,16 @@ declare global {
 const api = {
   // 文件操作
   openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
-  uploadFiles: (filePaths: string[], settings: { sourceLanguage: string; targetLanguage: string }) =>
-    ipcRenderer.invoke("upload-files", filePaths, settings),
+  uploadFiles: (
+    filePaths: string[],
+    settings: {
+      sourceLanguage: string;
+      targetLanguage: string;
+      ollamaModel?: string;
+      asrEngine?: "sensevoice" | "funasr-nano";
+      burnSubtitles?: boolean;
+    }
+  ) => ipcRenderer.invoke("upload-files", filePaths, settings),
 
   // 任务管理
   getAllTasks: () => ipcRenderer.invoke("get-all-tasks"),
@@ -80,6 +106,9 @@ const api = {
   checkOllamaStatus: () => ipcRenderer.invoke("check-ollama-status"),
   pullOllamaModel: (modelName: string) =>
     ipcRenderer.invoke("pull-ollama-model", modelName),
+
+  // ASR 状态
+  getAsrStatus: () => ipcRenderer.invoke("get-asr-status"),
 
   // 系统检查
   checkSystemDependencies: () =>

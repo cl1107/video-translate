@@ -10,6 +10,10 @@
 /build
 /dist
 
+# ASR / LLM model weights (large binaries)
+/models/asr/**
+!/models/asr/README.md
+
 # misc
 .DS_Store
 .env

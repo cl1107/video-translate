@@ -307,7 +307,7 @@ export class OllamaClient {
  * @param text - 要翻译的文本
  * @param sourceLanguage - 源语言
  * @param targetLanguage - 目标语言
- * @param model - 使用的模型名称（默认：qwen3:4b-instruct）
+ * @param model - 使用的模型名称（默认：kaelri/hy-mt2:1.8b）
  * @returns 返回翻译后的文本
  * @throws 当翻译失败时抛出错误
  */
@@ -315,7 +315,7 @@ export class OllamaClient {
     text: string,
     sourceLanguage: string,
     targetLanguage: string,
-    model = "qwen3:4b-instruct"
+    model = "kaelri/hy-mt2:1.8b"
   ): Promise<string> {
     const systemPrompt = `You are a professional translator. Translate the following text from ${sourceLanguage} to ${targetLanguage}. Only return the translated text without any explanations or additional content.`;
 
@@ -350,7 +350,7 @@ export class OllamaClient {
  * @param texts - 要翻译的文本数组
  * @param sourceLanguage - 源语言
  * @param targetLanguage - 目标语言
- * @param model - 使用的模型名称（默认：qwen3:4b-instruct）
+ * @param model - 使用的模型名称（默认：kaelri/hy-mt2:1.8b）
  * @param onProgress - 进度回调函数（可选）
  * @returns 返回翻译后的文本数组，翻译失败的段落保留原文
  */
@@ -358,7 +358,7 @@ export class OllamaClient {
     texts: string[],
     sourceLanguage: string,
     targetLanguage: string,
-    model = "qwen3:4b-instruct",
+    model = "kaelri/hy-mt2:1.8b",
     onProgress?: (completed: number, total: number) => void
   ): Promise<string[]> {
     const results: string[] = [];

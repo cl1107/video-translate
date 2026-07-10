@@ -1,5 +1,7 @@
 import { app, dialog, ipcMain } from "electron";
+import type { AsrEngineId } from "../shared/constants";
 import { ollamaClient } from "./services/ollama/client";
+import { sherpaTranscriber } from "./services/asr/sherpa-transcriber";
 import { taskManager } from "./services/task-manager";
 import {
   checkSystemDependencies,
@@ -13,7 +15,19 @@ import { MainWindow } from "./windows/main";
 // IPC 处理器
 function setupIpcHandlers() {
   // 文件上传处理
-  ipcMain.handle("upload-files", async (event, filePaths: string[], settings: { sourceLanguage: string; targetLanguage: string }) => {
+  ipcMain.handle(
+    "upload-files",
+    async (
+      _event,
+      filePaths: string[],
+      settings: {
+        sourceLanguage: string;
+        targetLanguage: string;
+        ollamaModel?: string;
+        asrEngine?: AsrEngineId;
+        burnSubtitles?: boolean;
+      }
+    ) => {
     try {
       const taskIds: string[] = [];
 
@@ -22,6 +36,9 @@ function setupIpcHandlers() {
           filePath,
           sourceLanguage: settings.sourceLanguage,
           targetLanguage: settings.targetLanguage,
+          ollamaModel: settings.ollamaModel,
+          asrEngine: settings.asrEngine,
+          burnSubtitles: settings.burnSubtitles,
         });
         taskIds.push(taskId);
       }
@@ -130,6 +147,18 @@ function setupIpcHandlers() {
         results: [],
         suggestions: [],
       };
+    }
+  });
+
+  // ASR 模型状态
+  ipcMain.handle("get-asr-status", async () => {
+    try {
+      const models = sherpaTranscriber.getStatus();
+      return { success: true, models };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return { success: false, error: errorMessage, models: [] };
     }
   });
 

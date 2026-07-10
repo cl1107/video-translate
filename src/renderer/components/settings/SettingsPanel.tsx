@@ -47,23 +47,23 @@ interface DownloadProgress {
 
 export function SettingsPanel() {
   const navigate = useNavigate();
-  const [whisperModels] = useState<ModelInfo[]>([
+  const [asrEngines] = useState<ModelInfo[]>([
     {
-      name: "tiny",
-      size: "~39MB",
-      description: "最小模型，速度最快但准确率较低",
+      name: "sensevoice",
+      size: "~228MB",
+      description: "SenseVoice Small：中/英/日/韩/粤，速度快（默认）",
     },
-    { name: "base", size: "~142MB", description: "基础模型，平衡速度和准确率" },
-    { name: "small", size: "~466MB", description: "小型模型，准确率较好" },
-    { name: "medium", size: "~1.5GB", description: "中型模型，高准确率" },
     {
-      name: "large-v3",
-      size: "~2.9GB",
-      description: "最新大型模型，最高准确率",
+      name: "funasr-nano",
+      size: "~950MB",
+      description: "Fun-ASR-Nano：方言/远场/嘈杂场景更强（需单独下载模型）",
     },
   ]);
 
   const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([]);
+  const [asrStatus, setAsrStatus] = useState<
+    Array<{ engine: string; available: boolean; path?: string; detail?: string }>
+  >([]);
   const [ollamaStatus, setOllamaStatus] = useState<{
     isRunning: boolean;
     loading: boolean;
@@ -81,6 +81,7 @@ export function SettingsPanel() {
     { code: "auto", name: "自动检测" },
     { code: "en", name: "English" },
     { code: "zh", name: "中文" },
+    { code: "yue", name: "粤语" },
     { code: "ja", name: "日本語" },
     { code: "ko", name: "한국어" },
     { code: "es", name: "Español" },
@@ -92,8 +93,8 @@ export function SettingsPanel() {
   ]);
 
   const [settings, setSettings] = useState({
-    whisperModel: "base",
-    ollamaModel: "qwen3:4b-instruct",
+    asrEngine: "sensevoice",
+    ollamaModel: "kaelri/hy-mt2:1.8b",
     sourceLanguage: "auto",
     targetLanguage: "zh",
     outputFormat: "srt" as "srt" | "vtt" | "txt",
@@ -106,9 +107,9 @@ export function SettingsPanel() {
   // 推荐的模型列表
   const recommendedModels = [
     {
-      name: "qwen3:4b-instruct",
-      size: "2.5GB",
-      description: "qwen3:4b-instruct",
+      name: "kaelri/hy-mt2:1.8b",
+      size: "~1.1GB",
+      description: "Hunyuan-MT 翻译专用小模型（默认）",
     },
   ];
 
@@ -117,6 +118,7 @@ export function SettingsPanel() {
     loadSettings();
     checkOllamaStatus();
     loadOllamaModels();
+    loadAsrStatus();
 
     // 监听模型下载进度
     const unsubscribe = App.onOllamaPullProgress((data) => {
@@ -135,10 +137,32 @@ export function SettingsPanel() {
     try {
       const savedSettings = localStorage.getItem("video-translate-settings");
       if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
+        const parsed = JSON.parse(savedSettings);
+        setSettings((prev) => ({
+          ...prev,
+          ...parsed,
+          // 兼容旧 whisperModel 字段
+          asrEngine:
+            parsed.asrEngine ||
+            (parsed.whisperModel === "funasr-nano"
+              ? "funasr-nano"
+              : "sensevoice"),
+          ollamaModel: parsed.ollamaModel || "kaelri/hy-mt2:1.8b",
+        }));
       }
     } catch (error) {
       console.error("加载设置失败:", error);
+    }
+  };
+
+  const loadAsrStatus = async () => {
+    try {
+      const result = await App.getAsrStatus();
+      if (result.success) {
+        setAsrStatus(result.models);
+      }
+    } catch (error) {
+      console.error("加载 ASR 状态失败:", error);
     }
   };
 
@@ -294,42 +318,65 @@ export function SettingsPanel() {
         </Alert>
       )}
 
-      {/* Whisper 设置 */}
+      {/* ASR 设置 */}
       <Card>
         <CardHeader>
-          <CardTitle>语音识别设置</CardTitle>
+          <CardTitle>语音识别设置（sherpa-onnx）</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="whisper-model">Whisper 模型</Label>
+            <Label htmlFor="asr-engine">ASR 引擎</Label>
             <Select
-              value={settings.whisperModel}
+              value={settings.asrEngine}
               onValueChange={(value) =>
-                setSettings((prev) => ({ ...prev, whisperModel: value }))
+                setSettings((prev) => ({ ...prev, asrEngine: value }))
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择 Whisper 模型" />
+                <SelectValue placeholder="选择 ASR 引擎" />
               </SelectTrigger>
               <SelectContent>
-                {whisperModels.map((model) => (
-                  <SelectItem key={model.name} value={model.name}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>{model.name}</span>
-                      <Badge variant="outline" className="ml-2">
-                        {model.size}
-                      </Badge>
-                    </div>
-                  </SelectItem>
-                ))}
+                {asrEngines.map((model) => {
+                  const state = asrStatus.find((s) => s.engine === model.name);
+                  return (
+                    <SelectItem
+                      key={model.name}
+                      value={model.name}
+                      disabled={state ? !state.available : model.name === "funasr-nano"}
+                    >
+                      <div className="flex items-center justify-between w-full gap-2">
+                        <span>{model.name}</span>
+                        <Badge variant="outline">{model.size}</Badge>
+                        {state?.available ? (
+                          <Check className="h-3 w-3 text-green-500" />
+                        ) : null}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
               {
-                whisperModels.find((m) => m.name === settings.whisperModel)
+                asrEngines.find((m) => m.name === settings.asrEngine)
                   ?.description
               }
             </p>
+            {asrStatus.length > 0 && (
+              <div className="rounded-md border p-2 text-xs text-muted-foreground space-y-1">
+                {asrStatus.map((item) => (
+                  <div key={item.engine} className="flex justify-between gap-2">
+                    <span>
+                      {item.engine}:{" "}
+                      {item.available ? "已就绪" : "未安装"}
+                    </span>
+                    <span className="truncate max-w-[60%]" title={item.detail}>
+                      {item.detail}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

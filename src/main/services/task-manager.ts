@@ -11,26 +11,34 @@ import {
   type TranslationTask,
   type VideoFile,
 } from "../../shared/types/video";
+import {
+  DEFAULT_ASR_ENGINE,
+  DEFAULT_OLLAMA_MODEL,
+  type AsrEngineId,
+} from "../../shared/constants";
 import { databaseManager } from "./database/manager";
 import { ffmpegProcessor } from "./ffmpeg/processor";
 import { ollamaClient } from "./ollama/client";
 import { SubtitleGenerator } from "../utils/subtitle-generator";
 import {
-  whisperTranscriber,
-  type TranscriptionResult,
-} from "./whisper/transcriber";
+  sherpaTranscriber,
+  type AsrTranscriptionResult,
+} from "./asr/sherpa-transcriber";
 
 export interface CreateTaskOptions {
   filePath: string;
   sourceLanguage: string;
   targetLanguage: string;
   ollamaModel?: string;
+  asrEngine?: AsrEngineId;
+  /** @deprecated 兼容旧字段 */
   whisperModel?: string;
   burnSubtitles?: boolean;
 }
 
 interface ProcessTaskOptions {
   ollamaModel?: string;
+  asrEngine?: AsrEngineId;
   whisperModel?: string;
   burnSubtitles?: boolean;
 }
@@ -38,7 +46,7 @@ interface ProcessTaskOptions {
 interface TaskProcessingContext {
   task: TranslationTask;
   audioPath?: string;
-  transcription?: TranscriptionResult;
+  transcription?: AsrTranscriptionResult;
   translatedSegments?: TranscriptionSegment[];
   subtitles?: SubtitleEntry[];
   outputPaths?: {
@@ -47,9 +55,6 @@ interface TaskProcessingContext {
     burnedVideo?: string;
   };
 }
-
-const DEFAULT_OLLAMA_MODEL = "qwen3:4b-instruct";
-const DEFAULT_WHISPER_MODEL = "base";
 
 export class TaskManager {
   private activeTasks = new Map<string, TranslationTask>();
@@ -72,8 +77,10 @@ export class TaskManager {
         await ollamaClient.startDaemon();
       }
 
-      if (!(await whisperTranscriber.isAvailable())) {
-        console.warn("Whisper 不可用，请确保依赖已经安装");
+      if (!(await sherpaTranscriber.isAvailable(DEFAULT_ASR_ENGINE))) {
+        console.warn(
+          "SenseVoice / sherpa-onnx 不可用，请确认模型位于 models/asr/"
+        );
       }
     } catch (error) {
       console.error("服务初始化失败:", error);
@@ -155,6 +162,7 @@ export class TaskManager {
       this.activeTasks.set(taskId, task);
       this.runtimeOptions.set(taskId, {
         ollamaModel: options.ollamaModel,
+        asrEngine: options.asrEngine,
         whisperModel: options.whisperModel,
         burnSubtitles: options.burnSubtitles,
       });
@@ -218,10 +226,15 @@ export class TaskManager {
 
       context.audioPath = await this.extractAudio(taskId, task.videoFile.path);
 
+      const asrEngine =
+        runtime.asrEngine ??
+        (runtime.whisperModel as AsrEngineId | undefined) ??
+        DEFAULT_ASR_ENGINE;
+
       context.transcription = await this.runTranscription(
         taskId,
         context.audioPath,
-        runtime.whisperModel ?? DEFAULT_WHISPER_MODEL,
+        asrEngine,
         task.sourceLanguage
       );
 
@@ -269,11 +282,16 @@ export class TaskManager {
     }
     this.addTaskLog(taskId, "success", "FFmpeg 可用性检查通过");
 
-    this.addTaskLog(taskId, "info", "检查 Whisper 可用性...");
-    if (!(await whisperTranscriber.isAvailable())) {
-      throw new Error("Whisper 不可用，请确认依赖安装正确");
+    this.addTaskLog(taskId, "info", "检查 sherpa-onnx ASR 可用性...");
+    const asrOk =
+      (await sherpaTranscriber.isAvailable("sensevoice")) ||
+      (await sherpaTranscriber.isAvailable("funasr-nano"));
+    if (!asrOk) {
+      throw new Error(
+        "ASR 模型不可用：请将 SenseVoice 官方模型放到 models/asr/（见 models/asr/README.md）"
+      );
     }
-    this.addTaskLog(taskId, "success", "Whisper 可用性检查通过");
+    this.addTaskLog(taskId, "success", "ASR 可用性检查通过");
 
     this.addTaskLog(taskId, "info", "检查 Ollama 服务状态...");
     if (!(await ollamaClient.isAvailable())) {
@@ -298,22 +316,22 @@ export class TaskManager {
   private async runTranscription(
     taskId: string,
     audioPath: string,
-    whisperModel: string,
+    asrEngine: AsrEngineId,
     sourceLanguage: string
-  ): Promise<TranscriptionResult> {
+  ): Promise<AsrTranscriptionResult> {
     await this.updateTaskStatus(taskId, TaskStatus.TRANSCRIBING, 35);
     this.addTaskLog(
       taskId,
       "info",
       "开始进行语音识别",
-      `Whisper 模型: ${whisperModel}, 源语言: ${sourceLanguage}`
+      `ASR 引擎: ${asrEngine}, 源语言: ${sourceLanguage}`
     );
 
-    const transcription = await whisperTranscriber.transcribe(
+    const transcription = await sherpaTranscriber.transcribe(
       audioPath,
       {
-        model: whisperModel as any,
-        language: this.getWhisperLanguageCode(sourceLanguage),
+        engine: asrEngine,
+        language: this.getLanguageCode(sourceLanguage),
       },
       (progress) => {
         const normalized = 35 + (progress / 100) * 25;
@@ -336,7 +354,7 @@ export class TaskManager {
       taskId,
       "success",
       "语音识别完成",
-      `生成 ${transcription.segments.length} 个字幕段落`
+      `引擎 ${transcription.engine}，生成 ${transcription.segments.length} 个字幕段落`
     );
 
     return transcription;
@@ -478,7 +496,7 @@ export class TaskManager {
     console.error(`任务 ${taskId} 处理失败:`, error);
   }
 
-  private getWhisperLanguageCode(language: string): string {
+  private getLanguageCode(language: string): string {
     const languageMap: Record<string, string> = {
       English: "en",
       Chinese: "zh",
@@ -487,6 +505,8 @@ export class TaskManager {
       日本語: "ja",
       Korean: "ko",
       한국어: "ko",
+      Cantonese: "yue",
+      粤语: "yue",
       Spanish: "es",
       French: "fr",
       German: "de",
@@ -503,7 +523,7 @@ export class TaskManager {
   }
 
   private getLanguageSuffix(language: string): string {
-    const code = this.getWhisperLanguageCode(language);
+    const code = this.getLanguageCode(language);
     return code === "auto" ? "auto" : code;
   }
 
@@ -602,7 +622,7 @@ export class TaskManager {
     this.activeTasks.clear();
     this.runtimeOptions.clear();
     void ffmpegProcessor.cleanup();
-    void whisperTranscriber.cleanup();
+    sherpaTranscriber.cleanup();
     ollamaClient.stopDaemon();
   }
 }

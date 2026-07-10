@@ -51,14 +51,22 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       if (filePaths.length > 0) {
         // 从localStorage读取设置
         const savedSettings = localStorage.getItem("video-translate-settings");
-        const settings = savedSettings ? JSON.parse(savedSettings) : {
-          sourceLanguage: "auto",
-          targetLanguage: "zh"
-        };
-        
+        const settings = savedSettings
+          ? JSON.parse(savedSettings)
+          : {
+              sourceLanguage: "auto",
+              targetLanguage: "zh",
+              ollamaModel: "kaelri/hy-mt2:1.8b",
+              asrEngine: "sensevoice",
+              burnSubtitles: false,
+            };
+
         const result = await (window as any).App.uploadFiles(filePaths, {
-          sourceLanguage: settings.sourceLanguage,
-          targetLanguage: settings.targetLanguage
+          sourceLanguage: settings.sourceLanguage ?? "auto",
+          targetLanguage: settings.targetLanguage ?? "zh",
+          ollamaModel: settings.ollamaModel,
+          asrEngine: settings.asrEngine ?? "sensevoice",
+          burnSubtitles: settings.burnSubtitles ?? false,
         });
         if (result.success) {
           console.log("文件上传成功，任务ID:", result.taskIds);

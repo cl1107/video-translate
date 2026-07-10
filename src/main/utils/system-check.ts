@@ -71,15 +71,46 @@ function checkCommand(
 /**
  * 检查所有系统依赖
  */
+async function checkSherpaAsr(): Promise<SystemCheckResult> {
+  try {
+    const { sherpaTranscriber } = require("../services/asr/sherpa-transcriber") as {
+      sherpaTranscriber: {
+        isAvailable: (engine?: string) => Promise<boolean>;
+      };
+    };
+    const senseOk = await sherpaTranscriber.isAvailable("sensevoice");
+    const nanoOk = await sherpaTranscriber.isAvailable("funasr-nano");
+    if (senseOk || nanoOk) {
+      return {
+        name: "sherpa-onnx-asr",
+        available: true,
+        version: senseOk ? "sensevoice" : "funasr-nano",
+      };
+    }
+    return {
+      name: "sherpa-onnx-asr",
+      available: false,
+      error: "SenseVoice / Fun-ASR-Nano 模型未就绪",
+    };
+  } catch (error) {
+    return {
+      name: "sherpa-onnx-asr",
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function checkSystemDependencies(): Promise<SystemCheckResult[]> {
-  const checks = [
+  const checks = await Promise.all([
     checkCommand("ffmpeg"),
     checkCommand("ffprobe"),
     checkCommand("node", ["--version"]),
     checkCommand("ollama", ["--version"]),
-  ];
+    checkSherpaAsr(),
+  ]);
 
-  return Promise.all(checks);
+  return checks;
 }
 
 /**
@@ -93,6 +124,13 @@ export function getInstallationSuggestions(
   for (const result of results) {
     if (!result.available) {
       switch (result.name) {
+        case "sherpa-onnx-asr":
+          suggestions.push(
+            "安装 ASR 模型（SenseVoice）:\n" +
+              "cd models/asr && curl -L -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2 && tar xvf sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2\n" +
+              "详见 models/asr/README.md"
+          );
+          break;
         case "ffmpeg":
         case "ffprobe":
           suggestions.push(

@@ -1,7 +1,7 @@
 {
   "displayName": "视频翻译助手",
   "name": "video-translate",
-  "description": "基于 Ollama + Electron 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成",
+  "description": "基于 sherpa-onnx（SenseVoice/Fun-ASR-Nano）+ Ollama 的本地视频翻译软件",
   "version": "0.1.0",
   "main": "./node_modules/.dev/main/index.js",
   "resources": "src/resources",
@@ -51,6 +51,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.2.0",
+    "sherpa-onnx-node": "1.13.4",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",

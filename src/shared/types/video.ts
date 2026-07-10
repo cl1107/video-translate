@@ -68,9 +68,13 @@ export interface OllamaModel {
   modified_at: string;
 }
 
+export type AsrEngine = "sensevoice" | "funasr-nano";
+
 export interface TranslationSettings {
   ollamaModel: string;
-  whisperModel: string;
+  /** @deprecated 使用 asrEngine */
+  whisperModel?: string;
+  asrEngine: AsrEngine;
   sourceLanguage: string;
   targetLanguage: string;
   maxSegmentLength: number;
