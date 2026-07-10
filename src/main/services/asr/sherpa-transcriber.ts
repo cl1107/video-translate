@@ -188,14 +188,28 @@ export class SherpaTranscriber {
   }
 
   /**
-   * Electron/N-API 不允许将 external ArrayBuffer 直接传给原生 addon。
-   * sherpa readWave 返回的 samples 常是 external buffer，这里拷贝一份。
+   * Electron 禁用了 N-API external buffer。
+   * 1) readWave 第二参 enableExternalBuffer=false，从原生侧直接分配普通 buffer
+   * 2) 再拷贝到全新 ArrayBuffer，彻底避免 external / SharedArrayBuffer
    */
-  private copySamples(samples: Float32Array | ArrayLike<number>): Float32Array {
-    const source =
-      samples instanceof Float32Array ? samples : new Float32Array(samples);
-    const copy = new Float32Array(source.length);
-    copy.set(source);
+  private toOwnedFloat32(samples: Float32Array | ArrayLike<number>): Float32Array {
+    const length =
+      typeof (samples as Float32Array).length === "number"
+        ? (samples as Float32Array).length
+        : Array.from(samples as ArrayLike<number>).length;
+
+    // 强制走独立 ArrayBuffer，不复用任何可能的 external 内存
+    const ab = new ArrayBuffer(length * 4);
+    const copy = new Float32Array(ab);
+    if (samples instanceof Float32Array) {
+      for (let i = 0; i < length; i++) {
+        copy[i] = samples[i];
+      }
+    } else {
+      for (let i = 0; i < length; i++) {
+        copy[i] = Number((samples as ArrayLike<number>)[i] ?? 0);
+      }
+    }
     return copy;
   }
 
@@ -203,11 +217,13 @@ export class SherpaTranscriber {
     recognizer: OfflineRecognizer,
     audioPath: string
   ): RawAsrResult {
-    const wave = sherpaOnnx.readWave(audioPath);
+    // enableExternalBuffer=false：关键 Electron 下 "External buffers are not allowed"
+    const wave = sherpaOnnx.readWave(audioPath, /* enableExternalBuffer */ false);
+    const samples = this.toOwnedFloat32(wave.samples);
     const stream = recognizer.createStream();
     stream.acceptWaveform({
       sampleRate: wave.sampleRate,
-      samples: this.copySamples(wave.samples),
+      samples,
     });
     recognizer.decode(stream);
     return recognizer.getResult(stream) as RawAsrResult;
