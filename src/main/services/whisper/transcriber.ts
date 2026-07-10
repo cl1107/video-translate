@@ -184,10 +184,12 @@ export class WhisperTranscriber {
 
     if (Array.isArray(rawResult)) {
       for (const item of rawResult) {
+        const start = this.normalizeTime(item.start ?? item.from ?? item.begin);
+        const end = this.normalizeTime(item.end ?? item.to ?? item.finish);
         segments.push({
           id: uuidv4(),
-          start: item.start ?? 0,
-          end: item.end ?? 0,
+          start,
+          end: end >= start ? end : start,
           originalText: (item.speech ?? item.text ?? "").trim(),
           confidence: Number(item.confidence ?? 0.9),
         });
@@ -198,10 +200,12 @@ export class WhisperTranscriber {
     if (rawResult && typeof rawResult === "object") {
       if (Array.isArray(rawResult.segments)) {
         for (const item of rawResult.segments) {
+          const start = this.normalizeTime(item.start ?? item.from ?? item.begin);
+          const end = this.normalizeTime(item.end ?? item.to ?? item.finish);
           segments.push({
             id: uuidv4(),
-            start: item.start ?? 0,
-            end: item.end ?? 0,
+            start,
+            end: end >= start ? end : start,
             originalText: (item.text ?? item.speech ?? "").trim(),
             confidence: Number(item.confidence ?? 0.9),
           });
@@ -233,6 +237,48 @@ export class WhisperTranscriber {
     }
 
     return segments;
+  }
+
+  private normalizeTime(value: unknown): number {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return 0;
+
+      const normalized = trimmed.replace(/,/g, ".");
+
+      const direct = Number(normalized);
+      if (!Number.isNaN(direct)) {
+        return direct;
+      }
+
+      const parts = normalized.split(":");
+      if (parts.length === 3) {
+        const [h, m, s] = parts;
+        const hours = Number(h);
+        const minutes = Number(m);
+        const seconds = Number(s);
+        if (
+          !Number.isNaN(hours) &&
+          !Number.isNaN(minutes) &&
+          !Number.isNaN(seconds)
+        ) {
+          return hours * 3600 + minutes * 60 + seconds;
+        }
+      } else if (parts.length === 2) {
+        const [m, s] = parts;
+        const minutes = Number(m);
+        const seconds = Number(s);
+        if (!Number.isNaN(minutes) && !Number.isNaN(seconds)) {
+          return minutes * 60 + seconds;
+        }
+      }
+    }
+
+    return 0;
   }
 
   private async createSubtitleFiles(
