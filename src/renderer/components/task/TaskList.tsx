@@ -155,7 +155,8 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
         onTasksChange();
       } catch (error) {
         console.error("任务操作失败:", error);
-        alert(`操作失败: ${error.message || error}`);
+        const message = error instanceof Error ? error.message : String(error);
+        alert(`操作失败: ${message}`);
       }
     },
     [onTasksChange]

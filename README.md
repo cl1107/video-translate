@@ -102,10 +102,12 @@ pnpm build
 
 可选引擎：
 
-| 引擎 | 说明 | 获取方式 |
-|------|------|----------|
-| `sensevoice`（默认） | 中/英/日/韩/粤，速度快，适合 CJK 字幕 | 自动下载 |
-| `funasr-nano` | 方言 / 远场 / 嘈杂场景更强，模型更大（约 950MB） | 手动下载，见 `models/asr/README.md` |
+
+| 引擎               | 说明                             | 获取方式                          |
+| ---------------- | ------------------------------ | ----------------------------- |
+| `sensevoice`（默认） | 中/英/日/韩/粤，速度快，适合 CJK 字幕        | 自动下载                          |
+| `funasr-nano`    | 方言 / 远场 / 嘈杂场景更强，模型更大（约 950MB） | 手动下载，见 `models/asr/README.md` |
+
 
 也可通过环境变量指定模型目录：
 
@@ -128,7 +130,7 @@ ollama pull kaelri/hy-mt2:1.8b
 ### 前端 (Renderer Process)
 
 - **React 19** - UI 框架
-- **TypeScript 5** - 类型安全
+- **TypeScript 7** - 类型安全
 - **TailwindCSS 4** - 样式
 - **Radix UI / shadcn 风格组件** - 交互组件
 
@@ -156,13 +158,13 @@ ollama pull kaelri/hy-mt2:1.8b
 
 ### 翻译流水线
 
-1. **文件上传** → 创建任务与视频元数据  
-2. **音频提取** → FFmpeg 提取音轨  
-3. **语音识别** → sherpa-onnx 转录（SenseVoice / Fun-ASR-Nano）  
-4. **文本翻译** → Ollama 批量翻译  
-5. **字幕生成** → 输出 SRT / VTT / TXT  
-6. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）  
-7. **清理** → 删除临时文件并完成任务  
+1. **文件上传** → 创建任务与视频元数据
+2. **音频提取** → FFmpeg 提取音轨
+3. **语音识别** → sherpa-onnx 转录（SenseVoice / Fun-ASR-Nano）
+4. **文本翻译** → Ollama 批量翻译
+5. **字幕生成** → 输出 SRT / VTT / TXT
+6. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）
+7. **清理** → 删除临时文件并完成任务
 
 ## 📚 详细文档
 

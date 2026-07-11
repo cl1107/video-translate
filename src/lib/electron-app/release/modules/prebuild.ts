@@ -5,6 +5,8 @@ import trustedDependencies from '../../../../../trusted-dependencies-scripts.jso
 import packageJSON from '../../../../../package.json'
 import { getDevFolder } from '../utils/path'
 
+const ONLY_BUILT_DEPENDENCIES_FILE = 'trusted-dependencies-scripts.json'
+
 async function createPackageJSONDistVersion() {
   const { main, scripts, resources, devDependencies, ...rest } = packageJSON
 
@@ -21,7 +23,7 @@ async function createPackageJSONDistVersion() {
       ),
 
       writeFile(
-        resolve(getDevFolder(main), packageJSON.pnpm.onlyBuiltDependenciesFile),
+        resolve(getDevFolder(main), ONLY_BUILT_DEPENDENCIES_FILE),
         JSON.stringify(trustedDependencies, null, 2)
       ),
     ])

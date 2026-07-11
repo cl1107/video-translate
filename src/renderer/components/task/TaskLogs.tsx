@@ -13,6 +13,8 @@ import {
 } from "renderer/components/ui/card";
 import type { TaskLog } from "shared/types/video";
 
+const { App } = window;
+
 interface TaskLogsProps {
   taskId: string;
 }
@@ -63,7 +65,7 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
     }
   };
 
-  const formatTime = (timestamp: Date) => {
+  const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString("zh-CN", {
       hour12: false,
       hour: "2-digit",

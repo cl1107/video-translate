@@ -1,0 +1,5 @@
+packages:
+  - '.'
+
+# pnpm 11+ reads workspace settings from this file (not package.json#pnpm)
+onlyBuiltDependenciesFile: ./trusted-dependencies-scripts.json

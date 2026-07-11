@@ -4,7 +4,6 @@ import { resolve, normalize, dirname } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 
 import injectProcessEnvPlugin from 'rollup-plugin-inject-process-env'
-import tsconfigPathsPlugin from 'vite-tsconfig-paths'
 import reactPlugin from '@vitejs/plugin-react'
 
 import { settings } from './src/lib/electron-router-dom'
@@ -13,13 +12,12 @@ import { main, resources } from './package.json'
 const [nodeModules, devFolder] = normalize(dirname(main)).split(/\/|\\/g)
 const devPath = [nodeModules, devFolder].join('/')
 
-const tsconfigPaths = tsconfigPathsPlugin({
-  projects: [resolve('tsconfig.json')],
-})
-
 export default defineConfig({
   main: {
-    plugins: [tsconfigPaths, externalizeDepsPlugin()],
+    resolve: {
+      tsconfigPaths: true,
+    },
+    plugins: [externalizeDepsPlugin()],
 
     build: {
       rollupOptions: {
@@ -35,7 +33,10 @@ export default defineConfig({
   },
 
   preload: {
-    plugins: [tsconfigPaths, externalizeDepsPlugin()],
+    resolve: {
+      tsconfigPaths: true,
+    },
+    plugins: [externalizeDepsPlugin()],
 
     build: {
       outDir: resolve(devPath, 'preload'),
@@ -43,6 +44,10 @@ export default defineConfig({
   },
 
   renderer: {
+    resolve: {
+      tsconfigPaths: true,
+    },
+
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
       'process.platform': JSON.stringify(process.platform),
@@ -53,7 +58,6 @@ export default defineConfig({
     },
 
     plugins: [
-      tsconfigPaths,
       tailwindcss(),
       reactPlugin(),
 

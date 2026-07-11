@@ -258,7 +258,7 @@ export class DatabaseManager {
         size: row.video_size,
         duration: row.video_duration,
         format: row.video_format,
-        createdAt: new Date(row.video_created_at),
+        createdAt: row.video_created_at,
       },
       status: row.status as TaskStatus,
       progress: row.progress,

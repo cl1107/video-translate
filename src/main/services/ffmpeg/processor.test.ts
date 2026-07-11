@@ -55,6 +55,7 @@ test("烧录翻译字幕时将新字幕放在原字幕上方", async () => {
     .split("\n")
     .find((command) => command.includes(" -vf "));
 
+  assert.ok(burnCommand, "expected burn subtitles command with -vf");
   assert.match(
     burnCommand,
     /-vf subtitles='[^']+':force_style='Alignment=2,MarginV=43'/
