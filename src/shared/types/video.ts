@@ -32,6 +32,11 @@ export interface TranslationTask {
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+  outputArtifacts?: {
+    translatedSubtitle?: string;
+    burnedVideo?: string;
+    outputDirectory: string;
+  };
 }
 
 export enum TaskStatus {

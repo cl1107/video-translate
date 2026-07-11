@@ -281,16 +281,47 @@ export class SherpaTranscriber {
       rawText = result.text ?? "";
       detectedLang = result.lang;
     } else {
-      const chunks = await ffmpegProcessor.segmentAudio(
+      // 静音切分 + 强制 maxChunkSec，避免超长段一次送入原生 ASR 导致进程崩溃
+      let chunks = await ffmpegProcessor.segmentAudio(
         audioPath,
         maxChunkSec,
         -40
+      );
+
+      // 安全网：任何仍超长的段再次整轨固定时长切分（并清理上一轮临时文件）
+      const safeMax = maxChunkSec * 1.25;
+      const oversized = chunks.filter((c) => c.duration > safeMax);
+      if (oversized.length > 0) {
+        console.warn(
+          `ASR: ${oversized.length} 个分段超过 ${safeMax}s，重新固定时长切分`
+        );
+        await Promise.all(
+          chunks.map((c) => fs.unlink(c.path).catch(() => {}))
+        );
+        chunks = await ffmpegProcessor.segmentAudio(
+          audioPath,
+          maxChunkSec,
+          // 极低阈值弱化静音依赖，最终仍强制按 maxChunkSec 切
+          -90
+        );
+      }
+
+      console.log(
+        `ASR: 共 ${chunks.length} 段，最长 ${Math.max(...chunks.map((c) => c.duration), 0).toFixed(1)}s`
       );
       onProgress?.(25);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         try {
+          // 极端兜底：单段仍过长则跳过，避免原生层 OOM 拖垮整个 Electron
+          if (chunk.duration > maxChunkSec * 2) {
+            console.error(
+              `ASR 分段 ${i} 过长 (${chunk.duration.toFixed(1)}s)，跳过以防进程崩溃`
+            );
+            continue;
+          }
+
           const result = this.recognizeFile(recognizer, chunk.path);
           const part = buildSegmentsFromAsrResult(result, {
             timeOffset: chunk.startTime,

@@ -498,6 +498,13 @@ export class TaskManager {
     if (task && context.subtitles) {
       task.subtitles = context.subtitles;
     }
+    if (task && context.outputPaths) {
+      task.outputArtifacts = {
+        translatedSubtitle: context.outputPaths.translated,
+        burnedVideo: context.outputPaths.burnedVideo,
+        outputDirectory: path.dirname(context.outputPaths.translated),
+      };
+    }
 
     await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100);
     this.addTaskLog(taskId, "success", "任务处理完成");
@@ -572,6 +579,34 @@ export class TaskManager {
     }
   }
 
+  private getTaskOutputArtifacts(task: TranslationTask) {
+    const artifacts: NonNullable<TranslationTask["outputArtifacts"]> = {
+      outputDirectory: path.join(path.dirname(task.videoFile.path), "output"),
+    };
+
+    for (const log of databaseManager.getTaskLogs(task.id)) {
+      if (!log.details) continue;
+
+      if (log.message === "字幕文件生成完成") {
+        const translatedLine = log.details
+          .split("\n")
+          .find((line) => line.startsWith("翻译: "));
+        if (translatedLine) {
+          artifacts.translatedSubtitle = translatedLine.slice("翻译: ".length);
+        }
+      }
+
+      if (log.message === "烧录硬字幕完成") {
+        const prefix = "输出视频: ";
+        if (log.details.startsWith(prefix)) {
+          artifacts.burnedVideo = log.details.slice(prefix.length);
+        }
+      }
+    }
+
+    return artifacts;
+  }
+
   private loadActiveTasks(): void {
     const tasks = databaseManager.getAllTranslationTasks();
     for (const task of tasks) {
@@ -580,11 +615,16 @@ export class TaskManager {
   }
 
   getAllTasks(): TranslationTask[] {
-    return databaseManager.getAllTranslationTasks();
+    return databaseManager.getAllTranslationTasks().map((task) => ({
+      ...task,
+      outputArtifacts: this.getTaskOutputArtifacts(task),
+    }));
   }
 
   getTask(taskId: string): TranslationTask | null {
-    return databaseManager.getTranslationTask(taskId);
+    const task = databaseManager.getTranslationTask(taskId);
+    if (!task) return null;
+    return { ...task, outputArtifacts: this.getTaskOutputArtifacts(task) };
   }
 
   pauseTask(taskId: string): void {

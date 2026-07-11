@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { ensureSenseVoiceModel } from "../services/asr/model-downloader";
 import { sherpaTranscriber } from "../services/asr/sherpa-transcriber";
+import { resolveCommandPath } from "./command-path";
 
 export interface SystemCheckResult {
   name: string;
@@ -17,9 +18,17 @@ function checkCommand(
   args: string[] = ["-version"]
 ): Promise<SystemCheckResult> {
   return new Promise((resolve) => {
-    const process = spawn(command, args);
+    const process = spawn(resolveCommandPath(command), args);
     let output = "";
     let error = "";
+    let settled = false;
+
+    const finish = (result: SystemCheckResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
 
     process.stdout.on("data", (data) => {
       output += data.toString();
@@ -30,7 +39,7 @@ function checkCommand(
     });
 
     process.on("error", (err) => {
-      resolve({
+      finish({
         name: command,
         available: false,
         error: err.message,
@@ -43,13 +52,13 @@ function checkCommand(
           (output + error).match(/version\s+(\d+\.\d+\.\d+)/i) ||
           (output + error).match(/(\d+\.\d+\.\d+)/);
 
-        resolve({
+        finish({
           name: command,
           available: true,
           version: versionMatch ? versionMatch[1] : "unknown",
         });
       } else {
-        resolve({
+        finish({
           name: command,
           available: false,
           error: `Command failed with code ${code}`,
@@ -57,9 +66,9 @@ function checkCommand(
       }
     });
 
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       process.kill();
-      resolve({
+      finish({
         name: command,
         available: false,
         error: "Command timeout",
@@ -166,8 +175,9 @@ export function getInstallationSuggestions(
           suggestions.push(
             "安装 FFmpeg:\n" +
               "- macOS: brew install ffmpeg\n" +
-              "- Ubuntu/Debian: sudo apt install ffmpeg\n" +
-              "- Windows: 从 https://ffmpeg.org/download.html 下载并添加到 PATH"
+              "  （若需烧录硬字幕，请安装完整版: brew install ffmpeg-full）\n" +
+              "- Ubuntu/Debian: sudo apt install ffmpeg libass9\n" +
+              "- Windows: 从 https://ffmpeg.org/download.html 下载完整构建并添加到 PATH"
           );
           break;
         case "ollama":

@@ -1,4 +1,9 @@
-import { AlertCircle, CheckCircle, Info, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle,
+  Info,
+  XCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Card,

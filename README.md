@@ -1,6 +1,6 @@
 # 视频翻译助手 🎬
 
-基于 Ollama + Electron 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。
+基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。
 
 ![视频翻译助手](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
@@ -8,26 +8,26 @@
 
 ## ✨ 特性
 
-- 🚀 **完全本地化** - 无需联网，保护隐私
-- 🎯 **高精度识别** - 集成 Whisper AI 语音识别
-- 🌍 **多语言支持** - 支持 15+ 种语言互译
-- ⚡ **智能处理** - 自动音频分段，并行处理
+- 🚀 **完全本地化** - 无需联网即可完成识别与翻译，保护隐私
+- 🎯 **高精度识别** - 基于 sherpa-onnx，默认 SenseVoice Small（中/英/日/韩/粤）
+- 🌍 **多语言翻译** - 通过本地 Ollama 大模型进行文本翻译
+- ⚡ **智能处理** - 自动音频提取、分段识别与进度回调
 - 🎨 **现代界面** - React 19 + TailwindCSS，支持暗黑模式
-- 📁 **多格式输出** - SRT、VTT、TXT 字幕格式
-- 🔄 **断点续传** - 任务管理，支持暂停/恢复
-- 🛠️ **模块化设计** - 可扩展的插件架构
+- 📁 **多格式输出** - SRT、VTT、TXT 字幕；可选硬字幕烧录
+- 🔄 **任务管理** - 支持任务进度跟踪、暂停/恢复与日志查看
+- 🛠️ **系统依赖自检** - 启动时检测 FFmpeg / Ollama / ASR 模型，缺失 SenseVoice 时自动下载
 
 ## 🖼️ 界面预览
 
 ### 主界面
 
 - **上传视频**: 拖拽或选择视频文件
-- **任务列表**: 实时查看处理进度
-- **设置页面**: 配置模型和参数
+- **任务列表**: 实时查看处理进度与任务日志
+- **设置页面**: 配置 ASR 引擎、Ollama 模型、语言与硬字幕选项
 
 ### 工作流程
 
-1. 📹 **视频上传** → 2. 🎵 **音频提取** → 3. 🗣️ **语音识别** → 4. 🌐 **文本翻译** → 5. 📝 **字幕生成**
+1. 📹 **视频上传** → 2. 🎵 **音频提取** → 3. 🗣️ **语音识别 (ASR)** → 4. 🌐 **文本翻译** → 5. 📝 **字幕生成**（可选硬字幕烧录）
 
 ## 🚀 快速开始
 
@@ -35,7 +35,7 @@
 
 - Node.js 18.0+
 - 8GB+ 内存
-- 10GB+ 硬盘空间
+- 10GB+ 硬盘空间（含模型）
 
 ### 安装依赖
 
@@ -46,12 +46,39 @@ cd video-translate
 
 # 安装 Node.js 依赖
 pnpm install
+```
 
-# 安装系统依赖 (macOS)
-brew install ffmpeg ollama
+### 安装系统工具
 
-# 安装 Whisper
-pip install openai-whisper
+#### FFmpeg
+
+```bash
+# macOS
+brew install ffmpeg
+# 若需要烧录硬字幕（libass / subtitles 滤镜），推荐：
+brew install ffmpeg-full
+
+# Ubuntu / Debian
+sudo apt update
+sudo apt install ffmpeg libass9
+
+# Windows
+# 从 https://ffmpeg.org/download.html 下载完整构建，并加入 PATH
+```
+
+> **说明**
+>
+> - 应用会解析系统 PATH 中的 `ffmpeg` / `ffprobe`。
+> - 在 macOS 上，图形界面启动时 PATH 可能不包含 Homebrew；应用会额外查找 `ffmpeg-full` / `ffmpeg` 的 keg 路径。
+> - 硬字幕烧录依赖 FFmpeg 的 `subtitles` 滤镜（libass）。精简版 FFmpeg 可能不可用，此时请安装完整构建。
+
+#### Ollama
+
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Windows：https://ollama.ai/download/windows
 ```
 
 ### 启动应用
@@ -60,35 +87,58 @@ pip install openai-whisper
 # 开发模式
 pnpm dev
 
+# 预览已构建应用
+pnpm start
+
 # 生产构建
 pnpm build
 ```
 
-### 下载模型
+### 模型准备
+
+#### ASR（语音识别）
+
+默认引擎为 **SenseVoice Small**，应用在依赖检查 / 启动 / 首次任务时会**自动下载并解压**到 `models/asr/`，无需手动安装 Whisper 或 Python。
+
+可选引擎：
+
+| 引擎 | 说明 | 获取方式 |
+|------|------|----------|
+| `sensevoice`（默认） | 中/英/日/韩/粤，速度快，适合 CJK 字幕 | 自动下载 |
+| `funasr-nano` | 方言 / 远场 / 嘈杂场景更强，模型更大（约 950MB） | 手动下载，见 `models/asr/README.md` |
+
+也可通过环境变量指定模型目录：
 
 ```bash
-# Ollama 翻译模型
-ollama pull qwen3:4b-instruct
+export VIDEO_TRANSLATE_ASR_MODELS=/path/to/models/asr
+```
 
-# Whisper 会在首次使用时自动下载
+#### Ollama 翻译模型
+
+```bash
+# 默认模型（与应用设置一致）
+ollama pull kaelri/hy-mt2:1.8b
+
+# 也可使用其他兼容模型，例如：
+# ollama pull qwen3:4b-instruct
 ```
 
 ## 🏗️ 技术架构
 
 ### 前端 (Renderer Process)
 
-- **React 19** - 最新的 React 框架
+- **React 19** - UI 框架
 - **TypeScript 5** - 类型安全
-- **TailwindCSS 4** - 现代化样式
-- **shadcn/ui** - 高质量组件库
+- **TailwindCSS 4** - 样式
+- **Radix UI / shadcn 风格组件** - 交互组件
 
 ### 后端 (Main Process)
 
 - **Electron 37** - 跨平台桌面应用
-- **SQLite** - 本地数据存储
-- **FFmpeg** - 音视频处理
-- **Whisper** - AI 语音识别
-- **Ollama** - 本地大语言模型
+- **SQLite (better-sqlite3)** - 本地任务与日志存储
+- **FFmpeg** - 音频提取、分段、可选硬字幕烧录
+- **sherpa-onnx-node** - 本地 ASR（SenseVoice / Fun-ASR-Nano）
+- **Ollama** - 本地大语言模型翻译
 
 ### 核心服务
 
@@ -99,16 +149,27 @@ ollama pull qwen3:4b-instruct
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          ↓                       ↓                       ↓
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ FFmpeg Service  │    │ Whisper Service │    │ Ollama Service  │
+│ FFmpeg Service  │    │  ASR (sherpa)   │    │ Ollama Service  │
 │   音视频处理    │    │   语音识别      │    │   文本翻译      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
+### 翻译流水线
+
+1. **文件上传** → 创建任务与视频元数据  
+2. **音频提取** → FFmpeg 提取音轨  
+3. **语音识别** → sherpa-onnx 转录（SenseVoice / Fun-ASR-Nano）  
+4. **文本翻译** → Ollama 批量翻译  
+5. **字幕生成** → 输出 SRT / VTT / TXT  
+6. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）  
+7. **清理** → 删除临时文件并完成任务  
+
 ## 📚 详细文档
 
-- [安装指南](docs/installation.md) - 完整的安装和配置说明
-- [开发计划](docs/development_plan.md) - 技术方案和架构设计
-- [API 文档](docs/api.md) - 内部 API 接口说明
+- [安装指南](docs/installation.md) - 安装与使用说明（部分内容可能仍待同步）
+- [开发计划](docs/development_plan.md) - 技术方案与架构设计
+- [任务日志功能](docs/task-logs-feature.md) - 任务日志相关说明
+- [ASR 模型说明](models/asr/README.md) - SenseVoice / Fun-ASR-Nano 目录与下载
 
 ## 🛠️ 开发
 
@@ -116,33 +177,46 @@ ollama pull qwen3:4b-instruct
 
 ```
 src/
-├── main/                 # 主进程
-│   ├── services/        # 核心服务
-│   │   ├── ollama/      # Ollama 翻译
-│   │   ├── whisper/     # Whisper 识别
-│   │   ├── ffmpeg/      # 音视频处理
-│   │   └── database/    # 数据库管理
-│   └── utils/           # 工具函数
-├── renderer/            # 渲染进程
-│   ├── components/      # React 组件
-│   └── screens/         # 页面组件
-├── preload/             # 预加载脚本
-└── shared/              # 共享类型
+├── main/                    # 主进程
+│   ├── services/
+│   │   ├── asr/             # sherpa-onnx ASR（SenseVoice / Fun-ASR-Nano）
+│   │   ├── ollama/          # Ollama 翻译客户端
+│   │   ├── ffmpeg/          # 音视频处理
+│   │   ├── whisper/         # 历史 Whisper 实现（兼容保留）
+│   │   ├── database/        # SQLite 数据管理
+│   │   └── task-manager.ts  # 任务流水线协调
+│   └── utils/               # 系统检查、字幕生成、命令路径解析等
+├── renderer/                # 渲染进程（React UI）
+│   ├── components/
+│   └── screens/
+├── preload/                 # 预加载脚本（IPC 桥接）
+└── shared/                  # 共享类型与常量
+models/
+└── asr/                     # 本地 ASR 模型目录
 ```
 
 ### 开发命令
 
 ```bash
-# 启动开发服务器
+# 启动开发服务器（热重载）
 pnpm dev
 
-# 类型检查
+# 预览构建结果
+pnpm start
+
+# 代码检查 / 自动修复
 pnpm lint
+pnpm lint:fix
 
-# 构建应用
+# 系统依赖检测相关测试
+pnpm test:system-check
+
+# 完整构建 / 仅编译 / 发布
 pnpm build
+pnpm compile:app
+pnpm make:release
 
-# 重建原生依赖
+# 重建原生依赖（better-sqlite3、sherpa-onnx-node 等）
 pnpm rebuild:native
 ```
 
@@ -151,15 +225,37 @@ pnpm rebuild:native
 - 📺 **视频字幕制作** - 为视频添加多语言字幕
 - 🎓 **教育培训** - 课程视频本地化
 - 📰 **新闻媒体** - 新闻视频快速翻译
-- 🎬 **内容创作** - YouTube、B 站视频字幕
+- 🎬 **内容创作** - YouTube、B 站等视频字幕
 - 🏢 **企业培训** - 内部培训材料翻译
 
 ## 🔒 隐私安全
 
-- ✅ **完全离线** - 所有处理在本地完成
-- ✅ **数据加密** - SQLite 数据库加密存储
-- ✅ **沙盒隔离** - Electron 安全沙盒
-- ✅ **无网络传输** - 视频文件不上传到云端
+- ✅ **离线优先** - 识别与翻译均在本地完成
+- ✅ **本地存储** - 任务与日志保存在 SQLite
+- ✅ **沙盒隔离** - 遵循 Electron 安全实践
+- ✅ **无云端上传** - 视频文件不上传到第三方云服务（除本地 Ollama / 首次下载 ASR 模型外）
+
+## ⚠️ 常见问题
+
+### macOS 上提示找不到 FFmpeg
+
+从 Finder / 启动台打开的 Electron 应用不会加载 shell 的 PATH。应用会尝试解析 Homebrew 中的 `ffmpeg` / `ffmpeg-full`。若仍失败，请确认已安装 FFmpeg，或在终端中用 `pnpm dev` 启动。
+
+### 硬字幕烧录失败
+
+错误信息中若出现缺少 `subtitles` 滤镜 / libass：
+
+- macOS: `brew install ffmpeg-full`
+- Ubuntu/Debian: 安装带 libass 的完整 FFmpeg（如 `ffmpeg` + `libass9`）
+- Windows: 使用官方完整构建
+
+### ASR 模型未就绪
+
+默认会自动下载 SenseVoice。若失败：
+
+1. 检查网络后重新打开应用或点击「重新检查」
+2. 手动按 `models/asr/README.md` 放置模型
+3. 确认 `pnpm install` 已正确安装 `sherpa-onnx-node`
 
 ## 🤝 贡献
 
@@ -177,7 +273,8 @@ pnpm rebuild:native
 
 ## 🙏 致谢
 
-- [Whisper](https://github.com/openai/whisper) - OpenAI 语音识别模型
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - 本地语音识别运行时
+- [SenseVoice / FunASR](https://github.com/modelscope/FunASR) - ASR 模型
 - [Ollama](https://ollama.ai) - 本地大语言模型运行时
 - [FFmpeg](https://ffmpeg.org) - 音视频处理工具
 - [Electron](https://electronjs.org) - 跨平台桌面应用框架

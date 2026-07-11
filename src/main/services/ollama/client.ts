@@ -294,6 +294,14 @@ export class OllamaClient {
       }
 
       const data = (await response.json()) as OllamaGenerateResponse;
+      console.log(
+        "🚀 ~ OllamaClient ~ generate ~ response body:",
+        JSON.stringify(data, null, 2)
+      );
+      console.log(
+        "🚀 ~ OllamaClient ~ generate ~ response text:",
+        data.response
+      );
       return data.response;
     } catch (error) {
       console.error("Error generating text:", error);
@@ -401,10 +409,47 @@ export class OllamaClient {
 
 function cleanTranslation(raw: string, original: string): string {
   let text = (raw || "").trim();
-  // 去掉常见包裹
+  if (!text) return original;
+
+  // 去掉常见引号包裹
   text = text.replace(/^["「『]|["」』]$/g, "").trim();
-  // 去掉「译文：」前缀
+
+  // 优先提取「译文：」之后的内容（模型有时回显整段提示词）
+  const translationMatch = text.match(
+    /(?:^|\n)\s*(?:译文|翻译|Translation)\s*[:：]\s*([\s\S]+)$/i
+  );
+  if (translationMatch?.[1]) {
+    text = translationMatch[1].trim();
+  } else if (
+    /源语言\s*[:：]/.test(text) ||
+    /目标语言\s*[:：]/.test(text) ||
+    /原文\s*[:：]/.test(text)
+  ) {
+    // 模型把提示模板整段回显，且把译文写在「原文：」字段里
+    const originalField = text.match(
+      /原文\s*[:：]\s*([\s\S]+?)(?=\n\s*(?:译文|翻译|Translation)\s*[:：]|$)/i
+    );
+    if (originalField?.[1]?.trim()) {
+      text = originalField[1].trim();
+    } else {
+      // 去掉元信息行，只保留可能有用的正文
+      text = text
+        .split("\n")
+        .filter(
+          (line) =>
+            !/^\s*(源语言|目标语言|原文|译文|翻译|Translation)\s*[:：]/.test(
+              line
+            )
+        )
+        .join("\n")
+        .trim();
+    }
+  }
+
+  // 再清一次残留前缀
   text = text.replace(/^(译文|翻译|Translation)\s*[:：]\s*/i, "").trim();
+  text = text.replace(/^["「『]|["」』]$/g, "").trim();
+
   if (!text) return original;
   return text;
 }

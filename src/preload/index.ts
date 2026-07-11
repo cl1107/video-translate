@@ -6,6 +6,10 @@ declare global {
     App: {
       // 文件操作
       openFileDialog: () => Promise<string[]>;
+      openTaskArtifact: (
+        taskId: string,
+        kind: "video" | "subtitle" | "result"
+      ) => Promise<{ success: boolean; error?: string }>;
       uploadFiles: (
         filePaths: string[],
         settings: {
@@ -81,6 +85,10 @@ declare global {
 const api = {
   // 文件操作
   openFileDialog: () => ipcRenderer.invoke("open-file-dialog"),
+  openTaskArtifact: (
+    taskId: string,
+    kind: "video" | "subtitle" | "result"
+  ) => ipcRenderer.invoke("open-task-artifact", taskId, kind),
   uploadFiles: (
     filePaths: string[],
     settings: {

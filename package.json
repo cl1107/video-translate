@@ -29,7 +29,9 @@
     "release": "electron-builder --publish always",
     "clean:dev": "rimraf ./node_modules/.dev",
     "lint": "biome lint --no-errors-on-unmatched",
-    "lint:fix": "biome lint --write --no-errors-on-unmatched"
+    "lint:fix": "biome lint --write --no-errors-on-unmatched",
+    "test": "tsx --test src/main/utils/system-check.test.ts src/main/services/ffmpeg/processor.test.ts",
+    "test:system-check": "tsx --test src/main/utils/system-check.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",

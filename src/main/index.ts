@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain } from "electron";
+import { app, dialog, ipcMain, shell } from "electron";
 import type { AsrEngineId } from "../shared/constants";
 import { normalizeOllamaModel } from "../shared/settings";
 import { ollamaClient } from "./services/ollama/client";
@@ -177,6 +177,34 @@ function setupIpcHandlers() {
 
     return result.filePaths;
   });
+
+  ipcMain.handle(
+    "open-task-artifact",
+    async (
+      _event,
+      taskId: string,
+      kind: "video" | "subtitle" | "result"
+    ) => {
+    const task = taskManager.getTask(taskId);
+    if (!task) {
+      return { success: false, error: "任务不存在" };
+    }
+
+    const artifacts = task.outputArtifacts;
+    const artifactPath =
+      kind === "video"
+        ? artifacts?.burnedVideo
+        : kind === "subtitle"
+          ? artifacts?.translatedSubtitle
+          : artifacts?.outputDirectory;
+    if (!artifactPath) {
+      return { success: false, error: "任务产物不存在" };
+    }
+
+    const error = await shell.openPath(artifactPath);
+    return error ? { success: false, error } : { success: true };
+    }
+  );
 
   // 获取统计信息
   ipcMain.handle("get-statistics", () => {

@@ -1,10 +1,12 @@
 import {
   Calendar,
+  Captions,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
   FileVideo,
+  FolderOpen,
   Pause,
   Play,
   RotateCcw,
@@ -109,6 +111,7 @@ const formatDate = (date: string): string => {
 
 export function TaskList({ tasks, onTasksChange }: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>();
 
   const handleTaskAction = useCallback(
     async (action: string, taskId: string) => {
@@ -128,6 +131,22 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
           case "retry":
             await App.retryTask(taskId);
             break;
+          case "view-video":
+          case "view-subtitle":
+          case "view-output": {
+            const kind =
+              action === "view-video"
+                ? "video"
+                : action === "view-subtitle"
+                  ? "subtitle"
+                  : "result";
+            const result = await App.openTaskArtifact(taskId, kind);
+            if (!result.success) {
+              throw new Error(result.error);
+            }
+            setOpenOutputMenuTaskId(undefined);
+            break;
+          }
           default:
             console.warn("未知的任务操作:", action);
         }
@@ -176,7 +195,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
       {tasks.map((task) => {
         const isExpanded = expandedTasks.has(task.id);
         return (
-          <Card key={task.id} className="overflow-hidden">
+          <Card key={task.id}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -300,14 +319,83 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                   )}
                 </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleTaskAction("delete", task.id)}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  删除
-                </Button>
+                <div className="flex items-center gap-2">
+                  {task.status === TaskStatus.COMPLETED && (
+                    <div className="relative flex">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-r-none border-r-0"
+                        onClick={() =>
+                          handleTaskAction(
+                            task.outputArtifacts?.burnedVideo
+                              ? "view-video"
+                              : "view-subtitle",
+                            task.id
+                          )
+                        }
+                      >
+                        {task.outputArtifacts?.burnedVideo ? (
+                          <FileVideo className="h-4 w-4 mr-1" />
+                        ) : (
+                          <Captions className="h-4 w-4 mr-1" />
+                        )}
+                        {task.outputArtifacts?.burnedVideo
+                          ? "查看视频"
+                          : "查看字幕"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-l-none px-2"
+                        aria-label="展开查看选项"
+                        onClick={() =>
+                          setOpenOutputMenuTaskId((current) =>
+                            current === task.id ? undefined : task.id
+                          )
+                        }
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                      {openOutputMenuTaskId === task.id && (
+                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-36 rounded-md border bg-background p-1 shadow-lg">
+                          {task.outputArtifacts?.burnedVideo && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() =>
+                                handleTaskAction("view-subtitle", task.id)
+                              }
+                            >
+                              <Captions className="h-4 w-4 mr-2" />
+                              查看字幕
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() =>
+                              handleTaskAction("view-output", task.id)
+                            }
+                          >
+                            <FolderOpen className="h-4 w-4 mr-2" />
+                            查看结果
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleTaskAction("delete", task.id)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    删除
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

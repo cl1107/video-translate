@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveCommandPath } from "../../utils/command-path";
 
 /**
  * 视频文件信息接口
@@ -37,6 +38,14 @@ export interface AudioSegment {
   duration: number;
 }
 
+export function calculateTranslatedSubtitleMargin(videoHeight: number): number {
+  if (!Number.isFinite(videoHeight) || videoHeight <= 0) {
+    throw new Error(`无效的视频高度: ${videoHeight}`);
+  }
+
+  return Math.min(96, Math.max(28, Math.round(videoHeight * 0.04)));
+}
+
 export class FFmpegProcessor {
   private ffmpegPath: string;
   private ffprobePath: string;
@@ -47,7 +56,10 @@ export class FFmpegProcessor {
  * @param ffmpegPath - FFmpeg可执行文件路径（默认：ffmpeg）
  * @param ffprobePath - FFprobe可执行文件路径（默认：ffprobe）
  */
-  constructor(ffmpegPath = "ffmpeg", ffprobePath = "ffprobe") {
+  constructor(
+    ffmpegPath = resolveCommandPath("ffmpeg"),
+    ffprobePath = resolveCommandPath("ffprobe")
+  ) {
     this.ffmpegPath = ffmpegPath;
     this.ffprobePath = ffprobePath;
     this.tempDir = path.join(os.tmpdir(), "video-translate");
@@ -380,12 +392,15 @@ export class FFmpegProcessor {
     silenceThreshold = -40 // 静音阈值（dB）
   ): Promise<AudioSegment[]> {
     const segments: AudioSegment[] = [];
+    const maxLen = Math.max(1, maxSegmentLength);
 
-    // 首先检测静音区间
-    const silenceIntervals = await this.detectSilence(
-      audioPath,
-      silenceThreshold
-    );
+    // 首先检测静音区间（失败时回退为空，走固定时长切分）
+    let silenceIntervals: Array<{ start: number; end: number }> = [];
+    try {
+      silenceIntervals = await this.detectSilence(audioPath, silenceThreshold);
+    } catch (error) {
+      console.warn("Silence detection failed, falling back to fixed-length split:", error);
+    }
 
     // 根据静音区间和最大长度切分
     let currentStart = 0;
@@ -394,29 +409,17 @@ export class FFmpegProcessor {
     for (const silence of silenceIntervals) {
       const segmentDuration = silence.start - currentStart;
 
-      if (segmentDuration >= maxSegmentLength) {
-        // 如果段落太长，强制在最大长度处切分
-        let segmentStart = currentStart;
-        while (segmentStart < silence.start) {
-          const segmentEnd = Math.min(
-            segmentStart + maxSegmentLength,
-            silence.start
-          );
-          const segmentPath = await this.extractAudioSegment(
-            audioPath,
-            segmentStart,
-            segmentEnd,
-            segmentIndex++
-          );
-
-          segments.push({
-            path: segmentPath,
-            startTime: segmentStart,
-            duration: segmentEnd - segmentStart,
-          });
-
-          segmentStart = segmentEnd;
-        }
+      if (segmentDuration >= maxLen) {
+        // 段落过长：强制按 maxLen 切分
+        const { segments: parts, nextIndex } = await this.createFixedLengthSegments(
+          audioPath,
+          currentStart,
+          silence.start,
+          maxLen,
+          segmentIndex
+        );
+        segments.push(...parts);
+        segmentIndex = nextIndex;
       } else if (segmentDuration > 0.5) {
         // 忽略过短的段落
         const segmentPath = await this.extractAudioSegment(
@@ -436,41 +439,80 @@ export class FFmpegProcessor {
       currentStart = silence.end;
     }
 
-    // 处理最后一个静音区间到音频末尾的剩余部分
+    // 处理最后一个静音区间到音频末尾的剩余部分（必须强制按时长切分）
     const audioDuration = await this.getMediaDuration(audioPath);
-    if (currentStart < audioDuration && (audioDuration - currentStart) > 0.5) {
-      console.log(`Creating final segment from ${currentStart}s to end (${audioDuration}s)`);
-      const segmentPath = await this.extractAudioSegment(
+    if (currentStart < audioDuration && audioDuration - currentStart > 0.5) {
+      console.log(
+        `Creating final segment(s) from ${currentStart}s to end (${audioDuration}s), maxLen=${maxLen}s`
+      );
+      const { segments: parts, nextIndex } = await this.createFixedLengthSegments(
         audioPath,
         currentStart,
-        -1,
-        segmentIndex++
+        audioDuration,
+        maxLen,
+        segmentIndex
       );
-      segments.push({
-        path: segmentPath,
-        startTime: currentStart,
-        duration: audioDuration - currentStart,
-      });
+      segments.push(...parts);
+      segmentIndex = nextIndex;
     }
 
-    // 如果没有静音区间或者还有剩余音频，将整个音频作为一个段落
+    // 若仍无段落（例如静音覆盖整段），按固定时长切整轨
     if (segments.length === 0) {
-      console.log("No silence detected or no segments created, creating single segment for entire audio");
-      const segmentPath = await this.extractAudioSegment(
+      console.log(
+        `No silence-based segments, creating fixed-length segments for entire audio (${audioDuration}s)`
+      );
+      const { segments: parts } = await this.createFixedLengthSegments(
         audioPath,
         0,
-        -1, // -1 表示到文件末尾
-        segmentIndex++
+        audioDuration,
+        maxLen,
+        segmentIndex
       );
-      segments.push({
-        path: segmentPath,
-        startTime: 0,
-        duration: await this.getMediaDuration(audioPath),
-      });
+      segments.push(...parts);
     }
 
     console.log(`Audio segmentation complete: ${segments.length} segments created`);
     return segments;
+  }
+
+  /**
+   * 将 [start, end) 按固定最大时长切成多个音频段。
+   * 避免超长音频一次性送入 ASR 导致进程 OOM/原生崩溃。
+   */
+  private async createFixedLengthSegments(
+    audioPath: string,
+    start: number,
+    end: number,
+    maxSegmentLength: number,
+    startIndex: number
+  ): Promise<{ segments: AudioSegment[]; nextIndex: number }> {
+    const segments: AudioSegment[] = [];
+    let segmentStart = start;
+    let index = startIndex;
+    const maxLen = Math.max(1, maxSegmentLength);
+
+    while (segmentStart < end - 0.05) {
+      const segmentEnd = Math.min(segmentStart + maxLen, end);
+      const duration = segmentEnd - segmentStart;
+      if (duration < 0.1) break;
+
+      const segmentPath = await this.extractAudioSegment(
+        audioPath,
+        segmentStart,
+        segmentEnd,
+        index++
+      );
+
+      segments.push({
+        path: segmentPath,
+        startTime: segmentStart,
+        duration,
+      });
+
+      segmentStart = segmentEnd;
+    }
+
+    return { segments, nextIndex: index };
   }
 
 /**
@@ -609,19 +651,142 @@ export class FFmpegProcessor {
     outputPath: string,
     onProgress?: (progress: number) => void
   ): Promise<string> {
+    // Homebrew 精简版 ffmpeg 不含 libass，subtitles 滤镜不可用；优先找带 libass 的 ffmpeg
+    const ffmpegBin = await this.resolveFfmpegWithSubtitlesFilter();
+    if (!ffmpegBin) {
+      throw new Error(
+        "硬字幕烧录失败：当前 FFmpeg 未启用 libass（缺少 subtitles 滤镜）。\n" +
+          "安装方法：\n" +
+          "- macOS: brew install ffmpeg-full\n" +
+          "  （安装后确保 PATH 中优先使用含 libass 的 ffmpeg，或使用 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）\n" +
+          "- Ubuntu/Debian: sudo apt install ffmpeg libass9\n" +
+          "- 也可安装官方完整构建：https://ffmpeg.org/download.html"
+      );
+    }
+
+    // 中文路径等非 ASCII 路径容易触发 filtergraph 解析错误，复制到临时 ASCII 路径
+    const tempSubtitlePath = path.join(
+      this.tempDir,
+      `burn_sub_${Date.now()}.srt`
+    );
+    await this.ensureTempDir();
+    await fs.copyFile(subtitlePath, tempSubtitlePath);
+
+    try {
+      const videoInfo = await this.getVideoInfo(videoPath);
+      const subtitleMargin = calculateTranslatedSubtitleMargin(
+        videoInfo.height
+      );
+      return await this.runBurnSubtitles(
+        ffmpegBin,
+        videoPath,
+        tempSubtitlePath,
+        outputPath,
+        subtitleMargin,
+        onProgress
+      );
+    } finally {
+      await fs.unlink(tempSubtitlePath).catch(() => {});
+    }
+  }
+
+  /**
+   * 转义路径供 FFmpeg filtergraph 使用
+   */
+  private escapeFilterPath(filePath: string): string {
+    // 统一为正斜杠后，转义 filtergraph 特殊字符 : '
+    return path
+      .resolve(filePath)
+      .replace(/\\/g, "/")
+      .replace(/:/g, "\\:")
+      .replace(/'/g, "\\'");
+  }
+
+  /**
+   * 检测指定 ffmpeg 是否支持 subtitles 滤镜（依赖 libass）
+   */
+  private async binarySupportsSubtitlesFilter(
+    ffmpegBin: string
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(value);
+      };
+
+      const proc = spawn(ffmpegBin, ["-hide_banner", "-filters"]);
+      let output = "";
+
+      proc.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+      proc.stderr.on("data", (data) => {
+        output += data.toString();
+      });
+      proc.on("error", () => finish(false));
+      proc.on("close", () => {
+        // 匹配 filters 列表中的 subtitles 滤镜行
+        finish(/(?:^|\n)\s*[T.]{2}\s+subtitles\s+/m.test(output));
+      });
+
+      const timeout = setTimeout(() => {
+        proc.kill();
+        finish(false);
+      }, 8000);
+    });
+  }
+
+  /**
+   * 解析可用的、支持硬字幕烧录的 ffmpeg 路径
+   */
+  private async resolveFfmpegWithSubtitlesFilter(): Promise<string | null> {
+    const candidates = [
+      this.ffmpegPath,
+      "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg",
+      "/usr/local/opt/ffmpeg-full/bin/ffmpeg",
+    ];
+
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      if (await this.binarySupportsSubtitlesFilter(candidate)) {
+        if (candidate !== this.ffmpegPath) {
+          console.log(
+            `使用支持 libass 的 FFmpeg 进行硬字幕烧录: ${candidate}`
+          );
+        }
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private runBurnSubtitles(
+    ffmpegBin: string,
+    videoPath: string,
+    subtitlePath: string,
+    outputPath: string,
+    subtitleMargin: number,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
+      const escapedSub = this.escapeFilterPath(subtitlePath);
       const args = [
         "-i",
         videoPath,
         "-vf",
-        `subtitles=${subtitlePath}`,
+        `subtitles='${escapedSub}':force_style='Alignment=2,MarginV=${subtitleMargin}'`,
         "-c:a",
         "copy",
         "-y",
         outputPath,
       ];
 
-      const process = spawn(this.ffmpegPath, args);
+      const process = spawn(ffmpegBin, args);
       let error = "";
 
       process.stderr.on("data", (data) => {
@@ -643,9 +808,18 @@ export class FFmpegProcessor {
         }
       });
 
+      process.on("error", (err) => {
+        reject(new Error(`Subtitle burning failed: ${err.message}`));
+      });
+
       process.on("close", (code) => {
         if (code !== 0) {
-          reject(new Error(`Subtitle burning failed: ${error}`));
+          const hint =
+            /Unknown filter ['"]?subtitles/i.test(error) ||
+            /No such filter/i.test(error)
+              ? "\n提示：当前 FFmpeg 缺少 libass。macOS 可执行: brew install ffmpeg-full"
+              : "";
+          reject(new Error(`Subtitle burning failed: ${error}${hint}`));
           return;
         }
 
