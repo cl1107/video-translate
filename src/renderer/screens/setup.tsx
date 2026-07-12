@@ -39,7 +39,7 @@ export function SetupScreen({ onSetupComplete }: SetupScreenProps) {
                   </div>
                   <h3 className="font-semibold">语音识别</h3>
                   <p className="text-sm text-gray-600">
-                    使用 Whisper 模型进行高精度转录
+                    使用 sherpa-onnx 和 SenseVoice 在本地进行语音识别
                   </p>
                 </div>
                 <div className="space-y-2">

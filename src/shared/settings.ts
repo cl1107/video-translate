@@ -20,8 +20,6 @@ export interface AppSettings {
   targetLanguage: string;
   outputFormat: "srt" | "vtt" | "txt";
   burnSubtitles: boolean;
-  /** @deprecated */
-  whisperModel?: string;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -50,16 +48,13 @@ export function normalizeAsrEngine(value?: string | null): AsrEngineId {
  * 合并并清洗 localStorage / 上传用的设置，保证有合法默认值。
  */
 export function normalizeAppSettings(
-  raw?: Partial<AppSettings> & { whisperModel?: string } | null
+  raw?: Partial<AppSettings> | null
 ): AppSettings {
   if (!raw || typeof raw !== "object") {
     return { ...DEFAULT_APP_SETTINGS };
   }
 
-  const asrEngine = normalizeAsrEngine(
-    raw.asrEngine ||
-      (raw.whisperModel === "funasr-nano" ? "funasr-nano" : undefined)
-  );
+  const asrEngine = normalizeAsrEngine(raw.asrEngine);
 
   return {
     asrEngine,

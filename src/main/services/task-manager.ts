@@ -34,15 +34,12 @@ export interface CreateTaskOptions {
   targetLanguage: string
   ollamaModel?: string
   asrEngine?: AsrEngineId
-  /** @deprecated 兼容旧字段 */
-  whisperModel?: string
   burnSubtitles?: boolean
 }
 
 interface ProcessTaskOptions {
   ollamaModel?: string
   asrEngine?: AsrEngineId
-  whisperModel?: string
   burnSubtitles?: boolean
 }
 
@@ -195,7 +192,6 @@ export class TaskManager {
       this.runtimeOptions.set(taskId, {
         ollamaModel: options.ollamaModel,
         asrEngine: options.asrEngine,
-        whisperModel: options.whisperModel,
         burnSubtitles: options.burnSubtitles,
       })
 
@@ -267,10 +263,7 @@ export class TaskManager {
         context.workDir
       )
 
-      const asrEngine =
-        runtime.asrEngine ??
-        (runtime.whisperModel as AsrEngineId | undefined) ??
-        DEFAULT_ASR_ENGINE
+      const asrEngine = runtime.asrEngine ?? DEFAULT_ASR_ENGINE
 
       context.transcription = await this.runTranscription(
         taskId,

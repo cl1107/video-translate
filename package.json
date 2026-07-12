@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --no-errors-on-unmatched",
     "lint:fix": "biome lint --write --no-errors-on-unmatched",
-    "test": "tsx --test src/main/utils/system-check.test.ts src/main/services/ffmpeg/processor.test.ts",
+    "test": "tsx --test src/main/utils/system-check.test.ts src/main/services/ffmpeg/processor.test.ts src/main/services/legacy-asr-removal.test.ts",
     "test:system-check": "tsx --test src/main/utils/system-check.test.ts"
   },
   "dependencies": {
@@ -53,8 +53,7 @@
     "sherpa-onnx-node": "1.13.4",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "^14.0.1",
-    "whisper-node": "^1.1.1"
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",

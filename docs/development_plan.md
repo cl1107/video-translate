@@ -16,12 +16,12 @@
 | 桌面应用壳     | Electron 37.2.3         | 使用 Node 主进程 + Chromium 渲染进程；支持 auto-update。 |
 | UI 框架        | React + unocss +antd v5 | 快速构建现代化界面，支持暗黑模式。                       |
 | 本地大模型管理 | **Ollama**              | 统一拉取 / 管理 LLM，提供 REST & CLI 两种调用方式。      |
-| 语音识别       | Whisper (large-v3)      | 可通过 GGML / Whisper.cpp 加速，CPU/GPU 皆可。           |
+| 语音识别       | sherpa-onnx             | 支持 SenseVoice / Fun-ASR-Nano 本地推理。              |
 | 翻译模型       | seed-x-instruct 等      | 依据效果与运行资源动态切换。                             |
 | 媒体处理       | ffmpeg                  | 提取音轨、合成字幕、烧录硬字幕。                         |
 | 数据存储       | SQLite (better-sqlite3) | 记录任务、缓存中间结果、断点续传。                       |
 
-> ⚙️ 建议在 `package.json` 中为 Heavy 依赖（`ffmpeg-static`, `whisper.cpp` bindings 等）使用可选安装，减小安装包大小。
+> ⚙️ ASR 模型与应用包分开管理，默认模型按需下载，减小安装包体积。
 
 ---
 
@@ -41,7 +41,7 @@
            │ gRPC / REST
 ┌──────────────────────┐
 │  Local AI Services   │  (可独立进程)
-│  • Whisper Service   │  (Rust/C++)
+│  • sherpa-onnx ASR  │  (Node.js)
 │  • Translation LLM   │  (Ollama)
 └──────────────────────┘
            │
@@ -54,7 +54,7 @@
 
 1. 选择视频 → `ffmpeg` 提取音轨 (wav)。
 2. 音轨根据静音区间切片（≤30s），存储到临时目录。
-3. Whisper Service 并行识别片段 → 得到 **`segments.json`** (起止时间 + 原文)。
+3. sherpa-onnx 识别音频 → 得到带起止时间的原文段落。
 4. 调用 Ollama 翻译：
    ```bash
    curl localhost:11434/api/generate -d '{"model":"qwen3:4b-instruct","prompt":"<翻译指令>"}'
@@ -83,13 +83,13 @@
 
 1. **环境脚手架**：Electron + React + Tailwind + TS + `electron-builder` 打包。
 2. **音视频处理**：封装 `ffmpeg` Node API，完成音轨提取与静音切片。
-3. **Whisper 服务**：集成 `whisper.cpp` binding，提供 gRPC/REST 服务；基准测试。
+3. **ASR 服务**：集成 `sherpa-onnx-node`，支持 SenseVoice / Fun-ASR-Nano；基准测试。
 4. **Ollama 翻译接口**：封装 REST Client，支持多条流并发、缓存。
 5. **字幕合成器**：实现 SRT 生成、时间轴对齐、文本后处理（Punctuation、Merge）。
 6. **任务管理器**：SQLite schema + 断点续传；前端任务卡片展示。
 7. **UI/UX**：拖拽导入、进度条、错误回滚、设置页（选择模型、显存限制等）。
 8. **性能优化**：管道并行、GPU / CPU 亲和性调优、内存回收。
-9. **打包与分发**：免安装 ffmpeg/whisper 数据、增量更新。
+9. **打包与分发**：检测 FFmpeg，按需下载 ASR 模型，支持增量更新。
 10. **多语言本地化 & 插件系统**：允许社区贡献后处理脚本。
 
 ---
@@ -115,32 +115,7 @@ export async function translate(text: string, targetLang = "zh") {
 }
 ```
 
-```ts
-// src/main/asr/whisper.ts
-import { spawn } from "child_process";
-
-export function transcribeSegment(
-  wavPath: string
-): Promise<{ start: number; end: number; text: string }> {
-  return new Promise((resolve, reject) => {
-    const p = spawn("./bin/whisper", [
-      "-m",
-      "models/ggml-large.bin",
-      "-f",
-      wavPath,
-      "-otxt",
-    ]);
-    let output = "";
-    p.stdout.on("data", (d) => (output += d));
-    p.on("close", (code) => {
-      if (code === 0)
-        parseWhisper(output)
-          ? resolve(parseWhisper(output))
-          : reject(new Error("fail"));
-    });
-  });
-}
-```
+ASR 实现见 `src/main/services/asr/sherpa-transcriber.ts`，模型路径和下载逻辑位于同目录的 `model-paths.ts` 与 `model-downloader.ts`。
 
 ---
 

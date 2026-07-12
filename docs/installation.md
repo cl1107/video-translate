@@ -30,21 +30,11 @@ sudo apt update
 sudo apt install ffmpeg
 ```
 
-### 2. Whisper 语音识别
+### 2. ASR 语音识别
 
-**本项目使用 whisper-node 包，无需单独安装 Whisper！**
+项目使用 `sherpa-onnx-node` 在本地进行语音识别。默认引擎为 SenseVoice Small，应用会在启动或首次处理任务时自动下载模型到 `models/asr/`。
 
-项目已经包含了 `whisper-node` 依赖，它会自动：
-
-- 包含预编译的 whisper.cpp 二进制文件
-- 在需要时自动下载 Whisper 模型
-- 提供 Node.js API 接口
-
-**不需要执行以下操作：**
-
-- ❌ 不需要 `pip install openai-whisper`
-- ❌ 不需要 `brew install whisper-cpp`
-- ❌ 不需要手动编译 whisper.cpp
+可选的 Fun-ASR-Nano 模型需手动准备，详见 [`../models/asr/README.md`](../models/asr/README.md)。
 
 ### 3. 安装 Ollama
 
@@ -66,17 +56,10 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 ## 模型下载
 
-### Whisper 模型
+### ASR 模型
 
-**无需手动下载！** whisper-node 会在首次使用时自动下载所需的模型文件。
-
-支持的模型：
-
-- `tiny` (~39MB) - 最快，准确率较低
-- `base` (~142MB) - 平衡速度和准确率（推荐）
-- `small` (~466MB) - 准确率较好
-- `medium` (~1.5GB) - 高准确率
-- `large-v3` (~2.9GB) - 最高准确率
+- `sensevoice`（默认）：支持中、英、日、韩和粤语，缺失时自动下载。
+- `funasr-nano`：更适合方言、远场和嘈杂场景，需手动下载。
 
 ### Ollama 模型
 
@@ -115,27 +98,19 @@ pnpm dev
 3. **设置配置**
 
    - 在"设置"页面可以配置：
-     - Whisper 模型选择（推荐使用 base 模型）
+     - ASR 引擎选择
      - 源语言和目标语言
      - Ollama 翻译模型
 
 ## 故障排除
 
-### Whisper 相关问题
+### ASR 相关问题
 
-**问题**: 提示"Whisper 不可用"
-**解决**:
+**问题**: 提示 SenseVoice 模型不可用
 
-1. 确认 `whisper-node` 已安装：`npm list whisper-node`
-2. 重新安装依赖：`pnpm install`
-3. 检查 Node.js 版本是否 >= 18.0.0
-
-**问题**: 模型下载失败
-**解决**:
-
-1. 检查网络连接
-2. whisper-node 会自动重试下载
-3. 首次使用某个模型时需要时间下载
+1. 检查网络连接和 `models/asr/` 目录写入权限。
+2. 重启应用，触发默认模型自动准备。
+3. 查看任务日志中的模型下载或解压错误。
 
 ### FFmpeg 相关问题
 
@@ -157,29 +132,21 @@ pnpm dev
 
 ## 技术说明
 
-### whisper-node vs 系统 Whisper
+### ASR 技术说明
 
-本项目使用 `whisper-node` 而不是系统安装的 Whisper：
-
-| 方面 | whisper-node     | 系统 Whisper         |
-| ---- | ---------------- | -------------------- |
-| 安装 | npm 包，自动安装 | 需要 Python/系统安装 |
-| 模型 | 自动下载管理     | 需要手动下载         |
-| 集成 | Node.js API      | 命令行调用           |
-| 性能 | 优化的 C++ 绑定  | Python 实现          |
-| 依赖 | 无外部依赖       | 需要 Python 环境     |
+语音识别通过 `sherpa-onnx-node` 集成，模型在本地运行，无需 Python 环境或独立 ASR 服务。
 
 ### 性能优化建议
 
 1. **模型选择**:
 
-   - 开发测试：使用 `tiny` 或 `base` 模型
-   - 生产环境：使用 `small` 或 `medium` 模型
+   - 常规中英日韩粤字幕：使用 `sensevoice`
+   - 方言、远场或嘈杂场景：使用 `funasr-nano`
 
 2. **硬件要求**:
 
    - CPU: 至少 4 核心
-   - 内存: 8GB+ (large 模型需要 16GB+)
+   - 内存: 8GB+
    - 存储: SSD 推荐
 
 3. **批处理优化**:
@@ -190,6 +157,6 @@ pnpm dev
 
 ### v0.1.0
 
-- 集成 whisper-node 替代系统 Whisper 命令
-- 自动模型下载和管理
+- 集成 sherpa-onnx-node 本地 ASR
+- 支持 SenseVoice 模型自动下载和管理
 - 优化转录性能和错误处理

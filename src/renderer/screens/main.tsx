@@ -149,7 +149,7 @@ export function MainScreen() {
                 </div>
                 <h3 className="font-semibold mb-2">高精度识别</h3>
                 <p className="text-sm text-gray-600">
-                  使用 Whisper 模型进行语音转录
+                  使用 sherpa-onnx 和 SenseVoice 进行本地语音识别
                 </p>
               </div>
               <div className="p-6 bg-white rounded-lg shadow-sm border">

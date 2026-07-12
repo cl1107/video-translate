@@ -4,7 +4,7 @@ import path from 'node:path'
 
 const APP_TEMP_NAME = 'video-translate'
 /** 历史版本使用过的临时目录名（启动/清理时一并处理） */
-const LEGACY_TEMP_NAMES = ['video-translate-asr', 'video-translate-whisper']
+const LEGACY_TEMP_NAMES = ['video-translate-asr']
 
 export interface TempCacheStats {
   path: string

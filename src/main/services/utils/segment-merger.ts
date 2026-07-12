@@ -36,7 +36,7 @@ export enum MergeStrategy {
 
 /**
  * 分句器类
- * 将 Whisper 返回的细粒度字符级别数据合并为更有意义的句子
+ * 将 ASR 返回的细粒度字符级数据合并为更有意义的句子
  */
 export class SegmentMerger {
   private defaultOptions: Required<SegmentMergeOptions> = {

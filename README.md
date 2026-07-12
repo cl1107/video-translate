@@ -8,7 +8,7 @@
 
 ## ✨ 特性
 
-- 🚀 **完全本地化** - 无需联网即可完成识别与翻译，保护隐私
+- 🚀 **本地处理** - 视频、识别结果和翻译内容无需上传到第三方服务
 - 🎯 **高精度识别** - 基于 sherpa-onnx，默认 SenseVoice Small（中/英/日/韩/粤）
 - 🌍 **多语言翻译** - 通过本地 Ollama 大模型进行文本翻译
 - ⚡ **智能处理** - 自动音频提取、分段识别与进度回调
@@ -98,7 +98,7 @@ pnpm build
 
 #### ASR（语音识别）
 
-默认引擎为 **SenseVoice Small**，应用在依赖检查 / 启动 / 首次任务时会**自动下载并解压**到 `models/asr/`，无需手动安装 Whisper 或 Python。
+默认引擎为 **SenseVoice Small**，由 sherpa-onnx 在本地执行语音识别。应用在依赖检查、启动或首次处理任务时，会自动下载并解压模型到 `models/asr/`，无需额外安装 Python 运行环境。
 
 可选引擎：
 
@@ -184,7 +184,6 @@ src/
 │   │   ├── asr/             # sherpa-onnx ASR（SenseVoice / Fun-ASR-Nano）
 │   │   ├── ollama/          # Ollama 翻译客户端
 │   │   ├── ffmpeg/          # 音视频处理
-│   │   ├── whisper/         # 历史 Whisper 实现（兼容保留）
 │   │   ├── database/        # SQLite 数据管理
 │   │   └── task-manager.ts  # 任务流水线协调
 │   └── utils/               # 系统检查、字幕生成、命令路径解析等

@@ -77,8 +77,6 @@ export type AsrEngine = "sensevoice" | "funasr-nano";
 
 export interface TranslationSettings {
   ollamaModel: string;
-  /** @deprecated 使用 asrEngine */
-  whisperModel?: string;
   asrEngine: AsrEngine;
   sourceLanguage: string;
   targetLanguage: string;

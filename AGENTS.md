@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它提供离线视频翻译功能，使用 Whisper 进行语音识别，使用 Ollama 进行 LLM 驱动的翻译。该应用支持从视频中提取音频、转录语音、翻译文本以及生成多种格式的字幕文件。
+这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，使用 Ollama 进行 LLM 驱动的翻译。该应用支持从视频中提取音频、转录语音、翻译文本以及生成多种格式的字幕文件。
 
 ## 关键开发命令
 
@@ -42,7 +42,7 @@ pnpm rebuild:native       # 重建原生依赖
 #### TaskManager (`src/main/services/task-manager.ts`)
 管理整个视频翻译流水线的中央协调器：
 - 创建和跟踪翻译任务
-- 协调 FFmpeg、Whisper 和 Ollama 服务
+- 协调 FFmpeg、sherpa-onnx ASR 和 Ollama 服务
 - 处理任务状态、进度跟踪和错误处理
 - 管理数据库持久化以支持任务恢复
 
@@ -58,8 +58,8 @@ pnpm rebuild:native       # 重建原生依赖
 - 将音频分段以进行并行处理
 - 支持硬字幕烧录（可选）
 
-#### Whisper 服务 (`src/main/services/whisper/transcriber.ts`)
-使用 whisper-node 的语音识别：
+#### ASR 服务 (`src/main/services/asr/sherpa-transcriber.ts`)
+使用 sherpa-onnx-node 进行本地语音识别：
 - 处理音频段的批量转录
 - 管理模型下载和可用性检查
 - 为 UI 更新提供进度回调
@@ -75,7 +75,7 @@ LLM 驱动的翻译：
 1. **文件上传** → 创建包含视频元数据的任务
 2. **音频提取** → FFmpeg 提取音轨
 3. **音频分段** → 分割为可管理的块（约30秒）
-4. **语音识别** → Whisper 转录每个段落
+4. **语音识别** → sherpa-onnx 转录每个段落
 5. **翻译** → Ollama 翻译转录的文本
 6. **字幕生成** → 创建 SRT、VTT 和 TXT 文件
 7. **清理** → 删除临时文件并完成任务
@@ -133,7 +133,7 @@ SQLite 数据库使用以下主要表：
 - **Node.js 18+** - 运行时环境
 
 ### 管理的依赖
-- **whisper-node** - Whisper 语音识别（自动下载模型）
+- **sherpa-onnx-node** - 本地语音识别（SenseVoice / Fun-ASR-Nano）
 - **better-sqlite3** - 带有原生绑定的 SQLite 数据库
 - **Electron** - 桌面应用程序框架
 
