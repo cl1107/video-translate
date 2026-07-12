@@ -1,13 +1,19 @@
 import { spawn } from "node:child_process";
 import { ensureSenseVoiceModel } from "../services/asr/model-downloader";
 import { sherpaTranscriber } from "../services/asr/sherpa-transcriber";
-import { resolveCommandPath } from "./command-path";
+import {
+  ensureGuiCommandPath,
+  resolveCommandPath,
+} from "./command-path";
+import { writeSystemCheckDiagnostic } from "./system-logger";
 
 export interface SystemCheckResult {
   name: string;
   available: boolean;
   version?: string;
   error?: string;
+  /** 实际解析到的可执行文件路径（诊断用） */
+  resolvedPath?: string;
 }
 
 /**
@@ -18,7 +24,8 @@ function checkCommand(
   args: string[] = ["-version"]
 ): Promise<SystemCheckResult> {
   return new Promise((resolve) => {
-    const process = spawn(resolveCommandPath(command), args);
+    const resolved = resolveCommandPath(command);
+    const child = spawn(resolved, args);
     let output = "";
     let error = "";
     let settled = false;
@@ -27,26 +34,30 @@ function checkCommand(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      resolve(result);
+      resolve({
+        ...result,
+        resolvedPath: resolved !== command ? resolved : result.resolvedPath,
+      });
     };
 
-    process.stdout.on("data", (data) => {
+    child.stdout.on("data", (data) => {
       output += data.toString();
     });
 
-    process.stderr.on("data", (data) => {
+    child.stderr.on("data", (data) => {
       error += data.toString();
     });
 
-    process.on("error", (err) => {
+    child.on("error", (err) => {
       finish({
         name: command,
         available: false,
         error: err.message,
+        resolvedPath: resolved,
       });
     });
 
-    process.on("close", (code) => {
+    child.on("close", (code) => {
       if (code === 0) {
         const versionMatch =
           (output + error).match(/version\s+(\d+\.\d+\.\d+)/i) ||
@@ -56,25 +67,75 @@ function checkCommand(
           name: command,
           available: true,
           version: versionMatch ? versionMatch[1] : "unknown",
+          resolvedPath: resolved,
         });
       } else {
         finish({
           name: command,
           available: false,
           error: `Command failed with code ${code}`,
+          resolvedPath: resolved,
         });
       }
     });
 
     const timeout = setTimeout(() => {
-      process.kill();
+      child.kill();
       finish({
         name: command,
         available: false,
         error: "Command timeout",
+        resolvedPath: resolved,
       });
     }, 5000);
   });
+}
+
+/**
+ * Electron 自带 Node 运行时，打包后无需系统 Node。
+ * 开发与生产统一报告 process.versions.node。
+ */
+function checkElectronNode(): SystemCheckResult {
+  const version = process.versions.node;
+  return {
+    name: "node",
+    available: true,
+    version,
+    resolvedPath: process.execPath,
+  };
+}
+
+/**
+ * 检查 Ollama：优先 CLI，失败时回退 HTTP API（用户可能只开了 App）。
+ */
+async function checkOllama(): Promise<SystemCheckResult> {
+  const cliResult = await checkCommand("ollama", ["--version"]);
+  if (cliResult.available) {
+    return cliResult;
+  }
+
+  // CLI 不在 PATH 时，尝试探测本地服务是否已在运行
+  try {
+    const { ollamaClient } = await import("../services/ollama/client");
+    const running = await ollamaClient.isRunning();
+    if (running) {
+      return {
+        name: "ollama",
+        available: true,
+        version: "service",
+        resolvedPath: "http://127.0.0.1:11434",
+      };
+    }
+  } catch {
+    // ignore and fall through
+  }
+
+  return {
+    name: "ollama",
+    available: false,
+    error: cliResult.error || "spawn ollama ENOENT",
+    resolvedPath: cliResult.resolvedPath,
+  };
 }
 
 /**
@@ -134,22 +195,40 @@ async function checkSherpaAsr(
 /**
  * 检查所有系统依赖
  * @param options.autoDownloadAsr 默认 true，缺失 SenseVoice 时自动下载
+ * @param options.writeLog 默认 true，写入 system-check 诊断日志
  */
 export async function checkSystemDependencies(options?: {
   autoDownloadAsr?: boolean;
+  writeLog?: boolean;
 }): Promise<SystemCheckResult[]> {
   const autoDownloadAsr = options?.autoDownloadAsr ?? true;
+  const writeLog = options?.writeLog ?? true;
+
+  // 打包 GUI 进程 PATH 极短，先补齐常见二进制目录
+  const augmentedPath = ensureGuiCommandPath();
 
   // ASR 可能触发下载，单独串行，避免和其他检查抢带宽时误报
-  const [ffmpeg, ffprobe, node, ollama] = await Promise.all([
+  const [ffmpeg, ffprobe, ollama] = await Promise.all([
     checkCommand("ffmpeg"),
     checkCommand("ffprobe"),
-    checkCommand("node", ["--version"]),
-    checkCommand("ollama", ["--version"]),
+    checkOllama(),
   ]);
+  const node = checkElectronNode();
 
   const asr = await checkSherpaAsr(autoDownloadAsr);
-  return [ffmpeg, ffprobe, node, ollama, asr];
+  const results = [ffmpeg, ffprobe, node, ollama, asr];
+
+  if (writeLog) {
+    writeSystemCheckDiagnostic({
+      path: augmentedPath,
+      results,
+      extra: {
+        execPath: process.execPath,
+      },
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -184,14 +263,16 @@ export function getInstallationSuggestions(
           suggestions.push(
             "安装 Ollama:\n" +
               "- 访问 https://ollama.ai 下载并安装\n" +
-              "- 安装后运行: ollama serve"
+              "- macOS 也可: brew install ollama\n" +
+              "- 安装后运行: ollama serve\n" +
+              "- 或打开 Ollama App，确保菜单栏图标显示已启动"
           );
           break;
         case "node":
           suggestions.push(
-            "安装 Node.js:\n" +
-              "- 访问 https://nodejs.org 下载 LTS 版本\n" +
-              "- 推荐版本: v18.0.0 或更高"
+            "Node.js 运行时异常：\n" +
+              "- 应用内置 Electron Node，通常无需单独安装系统 Node\n" +
+              "- 若仍报错，请重新安装应用或反馈诊断日志"
           );
           break;
       }

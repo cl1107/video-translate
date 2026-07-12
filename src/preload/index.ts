@@ -64,8 +64,25 @@ declare global {
           available: boolean
           version?: string
           error?: string
+          resolvedPath?: string
         }>
         suggestions: string[]
+        diagnosticPaths?: {
+          logsDir: string
+          systemCheckLog: string
+          userDataDir: string
+        }
+        error?: string
+      }>
+      getDiagnosticPaths: () => Promise<{
+        success: boolean
+        logsDir: string
+        systemCheckLog: string
+        userDataDir: string
+      }>
+      openLogsDir: () => Promise<{
+        success: boolean
+        path?: string
         error?: string
       }>
 
@@ -140,6 +157,8 @@ const api = {
   // 系统检查
   checkSystemDependencies: () =>
     ipcRenderer.invoke('check-system-dependencies'),
+  getDiagnosticPaths: () => ipcRenderer.invoke('get-diagnostic-paths'),
+  openLogsDir: () => ipcRenderer.invoke('open-logs-dir'),
 
   // 统计信息
   getStatistics: () => ipcRenderer.invoke('get-statistics'),

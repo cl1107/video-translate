@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { DEFAULT_OLLAMA_MODEL } from "../../../shared/constants";
 import { languageDisplayName } from "../../../shared/settings";
 import type { OllamaModel } from "../../../shared/types/video";
+import { resolveCommandPath } from "../../utils/command-path";
 
 // 使用动态导入来处理 node-fetch ES 模块
 let fetch: any;
@@ -125,8 +126,9 @@ export class OllamaClient {
     }
 
     try {
-      console.log("Starting Ollama daemon...");
-      this.daemonProcess = spawn("ollama", ["serve"], {
+      const ollamaBin = resolveCommandPath("ollama");
+      console.log("Starting Ollama daemon...", ollamaBin);
+      this.daemonProcess = spawn(ollamaBin, ["serve"], {
         detached: true,
         stdio: "pipe",
       });

@@ -6,10 +6,12 @@ import { normalizeOllamaModel } from '../shared/settings'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
 import { ollamaClient } from './services/ollama/client'
 import { taskManager } from './services/task-manager'
+import { ensureGuiCommandPath } from './utils/command-path'
 import {
   checkSystemDependencies,
   getInstallationSuggestions,
 } from './utils/system-check'
+import { getAppDiagnosticPaths } from './utils/system-logger'
 import { MainWindow } from './windows/main'
 
 // IPC 处理器
@@ -137,7 +139,8 @@ function setupIpcHandlers() {
     try {
       const results = await checkSystemDependencies()
       const suggestions = getInstallationSuggestions(results)
-      return { success: true, results, suggestions }
+      const diagnosticPaths = getAppDiagnosticPaths()
+      return { success: true, results, suggestions, diagnosticPaths }
     } catch (error) {
       console.error('检查系统依赖失败:', error)
       const errorMessage =
@@ -147,7 +150,29 @@ function setupIpcHandlers() {
         error: errorMessage,
         results: [],
         suggestions: [],
+        diagnosticPaths: getAppDiagnosticPaths(),
       }
+    }
+  })
+
+  // 获取诊断路径（日志目录 / userData）
+  ipcMain.handle('get-diagnostic-paths', () => {
+    return { success: true, ...getAppDiagnosticPaths() }
+  })
+
+  // 在文件管理器中打开日志目录
+  ipcMain.handle('open-logs-dir', async () => {
+    try {
+      const { logsDir } = getAppDiagnosticPaths()
+      const error = await shell.openPath(logsDir)
+      if (error) {
+        return { success: false, error, path: logsDir }
+      }
+      return { success: true, path: logsDir }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      return { success: false, error: errorMessage }
     }
   })
 
@@ -259,6 +284,9 @@ function setupIpcHandlers() {
 
 makeAppWithSingleInstanceLock(async () => {
   await app.whenReady()
+
+  // 打包后 GUI 进程 PATH 极短，补齐 Homebrew / Ollama 等常见路径
+  ensureGuiCommandPath()
 
   // 设置 IPC 处理器
   setupIpcHandlers()

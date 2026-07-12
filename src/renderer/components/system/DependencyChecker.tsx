@@ -2,6 +2,7 @@ import {
   AlertCircle,
   Check,
   ExternalLink,
+  FolderOpen,
   Loader2,
   RefreshCw,
 } from "lucide-react";
@@ -23,6 +24,13 @@ export interface SystemDependency {
   available: boolean;
   version?: string;
   error?: string;
+  resolvedPath?: string;
+}
+
+interface DiagnosticPaths {
+  logsDir: string;
+  systemCheckLog: string;
+  userDataDir: string;
 }
 
 interface DependencyCheckerProps {
@@ -40,8 +48,12 @@ export function DependencyChecker({
 }: DependencyCheckerProps) {
   const [dependencies, setDependencies] = useState<SystemDependency[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [diagnosticPaths, setDiagnosticPaths] = useState<DiagnosticPaths | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [allReady, setAllReady] = useState(false);
+  const [openingLogs, setOpeningLogs] = useState(false);
 
   const checkDependencies = async () => {
     setLoading(true);
@@ -50,6 +62,9 @@ export function DependencyChecker({
       if (result.success) {
         setDependencies(result.results);
         setSuggestions(result.suggestions);
+        if (result.diagnosticPaths) {
+          setDiagnosticPaths(result.diagnosticPaths);
+        }
 
         const allAvailable = result.results.every((dep) => dep.available);
         setAllReady(allAvailable);
@@ -57,6 +72,8 @@ export function DependencyChecker({
         if (allAvailable && onAllDependenciesReady) {
           onAllDependenciesReady();
         }
+      } else if (result.diagnosticPaths) {
+        setDiagnosticPaths(result.diagnosticPaths);
       }
     } catch (error) {
       console.error("检查系统依赖失败:", error);
@@ -68,6 +85,20 @@ export function DependencyChecker({
   useEffect(() => {
     checkDependencies();
   }, []);
+
+  const openLogsDir = async () => {
+    setOpeningLogs(true);
+    try {
+      const result = await App.openLogsDir();
+      if (!result.success) {
+        console.error("打开日志目录失败:", result.error);
+      }
+    } catch (error) {
+      console.error("打开日志目录失败:", error);
+    } finally {
+      setOpeningLogs(false);
+    }
+  };
 
   const getStatusBadge = (dep: SystemDependency) => {
     if (dep.available) {
@@ -110,7 +141,7 @@ export function DependencyChecker({
       case "ffprobe":
         return "视频信息获取";
       case "node":
-        return "JavaScript 运行环境";
+        return "Electron 内置 JavaScript 运行环境";
       case "ollama":
         return "本地大语言模型服务";
       case "sherpa-onnx-asr":
@@ -170,6 +201,11 @@ export function DependencyChecker({
                 {!dep.available && dep.error && (
                   <p className="text-xs text-destructive mt-1">{dep.error}</p>
                 )}
+                {dep.available && dep.resolvedPath && dep.name !== "node" && (
+                  <p className="text-xs text-muted-foreground mt-1 font-mono truncate">
+                    {dep.resolvedPath}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -209,6 +245,47 @@ export function DependencyChecker({
               <ExternalLink className="h-4 w-4 mr-2" />
               查看详细安装指南
             </Button>
+          </div>
+        )}
+
+        {/* 诊断日志 */}
+        {diagnosticPaths && (
+          <div className="space-y-2">
+            <Separator />
+            <h4 className="font-medium text-sm">排查日志</h4>
+            <div className="border rounded-lg p-3 bg-muted/40 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                依赖检查结果会写入诊断日志，便于排查打包后 PATH 或命令解析问题。
+              </p>
+              <div className="space-y-1 text-xs font-mono select-text break-all">
+                <div>
+                  <span className="text-muted-foreground">日志目录：</span>
+                  {diagnosticPaths.logsDir}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">检查日志：</span>
+                  {diagnosticPaths.systemCheckLog}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">数据目录：</span>
+                  {diagnosticPaths.userDataDir}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openLogsDir}
+                disabled={openingLogs}
+                className="w-full"
+              >
+                {openingLogs ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <FolderOpen className="h-4 w-4 mr-2" />
+                )}
+                打开日志目录
+              </Button>
+            </div>
           </div>
         )}
 
