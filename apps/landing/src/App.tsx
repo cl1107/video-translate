@@ -80,7 +80,7 @@ export function App() {
           </a>
         </nav>
         <a className="header-download" href={releaseUrl}>
-          下载 v0.2.0
+          下载 v0.3.0
           <ArrowDownToLine size={16} />
         </a>
       </header>
@@ -306,7 +306,7 @@ export function App() {
             查看源代码
           </a>
         </div>
-        <span>v0.2.0 · MIT License · macOS / Windows / Linux</span>
+        <span>v0.3.0 · MIT License · macOS / Windows / Linux</span>
       </section>
 
       <footer>
