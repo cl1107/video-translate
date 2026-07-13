@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { TranslationTask } from '../shared/types/video'
+import type { SystemCheckProgress } from '../shared/system-check'
 
 declare global {
   interface Window {
@@ -116,6 +117,9 @@ declare global {
       onOllamaPullProgress: (
         callback: (data: { modelName: string; progress: string }) => void
       ) => () => void
+      onSystemCheckProgress: (
+        callback: (progress: SystemCheckProgress) => void
+      ) => () => void
     }
   }
 }
@@ -190,6 +194,15 @@ const api = {
     ) => callback(data)
     ipcRenderer.on('ollama-pull-progress', listener)
     return () => ipcRenderer.removeListener('ollama-pull-progress', listener)
+  },
+
+  onSystemCheckProgress: (
+    callback: (progress: SystemCheckProgress) => void
+  ) => {
+    const listener = (_event: unknown, progress: SystemCheckProgress) =>
+      callback(progress)
+    ipcRenderer.on('system-check-progress', listener)
+    return () => ipcRenderer.removeListener('system-check-progress', listener)
   },
 }
 

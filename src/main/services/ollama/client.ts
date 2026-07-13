@@ -71,14 +71,17 @@ export interface OllamaGenerateResponse {
 
 export class OllamaClient {
   private baseUrl: string;
+  private command: string;
   private daemonProcess: ChildProcess | null = null;
 
 /**
  * Ollama客户端构造函数
  * @param baseUrl - Ollama API基础URL（默认：http://127.0.0.1:11434）
+ * @param command - Ollama命令名（默认：ollama）
  */
-  constructor(baseUrl = "http://127.0.0.1:11434") {
+  constructor(baseUrl = "http://127.0.0.1:11434", command = "ollama") {
     this.baseUrl = baseUrl;
+    this.command = command;
   }
 
   /**
@@ -126,12 +129,37 @@ export class OllamaClient {
     }
 
     try {
-      const ollamaBin = resolveCommandPath("ollama");
+      const ollamaBin = resolveCommandPath(this.command);
       console.log("Starting Ollama daemon...", ollamaBin);
-      this.daemonProcess = spawn(ollamaBin, ["serve"], {
+      const daemonProcess = spawn(ollamaBin, ["serve"], {
         detached: true,
         stdio: "pipe",
       });
+      this.daemonProcess = daemonProcess;
+
+      const started = await new Promise<boolean>((resolve) => {
+        let settled = false;
+
+        daemonProcess.once("spawn", () => {
+          settled = true;
+          resolve(true);
+        });
+
+        daemonProcess.on("error", (error) => {
+          console.warn("Ollama daemon 启动失败:", error.message);
+          if (this.daemonProcess === daemonProcess) {
+            this.daemonProcess = null;
+          }
+          if (!settled) {
+            settled = true;
+            resolve(false);
+          }
+        });
+      });
+
+      if (!started) {
+        return false;
+      }
 
       // 等待服务启动
       await new Promise((resolve) => setTimeout(resolve, 3000));

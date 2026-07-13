@@ -135,9 +135,13 @@ function setupIpcHandlers() {
   })
 
   // 检查系统依赖
-  ipcMain.handle('check-system-dependencies', async () => {
+  ipcMain.handle('check-system-dependencies', async event => {
     try {
-      const results = await checkSystemDependencies()
+      const results = await checkSystemDependencies({
+        onProgress: progress => {
+          event.sender.send('system-check-progress', progress)
+        },
+      })
       const suggestions = getInstallationSuggestions(results)
       const diagnosticPaths = getAppDiagnosticPaths()
       return { success: true, results, suggestions, diagnosticPaths }

@@ -7,6 +7,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { SystemCheckProgress } from "../../../shared/system-check";
+import { SystemCheckProgressView } from "./SystemCheckProgress";
 import { Badge } from "renderer/components/ui/badge";
 import { Button } from "renderer/components/ui/button";
 import {
@@ -54,9 +56,18 @@ export function DependencyChecker({
   const [loading, setLoading] = useState(false);
   const [allReady, setAllReady] = useState(false);
   const [openingLogs, setOpeningLogs] = useState(false);
+  const [checkProgress, setCheckProgress] = useState<SystemCheckProgress | null>(
+    null
+  );
 
   const checkDependencies = async () => {
     setLoading(true);
+    setCheckProgress({
+      stage: "checking-tools",
+      percent: 0,
+      message: "正在启动系统依赖检查...",
+    });
+    const removeProgressListener = App.onSystemCheckProgress(setCheckProgress);
     try {
       const result = await App.checkSystemDependencies();
       if (result.success) {
@@ -78,6 +89,7 @@ export function DependencyChecker({
     } catch (error) {
       console.error("检查系统依赖失败:", error);
     } finally {
+      removeProgressListener();
       setLoading(false);
     }
   };
@@ -211,11 +223,8 @@ export function DependencyChecker({
           ))}
         </div>
 
-        {loading && (
-          <div className="flex justify-center items-center py-4">
-            <Loader2 className="h-6 w-6 animate-spin mr-2" />
-            <span className="text-sm text-muted-foreground">检查中...</span>
-          </div>
+        {loading && checkProgress && (
+          <SystemCheckProgressView progress={checkProgress} />
         )}
 
         {/* 安装建议 */}

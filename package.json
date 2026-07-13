@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint --no-errors-on-unmatched",
     "lint:fix": "biome lint --write --no-errors-on-unmatched",
-    "test": "tsx --test src/main/utils/system-check.test.ts src/main/services/ffmpeg/processor.test.ts src/main/services/legacy-asr-removal.test.ts",
+    "test": "tsx --test src/main/utils/system-check.test.ts src/main/services/ffmpeg/processor.test.ts src/main/services/legacy-asr-removal.test.ts src/main/services/ollama/client.test.ts src/renderer/components/system/SystemCheckProgress.test.tsx",
     "test:system-check": "tsx --test src/main/utils/system-check.test.ts"
   },
   "dependencies": {

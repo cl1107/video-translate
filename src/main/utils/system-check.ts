@@ -6,6 +6,9 @@ import {
   resolveCommandPath,
 } from "./command-path";
 import { writeSystemCheckDiagnostic } from "./system-logger";
+import type { SystemCheckProgress } from "../../shared/system-check";
+
+export type { SystemCheckProgress } from "../../shared/system-check";
 
 export interface SystemCheckResult {
   name: string;
@@ -142,7 +145,8 @@ async function checkOllama(): Promise<SystemCheckResult> {
  * 检查 sherpa-onnx ASR；若默认 SenseVoice 缺失则自动下载。
  */
 async function checkSherpaAsr(
-  autoDownload = true
+  autoDownload = true,
+  onProgress?: (progress: SystemCheckProgress) => void
 ): Promise<SystemCheckResult> {
   try {
     // 先确认原生模块能加载
@@ -158,7 +162,27 @@ async function checkSherpaAsr(
 
     let senseOk = await sherpaTranscriber.isAvailable("sensevoice");
     if (!senseOk && autoDownload) {
-      const result = await ensureSenseVoiceModel();
+      const result = await ensureSenseVoiceModel((progress) => {
+        if (progress.stage === "downloading") {
+          onProgress?.({
+            stage: "downloading",
+            percent: progress.percent ?? 0,
+            message: progress.message,
+          });
+        } else if (progress.stage === "extracting") {
+          onProgress?.({
+            stage: "extracting",
+            percent: 95,
+            message: progress.message,
+          });
+        } else if (progress.stage === "error") {
+          onProgress?.({
+            stage: "error",
+            percent: 95,
+            message: progress.message,
+          });
+        }
+      });
       senseOk = result.available;
       if (!senseOk) {
         return {
@@ -200,14 +224,21 @@ async function checkSherpaAsr(
 export async function checkSystemDependencies(options?: {
   autoDownloadAsr?: boolean;
   writeLog?: boolean;
+  onProgress?: (progress: SystemCheckProgress) => void;
 }): Promise<SystemCheckResult[]> {
   const autoDownloadAsr = options?.autoDownloadAsr ?? true;
   const writeLog = options?.writeLog ?? true;
+  const onProgress = options?.onProgress;
 
   // 打包 GUI 进程 PATH 极短，先补齐常见二进制目录
   const augmentedPath = ensureGuiCommandPath();
 
   // ASR 可能触发下载，单独串行，避免和其他检查抢带宽时误报
+  onProgress?.({
+    stage: "checking-tools",
+    percent: 10,
+    message: "正在检查 FFmpeg、Node.js 和 Ollama...",
+  });
   const [ffmpeg, ffprobe, ollama] = await Promise.all([
     checkCommand("ffmpeg"),
     checkCommand("ffprobe"),
@@ -215,7 +246,12 @@ export async function checkSystemDependencies(options?: {
   ]);
   const node = checkElectronNode();
 
-  const asr = await checkSherpaAsr(autoDownloadAsr);
+  onProgress?.({
+    stage: "checking-asr",
+    percent: 30,
+    message: "正在检查 SenseVoice 模型...",
+  });
+  const asr = await checkSherpaAsr(autoDownloadAsr, onProgress);
   const results = [ffmpeg, ffprobe, node, ollama, asr];
 
   if (writeLog) {
@@ -227,6 +263,12 @@ export async function checkSystemDependencies(options?: {
       },
     });
   }
+
+  onProgress?.({
+    stage: "done",
+    percent: 100,
+    message: "系统依赖检查完成",
+  });
 
   return results;
 }

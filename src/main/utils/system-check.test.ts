@@ -9,6 +9,7 @@ import {
   resolveCommandPath,
 } from "./command-path";
 import { checkSystemDependencies } from "./system-check";
+import type { SystemCheckProgress } from "./system-check";
 
 const originalPath = process.env.PATH;
 const originalHomebrewPrefix = process.env.HOMEBREW_PREFIX;
@@ -113,4 +114,39 @@ test("Node 依赖检查使用 Electron 内置 runtime，不依赖系统 node 二
   assert.ok(nodeResult);
   assert.equal(nodeResult?.available, true);
   assert.equal(nodeResult?.version, process.versions.node);
+});
+
+test("系统依赖检查会按实际阶段持续报告进度", async () => {
+  const progressEvents: SystemCheckProgress[] = [];
+
+  await checkSystemDependencies({
+    autoDownloadAsr: false,
+    writeLog: false,
+    onProgress: (progress) => progressEvents.push(progress),
+  });
+
+  assert.deepEqual(
+    progressEvents.map(({ stage, percent, message }) => ({
+      stage,
+      percent,
+      message,
+    })),
+    [
+      {
+        stage: "checking-tools",
+        percent: 10,
+        message: "正在检查 FFmpeg、Node.js 和 Ollama...",
+      },
+      {
+        stage: "checking-asr",
+        percent: 30,
+        message: "正在检查 SenseVoice 模型...",
+      },
+      {
+        stage: "done",
+        percent: 100,
+        message: "系统依赖检查完成",
+      },
+    ]
+  );
 });
