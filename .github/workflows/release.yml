@@ -86,7 +86,7 @@ jobs:
           BUNDLE_FFMPEG: ${{ matrix.bundle_ffmpeg }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           UNSIGNED_BUILD: '1'
-        run: pnpm run build
+        run: pnpm run build -- --publish never
 
       - name: Upload release packages
         uses: actions/upload-artifact@v4
