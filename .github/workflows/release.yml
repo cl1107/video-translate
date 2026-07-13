@@ -1,48 +1,129 @@
+name: Release
+
 on:
   push:
-    tags: ["*"]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
+  build:
+    name: Build ${{ matrix.platform }} ${{ matrix.variant }}
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - platform: macOS-arm64
+            os: macos-15
+            variant: bundled-ffmpeg
+            bundle_ffmpeg: '1'
+          - platform: macOS-arm64
+            os: macos-15
+            variant: slim
+            bundle_ffmpeg: '0'
+          - platform: Windows-x64
+            os: windows-2025
+            variant: bundled-ffmpeg
+            bundle_ffmpeg: '1'
+          - platform: Windows-x64
+            os: windows-2025
+            variant: slim
+            bundle_ffmpeg: '0'
+          - platform: Linux-x64
+            os: ubuntu-24.04
+            variant: bundled-ffmpeg
+            bundle_ffmpeg: '1'
+          - platform: Linux-x64
+            os: ubuntu-24.04
+            variant: slim
+            bundle_ffmpeg: '0'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - run: npm i -g --force corepack && corepack enable
 
-      - name: Install Node.js, NPM and PNPM
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+          run_install: false
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
-      - run: pnpm install
+          cache: pnpm
 
-      - name: apt-update
-        if: startsWith(matrix.os, 'ubuntu-latest')
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: >-
+          node -e "const version = require('./package.json').version;
+          const expected = 'v' + version;
+          if (process.env.RELEASE_TAG !== expected) {
+            console.error('Release tag must be ' + expected);
+            process.exit(1);
+          }"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update Linux package indexes
+        if: runner.os == 'Linux'
         run: sudo apt-get update
 
-      - name: autoremove
-        if: startsWith(matrix.os, 'ubuntu-latest')
-        run: sudo apt autoremove
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get install --yes libarchive-tools rpm
 
-      - name: Install libarchive rpm on Linux
-        if: startsWith(matrix.os, 'ubuntu-latest')
-        run: sudo apt-get install libarchive-tools rpm
+      - name: Build unsigned release packages
+        env:
+          BUNDLE_FFMPEG: ${{ matrix.bundle_ffmpeg }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          UNSIGNED_BUILD: '1'
+        run: pnpm run build
 
-      - name: Release Electron app
-        uses: daltonmenezes/action-electron-builder@v1.0.1
+      - name: Upload release packages
+        uses: actions/upload-artifact@v4
         with:
-          package_manager: "pnpm"
-          # GitHub token, automatically provided to the action
-          # (No need to define this secret in the repo settings)
-          github_token: ${{ secrets.github_token }}
+          name: release-${{ matrix.platform }}-${{ matrix.variant }}
+          path: |
+            dist/v*/video-translate-v*
+            !dist/v*/*.blockmap
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
-          # If the commit is tagged with a version (e.g. "v1.0.0"),
-          # release the app after building
-          release: true
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        working-directory: release-assets
+        run: sha256sum ./* > SHA256SUMS.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --generate-notes --title "$RELEASE_TAG"
+          fi
