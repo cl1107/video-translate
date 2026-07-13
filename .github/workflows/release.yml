@@ -63,7 +63,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: >-
-          node -e "const version = require('./package.json').version;
+          node -e "const version = require('./apps/desktop/package.json').version;
           const expected = 'v' + version;
           if (process.env.RELEASE_TAG !== expected) {
             console.error('Release tag must be ' + expected);
@@ -86,15 +86,15 @@ jobs:
           BUNDLE_FFMPEG: ${{ matrix.bundle_ffmpeg }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           UNSIGNED_BUILD: '1'
-        run: pnpm run prepare:ffmpeg && pnpm run rebuild:native && electron-builder --publish never
+        run: pnpm --filter video-translate run build:ci
 
       - name: Upload release packages
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}-${{ matrix.variant }}
           path: |
-            dist/v*/video-translate-v*
-            !dist/v*/*.blockmap
+            apps/desktop/dist/v*/video-translate-v*
+            !apps/desktop/dist/v*/*.blockmap
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

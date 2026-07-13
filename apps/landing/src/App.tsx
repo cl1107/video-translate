@@ -1,0 +1,326 @@
+import {
+  ArrowDownToLine,
+  ArrowRight,
+  Captions,
+  Check,
+  Cpu,
+  FileText,
+  Github,
+  Languages,
+  LockKeyhole,
+  Play,
+  ScanLine,
+  Sparkles,
+  WandSparkles,
+  Waves,
+} from 'lucide-react'
+import type { CSSProperties } from 'react'
+import { useState } from 'react'
+
+const releaseUrl = 'https://github.com/cl1107/video-translate/releases/latest'
+const repositoryUrl = 'https://github.com/cl1107/video-translate'
+
+const translations = {
+  中文: '你的素材，始终留在自己的电脑里。',
+  English: 'Your footage always stays on your own computer.',
+  日本語: '映像素材は、いつも自分のパソコンの中に。',
+}
+
+const workflow = [
+  { number: '01', label: '导入视频', detail: '拖入本地视频文件' },
+  { number: '02', label: '识别语音', detail: 'sherpa-onnx 本地转录' },
+  { number: '03', label: '翻译文本', detail: 'Ollama 本地模型翻译' },
+  { number: '04', label: '导出字幕', detail: 'SRT · VTT · TXT' },
+]
+
+const waveformBars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123'
+  .split('')
+  .map(id => ({ id, height: id.charCodeAt(0) % 31 }))
+
+const features = [
+  {
+    icon: LockKeyhole,
+    eyebrow: 'LOCAL FIRST',
+    title: '素材不离开设备',
+    description: '识别、翻译和字幕生成都在本机完成。视频无需上传到第三方云端。',
+  },
+  {
+    icon: Waves,
+    eyebrow: 'SHERPA-ONNX',
+    title: '听懂真实语境',
+    description:
+      'SenseVoice 支持中、英、日、韩、粤语，适合课程、访谈和内容创作。',
+  },
+  {
+    icon: Languages,
+    eyebrow: 'OLLAMA',
+    title: '翻译由你掌控',
+    description:
+      '连接本地 Ollama 模型，自由选择目标语言和模型，不绑定在线额度。',
+  },
+]
+
+export function App() {
+  const [language, setLanguage] = useState<keyof typeof translations>('中文')
+
+  return (
+    <main>
+      <header className="site-header">
+        <a className="brand" href="#top" aria-label="视频翻译助手首页">
+          <span className="brand-mark" aria-hidden="true">
+            <Captions size={20} strokeWidth={2.4} />
+          </span>
+          <span>视频翻译助手</span>
+        </a>
+        <nav aria-label="主导航">
+          <a href="#features">能力</a>
+          <a href="#workflow">工作流</a>
+          <a href={repositoryUrl} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+        </nav>
+        <a className="header-download" href={releaseUrl}>
+          下载 v0.2.0
+          <ArrowDownToLine size={16} />
+        </a>
+      </header>
+
+      <section className="hero" id="top">
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="hero-copy reveal reveal-one">
+          <p className="kicker">
+            <span /> 面向创作者的本地视频翻译工作台
+          </p>
+          <h1>
+            让每段声音
+            <br />
+            <em>跨越语言。</em>
+          </h1>
+          <p className="hero-description">
+            从语音识别到多语言字幕，一条完全运行在本地的工作流。
+            保留素材隐私，也保留创作节奏。
+          </p>
+          <div className="hero-actions">
+            <a className="button button-primary" href={releaseUrl}>
+              <ArrowDownToLine size={19} />
+              免费下载
+            </a>
+            <a className="button button-ghost" href="#workflow">
+              看它如何工作
+              <ArrowRight size={18} />
+            </a>
+          </div>
+          <div className="platform-row">
+            <span>macOS</span>
+            <i />
+            <span>Windows</span>
+            <i />
+            <span>Linux</span>
+            <small>开源 · 离线优先</small>
+          </div>
+        </div>
+
+        <div className="studio-shell reveal reveal-two">
+          <div className="studio-topbar">
+            <div className="window-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <span>interview-final.mp4</span>
+            <span className="local-pill">
+              <LockKeyhole size={12} /> LOCAL
+            </span>
+          </div>
+          <div className="studio-canvas">
+            <div className="video-frame">
+              <div className="frame-grid" />
+              <div className="subject-shape" aria-hidden="true">
+                <span />
+              </div>
+              <button
+                className="play-button"
+                type="button"
+                aria-label="播放演示视频"
+              >
+                <Play size={18} fill="currentColor" />
+              </button>
+              <div className="subtitle-preview">{translations[language]}</div>
+              <span className="timecode">00:01:24:18</span>
+            </div>
+            <fieldset className="language-switcher">
+              <legend className="sr-only">字幕语言</legend>
+              {(
+                Object.keys(translations) as Array<keyof typeof translations>
+              ).map(item => (
+                <button
+                  className={item === language ? 'active' : undefined}
+                  key={item}
+                  type="button"
+                  onClick={() => setLanguage(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </fieldset>
+            <div className="timeline">
+              <div className="timeline-head">
+                <span>语音轨道 / 01</span>
+                <span>01:42</span>
+              </div>
+              <div className="waveform" aria-hidden="true">
+                {waveformBars.map(bar => (
+                  <span
+                    key={bar.id}
+                    style={{ '--wave': bar.height } as CSSProperties}
+                  />
+                ))}
+                <i />
+              </div>
+              <div className="caption-track">
+                <span>00:58</span>
+                <strong>素材始终留在本地</strong>
+                <span>01:05</span>
+              </div>
+            </div>
+          </div>
+          <div className="floating-card status-card">
+            <ScanLine size={17} />
+            <div>
+              <span>正在识别</span>
+              <strong>87%</strong>
+            </div>
+            <i>
+              <span />
+            </i>
+          </div>
+          <div className="floating-card privacy-card">
+            <Check size={16} />
+            视频未上传云端
+          </div>
+        </div>
+      </section>
+
+      <div className="marquee" aria-hidden="true">
+        <div>
+          本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
+          字幕自动生成 <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
+          本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
+          字幕自动生成
+        </div>
+      </div>
+
+      <section className="section features-section" id="features">
+        <div className="section-heading">
+          <p className="section-index">01 / 核心能力</p>
+          <h2>
+            专注创作，
+            <br />
+            <span>其余交给本地算力。</span>
+          </h2>
+        </div>
+        <div className="feature-grid">
+          {features.map(
+            ({ icon: Icon, eyebrow, title, description }, index) => (
+              <article className="feature-card" key={title}>
+                <div className="feature-number">0{index + 1}</div>
+                <Icon size={27} strokeWidth={1.7} />
+                <p>{eyebrow}</p>
+                <h3>{title}</h3>
+                <span>{description}</span>
+              </article>
+            )
+          )}
+        </div>
+      </section>
+
+      <section className="section workflow-section" id="workflow">
+        <div className="workflow-intro">
+          <p className="section-index">02 / 工作流</p>
+          <h2>从视频到字幕，四步完成。</h2>
+          <p>
+            自动提取音频、切分语音、调用本地模型，并生成可继续编辑的字幕文件。
+          </p>
+        </div>
+        <div className="workflow-list">
+          {workflow.map((item, index) => (
+            <article key={item.number}>
+              <span>{item.number}</span>
+              <div>
+                <h3>{item.label}</h3>
+                <p>{item.detail}</p>
+              </div>
+              {index === 0 ? <WandSparkles /> : null}
+              {index === 1 ? <Cpu /> : null}
+              {index === 2 ? <Languages /> : null}
+              {index === 3 ? <FileText /> : null}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="section privacy-section">
+        <div className="privacy-visual" aria-hidden="true">
+          <div className="orbit orbit-one" />
+          <div className="orbit orbit-two" />
+          <div className="privacy-core">
+            <LockKeyhole size={33} />
+            <span>100%</span>
+            <small>LOCAL</small>
+          </div>
+          <span className="orbit-label label-one">视频文件</span>
+          <span className="orbit-label label-two">语音文本</span>
+          <span className="orbit-label label-three">翻译结果</span>
+        </div>
+        <div className="privacy-copy">
+          <p className="section-index">03 / 隐私</p>
+          <h2>你的素材，只属于你的设备。</h2>
+          <p>
+            视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本和字幕产物都保存在本机路径中。
+          </p>
+          <ul>
+            <li>
+              <Check size={16} /> 无需注册账号
+            </li>
+            <li>
+              <Check size={16} /> 无在线 API 额度
+            </li>
+            <li>
+              <Check size={16} /> 开源代码可审查
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="cta-section">
+        <div className="cta-lines" aria-hidden="true" />
+        <p>READY WHEN YOU ARE</p>
+        <h2>下一条字幕，从本地开始。</h2>
+        <div className="hero-actions">
+          <a className="button button-dark" href={releaseUrl}>
+            <ArrowDownToLine size={19} />
+            下载视频翻译助手
+          </a>
+          <a className="button button-outline" href={repositoryUrl}>
+            <Github size={19} />
+            查看源代码
+          </a>
+        </div>
+        <span>v0.2.0 · MIT License · macOS / Windows / Linux</span>
+      </section>
+
+      <footer>
+        <a className="brand" href="#top">
+          <span className="brand-mark">
+            <Captions size={20} />
+          </span>
+          <span>视频翻译助手</span>
+        </a>
+        <p>把复杂的本地模型，变成一条清晰的字幕工作流。</p>
+        <a href={repositoryUrl} aria-label="GitHub 仓库">
+          <Github size={20} />
+        </a>
+      </footer>
+    </main>
+  )
+}

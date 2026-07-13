@@ -1,8 +1,8 @@
 # 视频翻译助手 🎬
 
-基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。
+基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
 
-![视频翻译助手](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.2.0-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -33,7 +33,7 @@
 
 ### 系统要求
 
-- Node.js 18.0+
+- Node.js 22.13+
 - 8GB+ 内存
 - 10GB+ 硬盘空间（含模型）
 
@@ -85,13 +85,13 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 ```bash
 # 开发模式
-pnpm dev
+pnpm dev:desktop
 
 # 预览已构建应用
-pnpm start
+pnpm start:desktop
 
 # 生产构建
-pnpm build
+pnpm build:desktop
 ```
 
 ### 模型准备
@@ -102,12 +102,10 @@ pnpm build
 
 可选引擎：
 
-
-| 引擎               | 说明                             | 获取方式                          |
-| ---------------- | ------------------------------ | ----------------------------- |
-| `sensevoice`（默认） | 中/英/日/韩/粤，速度快，适合 CJK 字幕        | 自动下载                          |
-| `funasr-nano`    | 方言 / 远场 / 嘈杂场景更强，模型更大（约 950MB） | 手动下载，见 `models/asr/README.md` |
-
+| 引擎                 | 说明                                             | 获取方式                                         |
+| -------------------- | ------------------------------------------------ | ------------------------------------------------ |
+| `sensevoice`（默认） | 中/英/日/韩/粤，速度快，适合 CJK 字幕            | 自动下载                                         |
+| `funasr-nano`        | 方言 / 远场 / 嘈杂场景更强，模型更大（约 950MB） | 手动下载，见 `apps/desktop/models/asr/README.md` |
 
 也可通过环境变量指定模型目录：
 
@@ -136,7 +134,7 @@ ollama pull kaelri/hy-mt2:1.8b
 
 ### 后端 (Main Process)
 
-- **Electron 37** - 跨平台桌面应用
+- **Electron 43** - 跨平台桌面应用
 - **SQLite (better-sqlite3)** - 本地任务与日志存储
 - **FFmpeg** - 音频提取、分段、可选硬字幕烧录
 - **sherpa-onnx-node** - 本地 ASR（SenseVoice / Fun-ASR-Nano）
@@ -171,15 +169,17 @@ ollama pull kaelri/hy-mt2:1.8b
 - [安装指南](docs/installation.md) - 安装与使用说明（部分内容可能仍待同步）
 - [开发计划](docs/development_plan.md) - 技术方案与架构设计
 - [任务日志功能](docs/task-logs-feature.md) - 任务日志相关说明
-- [ASR 模型说明](models/asr/README.md) - SenseVoice / Fun-ASR-Nano 目录与下载
+- [ASR 模型说明](apps/desktop/models/asr/README.md) - SenseVoice / Fun-ASR-Nano 目录与下载
 
 ## 🛠️ 开发
 
 ### 项目结构
 
 ```
-src/
-├── main/                    # 主进程
+apps/
+├── desktop/                 # Electron 桌面应用
+│   └── src/
+│       ├── main/            # 主进程
 │   ├── services/
 │   │   ├── asr/             # sherpa-onnx ASR（SenseVoice / Fun-ASR-Nano）
 │   │   ├── ollama/          # Ollama 翻译客户端
@@ -187,38 +187,48 @@ src/
 │   │   ├── database/        # SQLite 数据管理
 │   │   └── task-manager.ts  # 任务流水线协调
 │   └── utils/               # 系统检查、字幕生成、命令路径解析等
-├── renderer/                # 渲染进程（React UI）
-│   ├── components/
-│   └── screens/
-├── preload/                 # 预加载脚本（IPC 桥接）
-└── shared/                  # 共享类型与常量
-models/
-└── asr/                     # 本地 ASR 模型目录
+│       ├── renderer/        # 渲染进程（React UI）
+│       ├── preload/         # 预加载脚本（IPC 桥接）
+│       └── shared/          # 共享类型与常量
+└── landing/                 # Vite + React 产品官网
+turbo.json                   # Turborepo 任务编排
+pnpm-workspace.yaml          # Workspace 包声明
 ```
 
 ### 开发命令
 
 ```bash
 # 启动开发服务器（热重载）
-pnpm dev
+pnpm dev:desktop
+
+# 启动 landing page
+pnpm dev:landing
 
 # 预览构建结果
-pnpm start
+pnpm start:desktop
 
 # 代码检查 / 自动修复
 pnpm lint
 pnpm lint:fix
 
+# Oxfmt 格式化 / 格式检查
+pnpm format
+pnpm format:check
+
+# 运行 Vitest 测试
+pnpm test
+
 # 系统依赖检测相关测试
-pnpm test:system-check
+pnpm --filter video-translate test:system-check
 
 # 完整构建 / 仅编译 / 发布
 pnpm build
-pnpm compile:app
+pnpm build:desktop
+pnpm build:landing
 pnpm make:release
 
 # 重建原生依赖（better-sqlite3、sherpa-onnx-node 等）
-pnpm rebuild:native
+pnpm --filter video-translate rebuild:native
 ```
 
 ## 🎯 使用场景
@@ -255,7 +265,7 @@ pnpm rebuild:native
 默认会自动下载 SenseVoice。若失败：
 
 1. 检查网络后重新打开应用或点击「重新检查」
-2. 手动按 `models/asr/README.md` 放置模型
+2. 手动按 `apps/desktop/models/asr/README.md` 放置模型
 3. 确认 `pnpm install` 已正确安装 `sherpa-onnx-node`
 
 ## 🤝 贡献

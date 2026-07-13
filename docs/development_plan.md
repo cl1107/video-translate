@@ -16,7 +16,7 @@
 | 桌面应用壳     | Electron 37.2.3         | 使用 Node 主进程 + Chromium 渲染进程；支持 auto-update。 |
 | UI 框架        | React + unocss +antd v5 | 快速构建现代化界面，支持暗黑模式。                       |
 | 本地大模型管理 | **Ollama**              | 统一拉取 / 管理 LLM，提供 REST & CLI 两种调用方式。      |
-| 语音识别       | sherpa-onnx             | 支持 SenseVoice / Fun-ASR-Nano 本地推理。              |
+| 语音识别       | sherpa-onnx             | 支持 SenseVoice / Fun-ASR-Nano 本地推理。                |
 | 翻译模型       | seed-x-instruct 等      | 依据效果与运行资源动态切换。                             |
 | 媒体处理       | ffmpeg                  | 提取音轨、合成字幕、烧录硬字幕。                         |
 | 数据存储       | SQLite (better-sqlite3) | 记录任务、缓存中间结果、断点续传。                       |
@@ -97,25 +97,25 @@
 ## 6. 关键代码示例（伪代码）
 
 ```ts
-// src/main/llm/ollama.ts
-import fetch from "node-fetch";
+// apps/desktop/src/main/llm/ollama.ts
+import fetch from 'node-fetch'
 
-export async function translate(text: string, targetLang = "zh") {
-  const prompt = `Translate the following to ${targetLang}:\n\n${text}`;
-  const res = await fetch("http://127.0.0.1:11434/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "qwen3:4b-instruct", prompt }),
-  });
-  const chunks = [];
+export async function translate(text: string, targetLang = 'zh') {
+  const prompt = `Translate the following to ${targetLang}:\n\n${text}`
+  const res = await fetch('http://127.0.0.1:11434/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'qwen3:4b-instruct', prompt }),
+  })
+  const chunks = []
   for await (const chunk of res.body as any) {
-    chunks.push(chunk);
+    chunks.push(chunk)
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks).toString('utf8')
 }
 ```
 
-ASR 实现见 `src/main/services/asr/sherpa-transcriber.ts`，模型路径和下载逻辑位于同目录的 `model-paths.ts` 与 `model-downloader.ts`。
+ASR 实现见 `apps/desktop/src/main/services/asr/sherpa-transcriber.ts`，模型路径和下载逻辑位于同目录的 `model-paths.ts` 与 `model-downloader.ts`。
 
 ---
 

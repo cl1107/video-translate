@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "vitest"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "react-hooks/exhaustive-deps": "off"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/models/asr/**",
+    "**/src/resources/ffmpeg/**"
+  ],
+  "env": {
+    "builtin": true
+  }
+}

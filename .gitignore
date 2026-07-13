@@ -1,5 +1,5 @@
 # dependencies
-/node_modules
+**/node_modules
 /.pnp
 .pnp.js
 
@@ -8,14 +8,17 @@
 
 # production
 /build
-/dist
+**/dist
 
 # FFmpeg 二进制在构建时下载；安装包会通过 electron-builder 的 extraResources 带上它们。
-/src/resources/ffmpeg/*/
+/apps/desktop/src/resources/ffmpeg/*/
 
 # ASR / LLM model weights (large binaries)
-/models/asr/**
-!/models/asr/README.md
+/apps/desktop/models/asr/**
+!/apps/desktop/models/asr/README.md
+
+# Turborepo
+.turbo
 
 # misc
 .DS_Store

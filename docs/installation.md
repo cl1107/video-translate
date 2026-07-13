@@ -32,9 +32,9 @@ sudo apt install ffmpeg
 
 ### 2. ASR 语音识别
 
-项目使用 `sherpa-onnx-node` 在本地进行语音识别。默认引擎为 SenseVoice Small，应用会在启动或首次处理任务时自动下载模型到 `models/asr/`。
+项目使用 `sherpa-onnx-node` 在本地进行语音识别。默认引擎为 SenseVoice Small，应用会在启动或首次处理任务时自动下载模型到 `apps/desktop/models/asr/`。
 
-可选的 Fun-ASR-Nano 模型需手动准备，详见 [`../models/asr/README.md`](../models/asr/README.md)。
+可选的 Fun-ASR-Nano 模型需手动准备，详见 [`../apps/desktop/models/asr/README.md`](../apps/desktop/models/asr/README.md)。
 
 ### 3. 安装 Ollama
 
@@ -108,7 +108,7 @@ pnpm dev
 
 **问题**: 提示 SenseVoice 模型不可用
 
-1. 检查网络连接和 `models/asr/` 目录写入权限。
+1. 检查网络连接和 `apps/desktop/models/asr/` 目录写入权限。
 2. 重启应用，触发默认模型自动准备。
 3. 查看任务日志中的模型下载或解压错误。
 
