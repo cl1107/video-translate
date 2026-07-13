@@ -1,1 +1,7 @@
-["electron", "electron-vite", "@biomejs/biome", "better-sqlite3"]
+[
+  "@parcel/watcher",
+  "better-sqlite3",
+  "electron",
+  "electron-winstaller",
+  "esbuild"
+]

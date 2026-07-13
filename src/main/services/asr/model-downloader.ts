@@ -16,17 +16,59 @@ export type ModelDownloadProgress = {
   message: string;
 };
 
+type ModelDownloadResult = {
+  available: boolean;
+  path?: string;
+  error?: string;
+};
+
+let senseVoiceInstallation: Promise<ModelDownloadResult> | null = null;
+let latestProgress: ModelDownloadProgress | null = null;
+const progressListeners = new Set<
+  (progress: ModelDownloadProgress) => void
+>();
+
+function reportProgress(progress: ModelDownloadProgress): void {
+  latestProgress = progress;
+  for (const listener of progressListeners) {
+    listener(progress);
+  }
+}
+
 /**
  * 确保默认 SenseVoice 模型可用；缺失时自动下载并解压。
+ *
+ * 启动后台初始化和页面依赖检查可能同时触发此方法。下载、解压同一模型
+ * 必须串行，否则 Windows tar 在覆盖同名 ONNX 文件时会报 Permission denied。
  */
 export async function ensureSenseVoiceModel(
   onProgress?: (progress: ModelDownloadProgress) => void
-): Promise<{ available: boolean; path?: string; error?: string }> {
-  onProgress?.({ stage: "checking", message: "检查 SenseVoice 模型..." });
+): Promise<ModelDownloadResult> {
+  if (onProgress) {
+    progressListeners.add(onProgress);
+    if (latestProgress) onProgress(latestProgress);
+  }
+
+  if (!senseVoiceInstallation) {
+    senseVoiceInstallation = prepareSenseVoiceModel().finally(() => {
+      senseVoiceInstallation = null;
+      latestProgress = null;
+    });
+  }
+
+  try {
+    return await senseVoiceInstallation;
+  } finally {
+    if (onProgress) progressListeners.delete(onProgress);
+  }
+}
+
+async function prepareSenseVoiceModel(): Promise<ModelDownloadResult> {
+  reportProgress({ stage: "checking", message: "检查 SenseVoice 模型..." });
 
   const existing = resolveSenseVoicePaths();
   if (existing) {
-    onProgress?.({
+    reportProgress({
       stage: "done",
       percent: 100,
       message: `SenseVoice 已就绪: ${existing.dir}`,
@@ -50,43 +92,51 @@ export async function ensureSenseVoiceModel(
       existsSync(path.join(extractDir, "tokens.txt"));
 
     if (!hasExtracted) {
-      onProgress?.({
+      reportProgress({
         stage: "downloading",
         percent: 0,
         message: "正在下载 SenseVoice 模型（约 155MB，首次需要）...",
       });
       await downloadFile(url, archivePath, (percent) => {
-        onProgress?.({
+        reportProgress({
           stage: "downloading",
           percent,
           message: `正在下载 SenseVoice 模型... ${percent}%`,
         });
       });
 
-      onProgress?.({
+      reportProgress({
         stage: "extracting",
         percent: 95,
         message: "正在解压 SenseVoice 模型...",
+      });
+
+      // 上次中断后可能残留不完整目录。先移除它，避免 tar 覆盖旧文件；
+      // Windows 在两个 tar 同时解压同一文件时会以 Permission denied 失败。
+      await fs.rm(extractDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 200,
       });
       await extractTarBz2(archivePath, root);
       await fs.unlink(archivePath).catch(() => {});
     }
 
-    // 创建/更新便捷软链接
-    try {
-      await fs.lstat(linkPath);
-      await fs.unlink(linkPath);
-    } catch {
-      // ignore
+    // 便捷链接仅用于兼容旧目录；真实模型目录始终是有效回退路径。
+    // 不替换已有链接，避免用户或其他进程正在访问它时造成安装失败。
+    if (!existsSync(linkPath)) {
+      await fs.symlink(extractDir, linkPath, "junction").catch((error) => {
+        console.warn("创建 SenseVoice 便捷链接失败，将使用真实模型目录:", error);
+      });
     }
-    await fs.symlink(name, linkPath);
 
     const resolved = resolveSenseVoicePaths();
     if (!resolved) {
       throw new Error("模型下载完成但未能识别有效文件（缺少 model/tokens）");
     }
 
-    onProgress?.({
+    reportProgress({
       stage: "done",
       percent: 100,
       message: `SenseVoice 已安装: ${resolved.dir}`,
@@ -94,7 +144,7 @@ export async function ensureSenseVoiceModel(
     return { available: true, path: resolved.dir };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    onProgress?.({ stage: "error", message });
+    reportProgress({ stage: "error", message });
     return { available: false, error: message };
   }
 }

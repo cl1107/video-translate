@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 const HOMEBREW_MEDIA_COMMANDS = new Set(["ffmpeg", "ffprobe"]);
+const BUNDLED_MEDIA_COMMANDS = new Set(["ffmpeg", "ffprobe"]);
 
 let pathAugmented = false;
 
@@ -13,6 +14,30 @@ function isExecutable(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * 返回打包后随应用分发的 FFmpeg/FFprobe 路径。
+ *
+ * electron-builder 会把平台对应的二进制放到 resources/ffmpeg。开发环境和
+ * 精简包中该目录不存在，因此自然回退到系统 PATH。
+ */
+export function resolveBundledMediaCommandPath(
+  command: string,
+  resourcesPath = process.resourcesPath,
+  platform = process.platform
+): string | undefined {
+  if (
+    !resourcesPath ||
+    !BUNDLED_MEDIA_COMMANDS.has(command) ||
+    !["win32", "darwin", "linux"].includes(platform)
+  ) {
+    return undefined;
+  }
+
+  const executable = platform === "win32" ? `${command}.exe` : command;
+  const candidate = path.join(resourcesPath, "ffmpeg", executable);
+  return isExecutable(candidate) ? candidate : undefined;
 }
 
 function findInPath(command: string, pathValue = process.env.PATH): string | undefined {
@@ -109,6 +134,10 @@ export function ensureGuiCommandPath(): string {
  */
 export function resolveCommandPath(command: string): string {
   if (path.isAbsolute(command)) return command;
+
+  // 内置版本优先，保证硬字幕烧录始终使用含 libass 的完整构建。
+  const bundledCommand = resolveBundledMediaCommandPath(command);
+  if (bundledCommand) return bundledCommand;
 
   const pathCommand = findInPath(command);
   if (pathCommand) return pathCommand;

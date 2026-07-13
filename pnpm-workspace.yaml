@@ -1,5 +1,9 @@
 packages:
   - '.'
 
-# pnpm 11+ reads workspace settings from this file (not package.json#pnpm)
-onlyBuiltDependenciesFile: ./trusted-dependencies-scripts.json
+allowBuilds:
+  '@parcel/watcher': true
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true

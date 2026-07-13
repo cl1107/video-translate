@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   ensureGuiCommandPath,
   resetGuiCommandPathStateForTests,
+  resolveBundledMediaCommandPath,
   resolveCommandPath,
 } from "./command-path";
 import { checkSystemDependencies } from "./system-check";
@@ -99,6 +100,25 @@ test("GUI 精简 PATH 下仍能解析 ollama 与 node 到常见目录", async ()
   assert.ok(
     (process.env.PATH || "").includes(binDirectory),
     "ensureGuiCommandPath 应把常见 bin 目录补进 PATH"
+  );
+});
+
+test("打包资源中的 FFmpeg 优先于系统 PATH", async () => {
+  testDirectory = await mkdtemp(path.join(tmpdir(), "video-translate-resource-"));
+  const bundledDirectory = path.join(testDirectory, "ffmpeg");
+  await mkdir(bundledDirectory, { recursive: true });
+
+  const executablePath = path.join(bundledDirectory, "ffmpeg.exe");
+  await writeFile(executablePath, "bundled ffmpeg");
+  await chmod(executablePath, 0o755);
+
+  assert.equal(
+    resolveBundledMediaCommandPath("ffmpeg", testDirectory, "win32"),
+    executablePath
+  );
+  assert.equal(
+    resolveBundledMediaCommandPath("ffprobe", testDirectory, "win32"),
+    undefined
   );
 });
 
