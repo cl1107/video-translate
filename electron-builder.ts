@@ -73,7 +73,7 @@ export default {
     artifactName,
     category: 'Utilities',
     synopsis: description,
-    target: ['AppImage', 'deb', 'pacman', 'freebsd', 'rpm'],
+    target: ['AppImage', 'deb', 'pacman', 'rpm'],
     ...(bundleFfmpeg
       ? {
           extraResources: [

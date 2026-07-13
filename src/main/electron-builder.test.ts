@@ -29,3 +29,9 @@ test('unsigned 发布明确关闭 macOS 与 Windows 签名', async () => {
   assert.equal(config.mac.notarize, false)
   assert.equal(config.win.signExecutable, false)
 })
+
+test('Linux 发布只生成 Linux 平台安装包', async () => {
+  const { default: config } = await builderConfigModule
+
+  assert.deepEqual(config.linux.target, ['AppImage', 'deb', 'pacman', 'rpm'])
+})
