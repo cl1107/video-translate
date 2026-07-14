@@ -63,7 +63,9 @@ function run(command, args) {
 
 async function download(url, destination) {
   console.log(`Downloading bundled FFmpeg from ${url}`)
-  const response = await fetch(url)
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' }
+  })
   if (!response.ok || !response.body) {
     throw new Error(`Failed to download ${url}: HTTP ${response.status}`)
   }
