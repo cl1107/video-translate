@@ -126,8 +126,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          mapfile -d '' files < <(find release-assets -type f -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets found to upload" >&2
+            exit 1
+          fi
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
           else
-            gh release create "$RELEASE_TAG" release-assets/* --generate-notes --title "$RELEASE_TAG"
+            gh release create "$RELEASE_TAG" "${files[@]}" --generate-notes --title "$RELEASE_TAG"
           fi
