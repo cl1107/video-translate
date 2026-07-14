@@ -116,7 +116,7 @@ jobs:
 
       - name: Generate SHA-256 checksums
         working-directory: release-assets
-        run: sha256sum ./* > SHA256SUMS.txt
+        run: find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
       - name: Create or update GitHub Release
         env:
