@@ -2,7 +2,7 @@
 
 基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
 
-![视频翻译助手](https://img.shields.io/badge/version-0.3.0-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.4.0-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 

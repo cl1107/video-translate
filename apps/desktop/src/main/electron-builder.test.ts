@@ -34,4 +34,5 @@ test('Linux 发布只生成 Linux 平台安装包', async () => {
   const { default: config } = await builderConfigModule
 
   assert.deepEqual(config.linux.target, ['AppImage', 'deb', 'pacman', 'rpm'])
+  assert.equal(config.linux.executableName, name)
 })

@@ -59,6 +59,8 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
           ollamaModel: settings.ollamaModel,
           asrEngine: settings.asrEngine,
           burnSubtitles: settings.burnSubtitles,
+          burnSubtitleMode: settings.burnSubtitleMode,
+          polishTranscript: settings.polishTranscript,
         })
         if (result.success) {
           console.log('文件上传成功，任务ID:', result.taskIds)

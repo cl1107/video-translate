@@ -28,6 +28,8 @@ function setupIpcHandlers() {
         ollamaModel?: string
         asrEngine?: AsrEngineId
         burnSubtitles?: boolean
+        burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
+        polishTranscript?: boolean
       }
     ) => {
       try {
@@ -41,6 +43,8 @@ function setupIpcHandlers() {
             ollamaModel: normalizeOllamaModel(settings.ollamaModel),
             asrEngine: settings.asrEngine,
             burnSubtitles: settings.burnSubtitles,
+            burnSubtitleMode: settings.burnSubtitleMode,
+            polishTranscript: settings.polishTranscript,
           })
           taskIds.push(taskId)
         }

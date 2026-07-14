@@ -1,3 +1,4 @@
+import appIcon from 'assets/logo-transparent.png'
 import { useState } from 'react'
 import { DependencyChecker } from 'renderer/components/system/DependencyChecker'
 
@@ -13,6 +14,12 @@ export function SetupScreen({ onSetupComplete }: SetupScreenProps) {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="max-w-2xl mx-auto text-center space-y-8">
           <div className="space-y-4">
+            <img
+              src={appIcon}
+              alt="视频翻译助手"
+              className="mx-auto h-20 w-20 select-none rounded-[22%]"
+              draggable={false}
+            />
             <h1 className="text-4xl font-bold text-gray-900">
               欢迎使用视频翻译助手
             </h1>

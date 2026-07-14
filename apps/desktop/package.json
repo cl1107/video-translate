@@ -1,13 +1,18 @@
 {
   "name": "video-translate",
   "displayName": "视频翻译助手",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "基于 sherpa-onnx（SenseVoice/Fun-ASR-Nano）+ Ollama 的本地视频翻译软件",
+  "homepage": "https://github.com/cl1107/video-translate",
   "license": "MIT",
   "author": {
     "name": "Video Translate Team",
     "email": "contact@videotranslate.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cl1107/video-translate.git"
   },
   "main": "./node_modules/.dev/main/index.js",
   "scripts": {
@@ -93,5 +98,6 @@
     "pnpm": ">=11.0.0"
   },
   "packageManager": "pnpm@11.12.0",
+  "desktopName": "video-translate.desktop",
   "resources": "src/resources"
 }

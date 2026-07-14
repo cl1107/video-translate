@@ -1,4 +1,5 @@
-import { FileText, Settings, Upload, Video } from 'lucide-react'
+import appLogo from 'assets/logo-transparent.png'
+import { FileText, Settings, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TaskList } from 'renderer/components/task/TaskList'
@@ -68,9 +69,16 @@ export function MainScreen() {
       <div className="bg-white border-b">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Video className="h-8 w-8 text-blue-600" />
-              <h1 className="text-2xl font-bold text-gray-900">视频翻译助手</h1>
+            <div className="flex items-center gap-3">
+              <img
+                src={appLogo}
+                alt="视频翻译助手"
+                className="h-10 w-10 select-none"
+                draggable={false}
+              />
+              <span className="text-lg font-semibold tracking-tight text-gray-950">
+                视频翻译助手
+              </span>
             </div>
 
             <div className="flex items-center space-x-4">

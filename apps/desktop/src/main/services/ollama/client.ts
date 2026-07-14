@@ -69,6 +69,10 @@ export interface OllamaGenerateResponse {
   eval_duration?: number
 }
 
+export function supportsTranscriptPolish(model: string): boolean {
+  return !/hy-mt/i.test(model)
+}
+
 export class OllamaClient {
   private baseUrl: string
   private command: string
@@ -369,7 +373,12 @@ export class OllamaClient {
 
     // 面向 hy-mt2 等翻译专用模型：指令简短，强制目标语
     const systemPrompt = `你是专业字幕翻译。把用户给出的文本从${src}翻译成${tgt}。只输出译文，不要解释，不要原文，不要引号。`
-    const prompt = `源语言：${src}\n目标语言：${tgt}\n\n原文：\n${trimmed}\n\n译文：`
+    const prompt = [
+      `源语言：${src}`,
+      `目标语言：${tgt}`,
+      `待翻译原文：\n${trimmed}`,
+      '译文：',
+    ].join('\n\n')
 
     try {
       const response = await this.generate({
@@ -382,7 +391,11 @@ export class OllamaClient {
         },
       })
 
-      return cleanTranslation(response, trimmed)
+      const translated = cleanTranslation(response)
+      if (!translated) {
+        throw new Error('翻译结果为空')
+      }
+      return translated
     } catch (error) {
       console.error('Translation error:', error)
       const errorMessage =
@@ -393,15 +406,13 @@ export class OllamaClient {
 
   /**
    * 批量翻译文本段落
-   */
-  /**
-   * 批量翻译文本段落
    * @param texts - 要翻译的文本数组
    * @param sourceLanguage - 源语言
    * @param targetLanguage - 目标语言
    * @param model - 使用的模型名称（默认：kaelri/hy-mt2:1.8b）
    * @param onProgress - 进度回调函数（可选）
-   * @returns 返回翻译后的文本数组，翻译失败的段落保留原文
+   * @returns 返回与输入顺序一致的翻译文本数组
+   * @throws 任一段翻译失败时报告其位置并终止整批处理
    */
   async translateBatch(
     texts: string[],
@@ -422,16 +433,98 @@ export class OllamaClient {
           resolvedModel
         )
         results.push(translated)
-
-        if (onProgress) {
-          onProgress(i + 1, texts.length)
-        }
       } catch (error) {
-        console.error(
-          `Error translating segment ${i} with ${resolvedModel}:`,
-          error
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `translateBatch segment ${i + 1}/${texts.length} failed: ${message}`
         )
-        results.push(texts[i]) // 翻译失败时保留原文
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, texts.length)
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * 润色 ASR / OCR 识别文本：纠错、补标点、顺读，不翻译、不扩写。
+   */
+  async polishTranscript(
+    text: string,
+    sourceLanguage: string,
+    model = DEFAULT_OLLAMA_MODEL
+  ): Promise<string> {
+    if (!supportsTranscriptPolish(model)) {
+      throw new Error(`翻译专用模型 ${model} 不支持润色`)
+    }
+
+    const trimmed = text.trim()
+    if (!trimmed) return ''
+
+    if (
+      /^[\s。！？!?；;…、，,.．:：\-—～~「」『』（）()【】[\]]+$/u.test(trimmed)
+    ) {
+      return trimmed
+    }
+
+    const src = languageDisplayName(sourceLanguage)
+    const systemPrompt = `你是字幕识别结果校对员。用户给出的是语音/OCR 识别原文，可能有错字、缺标点、语序抖动。请输出润色后的同一语言文本：修正明显识别错误，补全必要标点，保持原意与信息量，不要翻译，不要解释，不要添加原文没有的信息，不要使用引号包裹全文。`
+    const prompt = `语言：${src}\n\n识别原文：\n${trimmed}\n\n润色结果：`
+
+    try {
+      const response = await this.generate({
+        model: model || DEFAULT_OLLAMA_MODEL,
+        prompt,
+        system: systemPrompt,
+        options: {
+          temperature: 0.1,
+          max_tokens: 2000,
+        },
+      })
+      const polished = cleanPolishedText(response)
+      if (!polished) {
+        throw new Error('润色结果为空')
+      }
+      return polished
+    } catch (error) {
+      console.error('Polish transcript error:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      throw new Error(`识别文本润色失败: ${errorMessage}`)
+    }
+  }
+
+  /**
+   * 批量润色识别文本；任一段失败时终止整批处理。
+   */
+  async polishTranscriptBatch(
+    texts: string[],
+    sourceLanguage: string,
+    model = DEFAULT_OLLAMA_MODEL,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<string[]> {
+    const resolvedModel = model || DEFAULT_OLLAMA_MODEL
+    const results: string[] = []
+
+    for (let i = 0; i < texts.length; i++) {
+      try {
+        const polished = await this.polishTranscript(
+          texts[i],
+          sourceLanguage,
+          resolvedModel
+        )
+        results.push(polished)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `polishTranscriptBatch segment ${i + 1}/${texts.length} failed: ${message}`
+        )
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, texts.length)
       }
     }
 
@@ -439,9 +532,9 @@ export class OllamaClient {
   }
 }
 
-function cleanTranslation(raw: string, original: string): string {
+function cleanTranslation(raw: string): string {
   let text = (raw || '').trim()
-  if (!text) return original
+  if (!text) return ''
 
   // 去掉常见引号包裹
   text = text.replace(/^["「『]|["」』]$/g, '').trim()
@@ -482,7 +575,36 @@ function cleanTranslation(raw: string, original: string): string {
   text = text.replace(/^(译文|翻译|Translation)\s*[:：]\s*/i, '').trim()
   text = text.replace(/^["「『]|["」』]$/g, '').trim()
 
-  if (!text) return original
+  return text
+}
+
+function cleanPolishedText(raw: string): string {
+  let text = (raw || '').trim()
+  if (!text) return ''
+
+  text = text.replace(/^["「『]|["」』]$/g, '').trim()
+
+  const polishedMatch = text.match(
+    /(?:^|\n)\s*(?:润色结果|校对结果|结果|Output)\s*[:：]\s*([\s\S]+)$/i
+  )
+  if (polishedMatch?.[1]) {
+    text = polishedMatch[1].trim()
+  } else if (/识别原文\s*[:：]/.test(text) || /语言\s*[:：]/.test(text)) {
+    text = text
+      .split('\n')
+      .filter(
+        line =>
+          !/^\s*(语言|识别原文|润色结果|校对结果|结果|Output)\s*[:：]/.test(
+            line
+          )
+      )
+      .join('\n')
+      .trim()
+  }
+
+  text = text.replace(/^(润色结果|校对结果|结果|Output)\s*[:：]\s*/i, '').trim()
+  text = text.replace(/^["「『]|["」』]$/g, '').trim()
+
   return text
 }
 

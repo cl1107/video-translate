@@ -659,6 +659,25 @@ export function SettingsPanel() {
           <div className="flex items-center space-x-2">
             <input
               type="checkbox"
+              id="polish-transcript"
+              checked={settings.polishTranscript}
+              onChange={e =>
+                setSettings(prev => ({
+                  ...prev,
+                  polishTranscript: e.target.checked,
+                }))
+              }
+              className="rounded"
+            />
+            <Label htmlFor="polish-transcript">识别结果先润色再翻译</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            ASR/OCR 文本可能有错字或缺标点；开启后由大模型校对，再进入翻译
+          </p>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
               id="burn-subtitles"
               checked={settings.burnSubtitles}
               onChange={e =>
@@ -674,6 +693,34 @@ export function SettingsPanel() {
           <p className="text-xs text-muted-foreground">
             启用后将生成包含字幕的新视频文件（处理时间较长）
           </p>
+
+          {settings.burnSubtitles && (
+            <div className="space-y-2">
+              <Label htmlFor="burn-mode">烧录内容</Label>
+              <Select
+                value={settings.burnSubtitleMode}
+                onValueChange={(
+                  value: 'bilingual' | 'translated' | 'original'
+                ) =>
+                  setSettings(prev => ({
+                    ...prev,
+                    burnSubtitleMode: value,
+                  }))
+                }
+              >
+                <SelectTrigger id="burn-mode">
+                  <SelectValue placeholder="选择烧录内容" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bilingual">
+                    双语堆叠（原文上 / 译文下）
+                  </SelectItem>
+                  <SelectItem value="translated">仅译文</SelectItem>
+                  <SelectItem value="original">仅原文</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
 

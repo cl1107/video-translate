@@ -8,7 +8,10 @@ import {
   DEFAULT_ASR_ENGINE,
   DEFAULT_OLLAMA_MODEL,
 } from '../../shared/constants'
-import { normalizeOllamaModel } from '../../shared/settings'
+import {
+  normalizeOllamaModel,
+  type SubtitleBurnMode,
+} from '../../shared/settings'
 import {
   type SubtitleEntry,
   type TaskLog,
@@ -17,6 +20,15 @@ import {
   type TranslationTask,
   type VideoFile,
 } from '../../shared/types/video'
+import {
+  type DisplaySegment,
+  buildDisplaySegments,
+} from '../utils/display-segment-builder'
+import {
+  selectBurnSubtitleContent,
+  validateSubtitleArtifacts,
+  writeSubtitleArtifacts,
+} from '../utils/subtitle-artifacts'
 import { SubtitleGenerator } from '../utils/subtitle-generator'
 import { ensureSenseVoiceModel } from './asr/model-downloader'
 import {
@@ -25,7 +37,7 @@ import {
 } from './asr/sherpa-transcriber'
 import { databaseManager } from './database/manager'
 import { ffmpegProcessor } from './ffmpeg/processor'
-import { ollamaClient } from './ollama/client'
+import { ollamaClient, supportsTranscriptPolish } from './ollama/client'
 import { tempWorkspace } from './temp-workspace'
 
 export interface CreateTaskOptions {
@@ -35,12 +47,16 @@ export interface CreateTaskOptions {
   ollamaModel?: string
   asrEngine?: AsrEngineId
   burnSubtitles?: boolean
+  burnSubtitleMode?: SubtitleBurnMode
+  polishTranscript?: boolean
 }
 
 interface ProcessTaskOptions {
   ollamaModel?: string
   asrEngine?: AsrEngineId
   burnSubtitles?: boolean
+  burnSubtitleMode?: SubtitleBurnMode
+  polishTranscript?: boolean
 }
 
 interface TaskProcessingContext {
@@ -48,12 +64,17 @@ interface TaskProcessingContext {
   workDir?: string
   audioPath?: string
   transcription?: AsrTranscriptionResult
-  translatedSegments?: TranscriptionSegment[]
+  displaySegments?: DisplaySegment[]
+  translatedSegments?: DisplaySegment[]
   subtitles?: SubtitleEntry[]
+  videoSize?: { width: number; height: number }
   outputPaths?: {
     original: string
     translated: string
+    bilingual: string
+    bilingualAss: string
     burnedVideo?: string
+    outputDirectory: string
   }
 }
 
@@ -193,6 +214,8 @@ export class TaskManager {
         ollamaModel: options.ollamaModel,
         asrEngine: options.asrEngine,
         burnSubtitles: options.burnSubtitles,
+        burnSubtitleMode: options.burnSubtitleMode ?? 'bilingual',
+        polishTranscript: options.polishTranscript ?? true,
       })
 
       const cachedLogs = this.tempLogs.get(taskId)
@@ -257,6 +280,12 @@ export class TaskManager {
 
       await this.ensureDependencies(taskId)
 
+      const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
+      context.videoSize = {
+        width: videoInfo.width,
+        height: videoInfo.height,
+      }
+
       context.audioPath = await this.extractAudio(
         taskId,
         task.videoFile.path,
@@ -264,6 +293,9 @@ export class TaskManager {
       )
 
       const asrEngine = runtime.asrEngine ?? DEFAULT_ASR_ENGINE
+      const ollamaModel = normalizeOllamaModel(
+        runtime.ollamaModel ?? DEFAULT_OLLAMA_MODEL
+      )
 
       context.transcription = await this.runTranscription(
         taskId,
@@ -273,30 +305,81 @@ export class TaskManager {
         context.workDir
       )
 
+      // 识别段 → 显示段（合并过碎句），再润色、翻译
+      context.displaySegments = buildDisplaySegments(
+        context.transcription.segments,
+        {
+          maxDisplayColumns:
+            context.videoSize.width < context.videoSize.height ? 42 : 68,
+        }
+      )
+      this.addTaskLog(
+        taskId,
+        'info',
+        '显示段整理完成',
+        `识别 ${context.transcription.segments.length} 段 → 显示 ${context.displaySegments.length} 段`
+      )
+
+      const polishRequested = runtime.polishTranscript !== false
+      const shouldPolish =
+        polishRequested && supportsTranscriptPolish(ollamaModel)
+      if (shouldPolish) {
+        context.displaySegments = await this.runPolish(
+          taskId,
+          context.displaySegments,
+          task.sourceLanguage,
+          ollamaModel
+        )
+      } else {
+        if (polishRequested) {
+          this.addTaskLog(
+            taskId,
+            'warn',
+            '已跳过识别文本润色',
+            `模型 ${ollamaModel} 为翻译专用模型，无法保证润色后仍保持源语言`
+          )
+        }
+        context.displaySegments = context.displaySegments.map(segment => ({
+          ...segment,
+          polishedText: segment.originalText,
+        }))
+      }
+
       context.translatedSegments = await this.runTranslation(
         taskId,
-        context.transcription.segments,
+        context.displaySegments,
         task.sourceLanguage,
         task.targetLanguage,
-        normalizeOllamaModel(runtime.ollamaModel ?? DEFAULT_OLLAMA_MODEL)
+        ollamaModel
       )
 
       context.subtitles = SubtitleGenerator.segmentsToSubtitles(
-        context.translatedSegments
+        context.translatedSegments.map(segment => ({
+          ...segment,
+          originalText: segment.polishedText || segment.originalText,
+        }))
       )
 
       context.outputPaths = await this.generateSubtitleOutputs(
         taskId,
         task,
-        context.transcription.segments,
-        context.translatedSegments
+        context.translatedSegments,
+        context.videoSize
       )
 
       if (runtime.burnSubtitles) {
+        const burnMode = runtime.burnSubtitleMode ?? 'bilingual'
+        const burnSubtitlePath = await this.prepareBurnSubtitleFile(
+          taskId,
+          context.translatedSegments,
+          burnMode,
+          context.videoSize,
+          context.workDir
+        )
         context.outputPaths.burnedVideo = await this.burnHardSubtitles(
           taskId,
           task.videoFile.path,
-          context.outputPaths.translated,
+          burnSubtitlePath,
           context.workDir
         )
       }
@@ -420,13 +503,53 @@ export class TaskManager {
     return transcription
   }
 
+  private async runPolish(
+    taskId: string,
+    segments: DisplaySegment[],
+    sourceLanguage: string,
+    ollamaModel: string
+  ): Promise<DisplaySegment[]> {
+    await this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, 60)
+    this.addTaskLog(
+      taskId,
+      'info',
+      '开始润色识别文本',
+      `Ollama 模型: ${ollamaModel}（纠错/补标点后再翻译）`
+    )
+
+    const texts = segments.map(segment => segment.originalText)
+    const polished = await ollamaClient.polishTranscriptBatch(
+      texts,
+      sourceLanguage,
+      ollamaModel,
+      (completed, total) => {
+        const normalized = 60 + (completed / total) * 5
+        void this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, normalized)
+      }
+    )
+
+    const merged = segments.map((segment, index) => ({
+      ...segment,
+      polishedText: polished[index] || segment.originalText,
+    }))
+
+    this.addTaskLog(
+      taskId,
+      'success',
+      '识别文本润色完成',
+      `润色 ${merged.length} 个显示段`
+    )
+
+    return merged
+  }
+
   private async runTranslation(
     taskId: string,
-    segments: TranscriptionSegment[],
+    segments: DisplaySegment[],
     sourceLanguage: string,
     targetLanguage: string,
     ollamaModel: string
-  ): Promise<TranscriptionSegment[]> {
+  ): Promise<DisplaySegment[]> {
     await this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, 65)
     this.addTaskLog(
       taskId,
@@ -435,7 +558,10 @@ export class TaskManager {
       `Ollama 模型: ${ollamaModel}, 目标语言: ${targetLanguage}`
     )
 
-    const texts = segments.map(segment => segment.originalText)
+    // 翻译输入优先用润色文本
+    const texts = segments.map(
+      segment => segment.polishedText || segment.originalText
+    )
     const translated = await ollamaClient.translateBatch(
       texts,
       sourceLanguage,
@@ -449,14 +575,25 @@ export class TaskManager {
 
     const merged = segments.map((segment, index) => ({
       ...segment,
-      translatedText: translated[index] ?? segment.originalText,
+      translatedText:
+        translated[index] ?? segment.polishedText ?? segment.originalText,
     }))
 
-    databaseManager.updateTranslatedSegments(taskId, merged)
+    // 显示段可能合并了多条识别段：整体替换为权威结果
+    const taskSegments: TranscriptionSegment[] = merged.map(segment => ({
+      id: segment.id,
+      start: segment.start,
+      end: segment.end,
+      originalText: segment.originalText,
+      polishedText: segment.polishedText,
+      translatedText: segment.translatedText,
+      confidence: segment.confidence,
+    }))
+    databaseManager.replaceTranscriptionSegments(taskId, taskSegments)
 
     const task = this.activeTasks.get(taskId)
     if (task) {
-      task.segments = merged
+      task.segments = taskSegments
     }
 
     this.addTaskLog(
@@ -472,62 +609,87 @@ export class TaskManager {
   private async generateSubtitleOutputs(
     taskId: string,
     task: TranslationTask,
-    originalSegments: TranscriptionSegment[],
-    translatedSegments: TranscriptionSegment[]
-  ): Promise<{ original: string; translated: string }> {
+    segments: DisplaySegment[],
+    videoSize?: { width: number; height: number }
+  ): Promise<NonNullable<TaskProcessingContext['outputPaths']>> {
     await this.updateTaskStatus(taskId, TaskStatus.GENERATING_SUBTITLES, 90)
-    this.addTaskLog(taskId, 'info', '开始生成字幕文件...')
+    this.addTaskLog(
+      taskId,
+      'info',
+      '开始生成字幕文件（原文/译文/双语 SRT + ASS）...'
+    )
 
     const outputDir = path.join(path.dirname(task.videoFile.path), 'output')
-    await fs.mkdir(outputDir, { recursive: true })
-
     const baseName = path.basename(
       task.videoFile.path,
       path.extname(task.videoFile.path)
     )
     const timestamp = dayjs().format('YYYYMMDD_HHmmss')
+    const artifactBase = `${baseName}_${timestamp}`
 
-    const originalPath = path.join(
+    const paths = await writeSubtitleArtifacts({
+      segments,
       outputDir,
-      `${baseName}_${timestamp}_${this.getLanguageSuffix(task.sourceLanguage)}.srt`
-    )
-    const translatedPath = path.join(
-      outputDir,
-      `${baseName}_${timestamp}_${this.getLanguageSuffix(task.targetLanguage)}.srt`
-    )
+      baseName: artifactBase,
+      sourceSuffix: this.getLanguageSuffix(task.sourceLanguage),
+      targetSuffix: this.getLanguageSuffix(task.targetLanguage),
+      videoSize,
+    })
 
-    const originalSubtitles = SubtitleGenerator.segmentsToSubtitles(
-      originalSegments.map(segment => ({
-        ...segment,
-        translatedText: undefined,
-      }))
-    )
-    const translatedSubtitles =
-      SubtitleGenerator.segmentsToSubtitles(translatedSegments)
-
-    await SubtitleGenerator.saveSubtitle(originalSubtitles, originalPath, 'srt')
-    await SubtitleGenerator.saveSubtitle(
-      translatedSubtitles,
-      translatedPath,
-      'srt'
-    )
+    const validation = await validateSubtitleArtifacts(paths, segments)
+    if (!validation.ok) {
+      throw new Error(`字幕产物校验失败: ${validation.errors.join('; ')}`)
+    }
 
     this.addTaskLog(
       taskId,
       'success',
       '字幕文件生成完成',
-      `原文: ${originalPath}\n翻译: ${translatedPath}`
+      [
+        `原文: ${paths.original}`,
+        `翻译: ${paths.translated}`,
+        `双语: ${paths.bilingual}`,
+        `ASS: ${paths.bilingualAss}`,
+      ].join('\n')
     )
 
     const taskRef = this.activeTasks.get(task.id)
     if (taskRef) {
-      taskRef.subtitles = translatedSubtitles
+      taskRef.subtitles = SubtitleGenerator.segmentsToSubtitles(
+        segments.map(segment => ({
+          ...segment,
+          originalText: segment.polishedText || segment.originalText,
+        }))
+      )
     }
 
     return {
-      original: originalPath,
-      translated: translatedPath,
+      original: paths.original,
+      translated: paths.translated,
+      bilingual: paths.bilingual,
+      bilingualAss: paths.bilingualAss,
+      outputDirectory: paths.outputDirectory,
     }
+  }
+
+  private async prepareBurnSubtitleFile(
+    taskId: string,
+    segments: DisplaySegment[],
+    mode: SubtitleBurnMode,
+    videoSize: { width: number; height: number } | undefined,
+    workDir?: string
+  ): Promise<string> {
+    const dir = workDir || (await tempWorkspace.ensureTaskDir(taskId))
+    const selected = selectBurnSubtitleContent(mode, segments, videoSize)
+    const burnPath = path.join(dir, `burn_${mode}.${selected.extension}`)
+    await fs.writeFile(burnPath, selected.content, 'utf-8')
+    this.addTaskLog(
+      taskId,
+      'info',
+      '已准备烧录字幕',
+      `模式: ${mode}, 文件: ${burnPath}`
+    )
+    return burnPath
   }
 
   private async burnHardSubtitles(
@@ -563,6 +725,12 @@ export class TaskManager {
       workDir
     )
 
+    // 轻量产物检查：烧录结果必须存在且非空
+    const stat = await fs.stat(result)
+    if (!stat.isFile() || stat.size <= 0) {
+      throw new Error(`烧录视频产物无效: ${result}`)
+    }
+
     this.addTaskLog(taskId, 'success', '烧录硬字幕完成', `输出视频: ${result}`)
 
     return result
@@ -578,9 +746,12 @@ export class TaskManager {
     }
     if (task && context.outputPaths) {
       task.outputArtifacts = {
+        originalSubtitle: context.outputPaths.original,
         translatedSubtitle: context.outputPaths.translated,
+        bilingualSubtitle: context.outputPaths.bilingual,
+        bilingualAss: context.outputPaths.bilingualAss,
         burnedVideo: context.outputPaths.burnedVideo,
-        outputDirectory: path.dirname(context.outputPaths.translated),
+        outputDirectory: context.outputPaths.outputDirectory,
       }
     }
 
@@ -666,11 +837,16 @@ export class TaskManager {
       if (!log.details) continue
 
       if (log.message === '字幕文件生成完成') {
-        const translatedLine = log.details
-          .split('\n')
-          .find(line => line.startsWith('翻译: '))
-        if (translatedLine) {
-          artifacts.translatedSubtitle = translatedLine.slice('翻译: '.length)
+        for (const line of log.details.split('\n')) {
+          if (line.startsWith('原文: ')) {
+            artifacts.originalSubtitle = line.slice('原文: '.length)
+          } else if (line.startsWith('翻译: ')) {
+            artifacts.translatedSubtitle = line.slice('翻译: '.length)
+          } else if (line.startsWith('双语: ')) {
+            artifacts.bilingualSubtitle = line.slice('双语: '.length)
+          } else if (line.startsWith('ASS: ')) {
+            artifacts.bilingualAss = line.slice('ASS: '.length)
+          }
         }
       }
 

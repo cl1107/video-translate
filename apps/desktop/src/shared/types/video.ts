@@ -33,7 +33,10 @@ export interface TranslationTask {
   updatedAt: string
   completedAt?: string
   outputArtifacts?: {
+    originalSubtitle?: string
     translatedSubtitle?: string
+    bilingualSubtitle?: string
+    bilingualAss?: string
     burnedVideo?: string
     outputDirectory: string
   }
@@ -54,7 +57,10 @@ export interface TranscriptionSegment {
   id: string
   start: number
   end: number
+  /** ASR/OCR 原始识别文本 */
   originalText: string
+  /** 大模型润色后的显示原文（用于翻译与字幕展示） */
+  polishedText?: string
   translatedText?: string
   confidence: number
 }

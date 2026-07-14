@@ -46,6 +46,13 @@ export function calculateTranslatedSubtitleMargin(videoHeight: number): number {
   return Math.min(96, Math.max(28, Math.round(videoHeight * 0.04)))
 }
 
+/**
+ * 是否按 ASS 内嵌样式烧录（不再附加 force_style）。
+ */
+function isAssSubtitle(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === '.ass'
+}
+
 export class FFmpegProcessor {
   private ffmpegPath: string
   private ffprobePath: string
@@ -159,8 +166,6 @@ export class FFmpegProcessor {
         '-hide_banner',
         '-show_format',
         '-show_streams',
-        '-select_streams',
-        'v:0',
         '-of',
         'json',
       ]
@@ -685,20 +690,28 @@ export class FFmpegProcessor {
 
     // 中文路径等非 ASCII 路径容易触发 filtergraph 解析错误，复制到临时 ASCII 路径
     const dir = await this.resolveWorkDir(workDir)
-    const tempSubtitlePath = path.join(dir, `burn_sub_${Date.now()}.srt`)
+    const extension = path.extname(subtitlePath) || '.srt'
+    const tempSubtitlePath = path.join(
+      dir,
+      `burn_sub_${Date.now()}${extension}`
+    )
     await fs.copyFile(subtitlePath, tempSubtitlePath)
 
     try {
       const videoInfo = await this.getVideoInfo(videoPath)
       const subtitleMargin = calculateTranslatedSubtitleMargin(videoInfo.height)
-      return await this.runBurnSubtitles(
+      const output = await this.runBurnSubtitles(
         ffmpegBin,
         videoPath,
         tempSubtitlePath,
         outputPath,
         subtitleMargin,
-        onProgress
+        onProgress,
+        isAssSubtitle(subtitlePath)
       )
+      const outputInfo = await this.getVideoInfo(output)
+      this.validateBurnedVideoInfo(videoInfo, outputInfo)
+      return output
     } finally {
       await fs.unlink(tempSubtitlePath).catch(() => {})
     }
@@ -783,17 +796,28 @@ export class FFmpegProcessor {
     subtitlePath: string,
     outputPath: string,
     subtitleMargin: number,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    useEmbeddedAssStyle = false
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const escapedSub = this.escapeFilterPath(subtitlePath)
+      // ASS 已含 PlayRes/字号/双语堆叠样式；SRT 仍用 force_style 兜底
+      const vf = useEmbeddedAssStyle
+        ? `subtitles='${escapedSub}'`
+        : `subtitles='${escapedSub}':force_style='Alignment=2,MarginV=${subtitleMargin}'`
       const args = [
         '-i',
         videoPath,
         '-vf',
-        `subtitles='${escapedSub}':force_style='Alignment=2,MarginV=${subtitleMargin}'`,
+        vf,
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
         '-c:a',
         'copy',
+        '-movflags',
+        '+faststart',
         '-y',
         outputPath,
       ]
@@ -838,6 +862,47 @@ export class FFmpegProcessor {
         resolve(outputPath)
       })
     })
+  }
+
+  private validateBurnedVideoInfo(input: VideoInfo, output: VideoInfo): void {
+    if (!output.format.split(',').includes('mp4')) {
+      throw new Error(`烧录输出容器不是 MP4: ${output.format}`)
+    }
+    if (output.videoCodec !== 'h264') {
+      throw new Error(`烧录输出视频编码不是 H.264: ${output.videoCodec}`)
+    }
+    if (input.width !== output.width || input.height !== output.height) {
+      throw new Error(
+        `烧录输出分辨率改变: ${input.width}x${input.height} -> ${output.width}x${output.height}`
+      )
+    }
+    if (input.duration <= 0 || output.duration <= 0) {
+      throw new Error(
+        `烧录输出时长无效: 输入 ${input.duration}s，输出 ${output.duration}s`
+      )
+    }
+    const durationTolerance = Math.max(0.5, input.duration * 0.01)
+    if (Math.abs(input.duration - output.duration) > durationTolerance) {
+      throw new Error(
+        `烧录输出时长改变: ${input.duration}s -> ${output.duration}s`
+      )
+    }
+    if (
+      input.frameRate > 0 &&
+      output.frameRate > 0 &&
+      Math.abs(input.frameRate - output.frameRate) > 0.01
+    ) {
+      throw new Error(
+        `烧录输出帧率改变: ${input.frameRate} -> ${output.frameRate}`
+      )
+    }
+    const inputHasAudio = input.audioCodec !== 'none'
+    const outputHasAudio = output.audioCodec !== 'none'
+    if (inputHasAudio !== outputHasAudio) {
+      throw new Error(
+        `烧录输出音轨状态改变: 输入 ${input.audioCodec}，输出 ${output.audioCodec}`
+      )
+    }
   }
 
   /**

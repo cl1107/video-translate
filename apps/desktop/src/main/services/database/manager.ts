@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
+import dayjs from 'dayjs'
 import { app } from 'electron'
 import path from 'node:path'
-import dayjs from 'dayjs'
 import {
   TaskStatus,
   type TaskLog,
@@ -72,12 +72,23 @@ export class DatabaseManager {
         start_time REAL NOT NULL,
         end_time REAL NOT NULL,
         original_text TEXT NOT NULL,
+        polished_text TEXT NULL,
         translated_text TEXT NULL,
         confidence REAL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (task_id) REFERENCES translation_tasks (id)
       )
     `)
+
+    // 兼容旧库：补充润色字段
+    const segmentColumns = this.db
+      .prepare(`PRAGMA table_info(transcription_segments)`)
+      .all() as Array<{ name: string }>
+    if (!segmentColumns.some(column => column.name === 'polished_text')) {
+      this.db.exec(
+        `ALTER TABLE transcription_segments ADD COLUMN polished_text TEXT NULL`
+      )
+    }
 
     // 创建任务日志表
     this.db.exec(`
@@ -335,8 +346,8 @@ export class DatabaseManager {
   ): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO transcription_segments
-      (id, task_id, start_time, end_time, original_text, translated_text, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (id, task_id, start_time, end_time, original_text, polished_text, translated_text, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const transaction = this.db.transaction(
@@ -348,6 +359,7 @@ export class DatabaseManager {
             segment.start,
             segment.end,
             segment.originalText,
+            segment.polishedText || null,
             segment.translatedText || null,
             segment.confidence
           )
@@ -380,6 +392,7 @@ export class DatabaseManager {
       start: row.start_time,
       end: row.end_time,
       originalText: row.original_text,
+      polishedText: row.polished_text || undefined,
       translatedText: row.translated_text,
       confidence: row.confidence,
     }))
@@ -523,16 +536,58 @@ export class DatabaseManager {
    * @param taskId - 任务ID
    * @param segments - 包含翻译结果的段落数组
    */
-  updateTranslatedSegments(taskId: string, segments: any[]): void {
+  updateTranslatedSegments(
+    taskId: string,
+    segments: TranscriptionSegment[]
+  ): void {
     const stmt = this.db.prepare(`
       UPDATE transcription_segments
-      SET translated_text = ?
+      SET polished_text = ?, translated_text = ?
       WHERE id = ?
     `)
 
     const transaction = this.db.transaction(() => {
       for (const segment of segments) {
-        stmt.run(segment.translatedText, segment.id)
+        stmt.run(
+          segment.polishedText || null,
+          segment.translatedText || null,
+          segment.id
+        )
+      }
+    })
+
+    transaction()
+  }
+
+  /**
+   * 用显示段整体替换任务段落（合并/润色/翻译后的权威结果）。
+   */
+  replaceTranscriptionSegments(
+    taskId: string,
+    segments: TranscriptionSegment[]
+  ): void {
+    const deleteStmt = this.db.prepare(
+      'DELETE FROM transcription_segments WHERE task_id = ?'
+    )
+    const insertStmt = this.db.prepare(`
+      INSERT INTO transcription_segments
+      (id, task_id, start_time, end_time, original_text, polished_text, translated_text, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const transaction = this.db.transaction(() => {
+      deleteStmt.run(taskId)
+      for (const segment of segments) {
+        insertStmt.run(
+          segment.id,
+          taskId,
+          segment.start,
+          segment.end,
+          segment.originalText,
+          segment.polishedText || null,
+          segment.translatedText || null,
+          segment.confidence
+        )
       }
     })
 

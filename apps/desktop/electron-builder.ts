@@ -1,13 +1,13 @@
 import type { Configuration } from 'electron-builder'
 
 import {
-  main,
-  name,
-  version,
-  resources,
+  author as _author,
   description,
   displayName,
-  author as _author,
+  main,
+  name,
+  resources,
+  version,
 } from './package.json'
 
 import { getDevFolder } from './src/lib/electron-app/release/utils/path'
@@ -71,8 +71,10 @@ export default {
 
   linux: {
     artifactName,
+    icon: `${resources}/build/icons/icon.png`,
     category: 'Utilities',
     synopsis: description,
+    executableName: name,
     target: ['AppImage', 'deb', 'pacman', 'rpm'],
     ...(bundleFfmpeg
       ? {

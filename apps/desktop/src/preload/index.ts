@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { TranslationTask } from '../shared/types/video'
 import type { SystemCheckProgress } from '../shared/system-check'
+import type { TranslationTask } from '../shared/types/video'
 
 declare global {
   interface Window {
@@ -19,6 +19,8 @@ declare global {
           ollamaModel?: string
           asrEngine?: 'sensevoice' | 'funasr-nano'
           burnSubtitles?: boolean
+          burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
+          polishTranscript?: boolean
         }
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
 

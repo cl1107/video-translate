@@ -13,6 +13,8 @@ const LEGACY_OLLAMA_MODELS = new Set([
   'llama3.1',
 ])
 
+export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
+
 export interface AppSettings {
   asrEngine: AsrEngineId
   ollamaModel: string
@@ -20,6 +22,10 @@ export interface AppSettings {
   targetLanguage: string
   outputFormat: 'srt' | 'vtt' | 'txt'
   burnSubtitles: boolean
+  /** 烧录内容：双语堆叠 / 仅译文 / 仅原文 */
+  burnSubtitleMode: SubtitleBurnMode
+  /** 识别结果先经大模型润色再翻译 */
+  polishTranscript: boolean
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -29,6 +35,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   targetLanguage: 'zh',
   outputFormat: 'srt',
   burnSubtitles: false,
+  burnSubtitleMode: 'bilingual',
+  polishTranscript: true,
+}
+
+function normalizeBurnSubtitleMode(value?: string | null): SubtitleBurnMode {
+  if (value === 'translated' || value === 'original' || value === 'bilingual') {
+    return value
+  }
+  return DEFAULT_APP_SETTINGS.burnSubtitleMode
 }
 
 export function normalizeOllamaModel(name?: string | null): string {
@@ -63,6 +78,11 @@ export function normalizeAppSettings(
     targetLanguage: raw.targetLanguage || DEFAULT_APP_SETTINGS.targetLanguage,
     outputFormat: raw.outputFormat || DEFAULT_APP_SETTINGS.outputFormat,
     burnSubtitles: Boolean(raw.burnSubtitles),
+    burnSubtitleMode: normalizeBurnSubtitleMode(raw.burnSubtitleMode),
+    polishTranscript:
+      raw.polishTranscript === undefined
+        ? DEFAULT_APP_SETTINGS.polishTranscript
+        : Boolean(raw.polishTranscript),
   }
 }
 
