@@ -120,7 +120,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -128,87 +128,86 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
         </Alert>
       )}
 
-      {/* 在线链接下载 + 翻译 */}
-      <Card>
-        <CardContent className="pt-6 space-y-3">
-          <div className="flex items-center gap-2 mb-1">
-            <Link2 className="h-5 w-5 text-primary" />
-            <h3 className="text-lg font-semibold">在线视频链接</h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            粘贴 YouTube、B 站等 yt-dlp 支持的链接：下载最高画质，
-            <strong className="font-medium text-foreground">优先使用平台字幕</strong>
-            （有则跳过语音识别），再翻译并生成字幕。
-            需要本机已安装 <code className="text-xs">yt-dlp</code>。
-          </p>
-          <textarea
-            className="w-full min-h-[88px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder={
-              'https://www.youtube.com/watch?v=...\nhttps://www.bilibili.com/video/BV...'
-            }
-            value={urlText}
-            onChange={e => setUrlText(e.target.value)}
-            disabled={urlSubmitting}
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              支持多行；下载后走与本地文件相同的翻译流水线
-            </p>
-            <Button
-              onClick={submitUrls}
-              disabled={urlSubmitting || !urlText.trim()}
-            >
-              <Link2 className="h-4 w-4 mr-2" />
-              {urlSubmitting ? '提交中…' : '下载并翻译'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <div className="h-px flex-1 bg-border" />
-        <span>或上传本地文件</span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
-
+      {/* 主路径：本地文件 */}
       <Card
-        className={`transition-colors duration-200 ${
+        className={`gap-0 py-0 transition-colors duration-200 ${
           dragActive
             ? 'border-primary bg-primary/5'
-            : 'border-dashed border-2 hover:border-primary/50'
+            : 'border-2 border-dashed hover:border-primary/50'
         }`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
       >
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="mb-4">
-            {dragActive ? (
-              <FileVideo className="h-12 w-12 text-primary animate-pulse" />
-            ) : (
-              <Upload className="h-12 w-12 text-muted-foreground" />
-            )}
+        <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
+          {dragActive ? (
+            <FileVideo className="h-10 w-10 text-primary" />
+          ) : (
+            <Upload className="h-10 w-10 text-muted-foreground" />
+          )}
+
+          <div className="flex flex-col gap-1">
+            <h2 className="text-base font-semibold">
+              {dragActive ? '释放文件开始上传' : '拖拽视频到此处'}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              MP4 / AVI / MOV / MKV / WebM / WMV / FLV · 最大 2GB
+            </p>
           </div>
 
-          <h3 className="text-lg font-semibold mb-2">
-            {dragActive ? '释放文件开始上传' : '拖拽视频文件到此处'}
-          </h3>
+          <Button onClick={openFileDialog} className="mt-1">
+            <Video className="h-4 w-4" />
+            选择文件
+          </Button>
+        </CardContent>
+      </Card>
 
-          <p className="text-muted-foreground mb-4">
-            支持 MP4, AVI, MOV, MKV, WebM, WMV, FLV 格式
-          </p>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="h-px flex-1 bg-border" />
+        <span>或使用在线链接</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
 
-          <div className="flex items-center space-x-4">
-            <Button onClick={openFileDialog} variant="outline">
-              <Video className="h-4 w-4 mr-2" />
-              选择文件
+      {/* 次路径：在线链接，紧凑表单 */}
+      <Card className="gap-0 py-0">
+        <CardContent className="flex flex-col gap-3 px-5 py-4">
+          <div className="flex items-start gap-2.5">
+            <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="text-sm font-semibold">在线视频链接</h2>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                YouTube、B 站等 yt-dlp 支持的地址；优先用平台字幕，否则本地识别。
+                需本机已安装 <code className="text-[11px]">yt-dlp</code>。
+              </p>
+            </div>
+          </div>
+
+          <textarea
+            className="w-full min-h-20 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            placeholder={
+              'https://www.youtube.com/watch?v=...\nhttps://www.bilibili.com/video/BV...'
+            }
+            value={urlText}
+            onChange={e => setUrlText(e.target.value)}
+            disabled={urlSubmitting}
+            rows={3}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              支持多行；与本地文件共用同一翻译流水线
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={submitUrls}
+              disabled={urlSubmitting || !urlText.trim()}
+            >
+              <Link2 className="h-4 w-4" />
+              {urlSubmitting ? '提交中…' : '下载并翻译'}
             </Button>
           </div>
-
-          <p className="text-xs text-muted-foreground mt-4">
-            最大文件大小: 2GB
-          </p>
         </CardContent>
       </Card>
     </div>

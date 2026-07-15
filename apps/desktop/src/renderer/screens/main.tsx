@@ -64,119 +64,91 @@ export function MainScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex min-h-screen flex-col bg-background">
       {/* 顶部导航栏 */}
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img
-                src={appLogo}
-                alt="视频翻译助手"
-                className="h-10 w-10 select-none"
-                draggable={false}
-              />
-              <span className="text-lg font-semibold tracking-tight text-gray-950">
-                视频翻译助手
-              </span>
-            </div>
+      <header className="sticky top-0 z-10 border-b bg-card">
+        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src={appLogo}
+              alt="视频翻译助手"
+              className="h-8 w-8 shrink-0 select-none"
+              draggable={false}
+            />
+            <span className="truncate text-base font-semibold tracking-tight text-foreground">
+              视频翻译助手
+            </span>
+          </div>
 
-            <div className="flex items-center space-x-4">
-              {/* 标签页导航 */}
-              <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
-                <Button
-                  variant={activeTab === 'upload' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveTab('upload')}
-                  className="flex items-center space-x-2"
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>上传视频</span>
-                </Button>
-                <Button
-                  variant={activeTab === 'tasks' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveTab('tasks')}
-                  className="flex items-center space-x-2"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span>任务列表</span>
-                  {tasks.length > 0 && (
-                    <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center">
-                      {tasks.length}
-                    </span>
-                  )}
-                </Button>
-              </div>
-
-              {/* 设置按钮 */}
+          <div className="flex shrink-0 items-center gap-3">
+            {/* 标签页导航 */}
+            <nav
+              className="flex items-center gap-0.5 rounded-lg bg-muted p-1"
+              aria-label="主功能"
+            >
               <Button
-                variant="outline"
+                variant={activeTab === 'upload' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => navigate('/settings')}
-                className="flex items-center space-x-2"
+                onClick={() => setActiveTab('upload')}
+                className="gap-1.5"
               >
-                <Settings className="h-4 w-4" />
-                <span>设置</span>
+                <Upload className="h-4 w-4" />
+                <span>添加视频</span>
               </Button>
-            </div>
+              <Button
+                variant={activeTab === 'tasks' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setActiveTab('tasks')}
+                className="gap-1.5"
+              >
+                <FileText className="h-4 w-4" />
+                <span>任务</span>
+                {tasks.length > 0 && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium leading-none text-primary-foreground">
+                    {tasks.length}
+                  </span>
+                )}
+              </Button>
+            </nav>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/settings')}
+              className="gap-1.5"
+            >
+              <Settings className="h-4 w-4" />
+              <span>设置</span>
+            </Button>
           </div>
         </div>
-      </div>
+      </header>
 
       {/* 主要内容区域 */}
-      <div className="container mx-auto px-6 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-6">
         {activeTab === 'upload' && (
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="text-center space-y-4">
-              <h2 className="text-3xl font-bold text-gray-900">
-                上传您的视频文件
-              </h2>
-              <p className="text-xl text-gray-600">
-                支持多种格式，自动生成翻译字幕
+          <div className="mx-auto flex max-w-2xl flex-col gap-5">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-lg font-semibold text-foreground">
+                添加要翻译的视频
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                本地文件或在线链接，自动识别语音并生成本地字幕
               </p>
             </div>
 
             <VideoUploader onUploadSuccess={handleUploadSuccess} />
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-              <div className="p-6 bg-white rounded-lg shadow-sm border">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🎬</span>
-                </div>
-                <h3 className="font-semibold mb-2">智能处理</h3>
-                <p className="text-sm text-gray-600">
-                  自动提取音频，智能分段处理
-                </p>
-              </div>
-              <div className="p-6 bg-white rounded-lg shadow-sm border">
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🎯</span>
-                </div>
-                <h3 className="font-semibold mb-2">高精度识别</h3>
-                <p className="text-sm text-gray-600">
-                  使用 sherpa-onnx 和 SenseVoice 进行本地语音识别
-                </p>
-              </div>
-              <div className="p-6 bg-white rounded-lg shadow-sm border">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🌐</span>
-                </div>
-                <h3 className="font-semibold mb-2">本地翻译</h3>
-                <p className="text-sm text-gray-600">
-                  本地 Ollama 模型，保护隐私安全
-                </p>
-              </div>
-            </div>
           </div>
         )}
 
         {activeTab === 'tasks' && (
-          <div className="max-w-6xl mx-auto">
-            <TaskList tasks={tasks} onTasksChange={loadTasks} />
-          </div>
+          <TaskList
+            tasks={tasks}
+            onTasksChange={loadTasks}
+            onGoUpload={() => setActiveTab('upload')}
+          />
         )}
-      </div>
+      </main>
     </div>
   )
 }

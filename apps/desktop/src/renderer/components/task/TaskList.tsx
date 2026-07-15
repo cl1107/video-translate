@@ -35,6 +35,8 @@ const { App } = window
 interface TaskListProps {
   tasks: TranslationTask[]
   onTasksChange: () => void
+  /** 空状态时跳转到「添加视频」 */
+  onGoUpload?: () => void
 }
 
 const BURN_MODE_OPTIONS: Array<{
@@ -116,7 +118,11 @@ const formatDate = (date: string): string => {
   return date.split(' ')[0] // 只返回日期部分，去掉时间
 }
 
-export function TaskList({ tasks, onTasksChange }: TaskListProps) {
+export function TaskList({
+  tasks,
+  onTasksChange,
+  onGoUpload,
+}: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>()
   const [openBurnMenuTaskId, setOpenBurnMenuTaskId] = useState<string>()
@@ -231,22 +237,34 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
 
   if (tasks.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <FileVideo className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">暂无翻译任务</h3>
-          <p className="text-muted-foreground">
-            上传视频文件开始您的第一个翻译任务
-          </p>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold">翻译任务</h1>
+        </div>
+        <Card className="gap-0 py-0">
+          <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+            <FileVideo className="h-9 w-9 text-muted-foreground" />
+            <div className="flex flex-col gap-1">
+              <h2 className="text-base font-semibold">暂无翻译任务</h2>
+              <p className="text-sm text-muted-foreground">
+                添加本地视频或在线链接，开始第一个翻译任务
+              </p>
+            </div>
+            {onGoUpload && (
+              <Button size="sm" onClick={onGoUpload} className="mt-1">
+                去添加视频
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">翻译任务</h2>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold">翻译任务</h1>
         <Badge variant="outline">{tasks.length} 个任务</Badge>
       </div>
 
@@ -260,44 +278,46 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
           !task.outputArtifacts?.burnedVideo
 
         return (
-          <Card key={task.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <FileVideo className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <CardTitle className="text-base">
+          <Card key={task.id} className="gap-0 py-0">
+            <CardHeader className="gap-0 px-5 py-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <FileVideo className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <CardTitle className="truncate text-sm font-semibold">
                       {task.videoFile.name}
                     </CardTitle>
                     {(task.sourceUrl || task.videoFile.sourceUrl) && (
                       <p
-                        className="text-xs text-muted-foreground mt-0.5 max-w-md truncate"
+                        className="mt-0.5 max-w-md truncate text-xs text-muted-foreground"
                         title={task.sourceUrl || task.videoFile.sourceUrl}
                       >
                         {task.sourceUrl || task.videoFile.sourceUrl}
                       </p>
                     )}
-                    <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
-                      <span className="flex items-center">
-                        <Clock className="h-4 w-4 mr-1" />
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
                         {formatDuration(task.videoFile.duration)}
                       </span>
                       <span>{formatFileSize(task.videoFile.size)}</span>
-                      <span className="flex items-center">
-                        <Calendar className="h-4 w-4 mr-1" />
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" />
                         {formatDate(task.createdAt)}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <Badge variant={getStatusVariant(task.status)}>
                     {getStatusText(task.status)}
                   </Badge>
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="size-8 p-0"
+                    aria-label={isExpanded ? '收起详情' : '展开详情'}
                     onClick={() => toggleTaskExpanded(task.id)}
                   >
                     {isExpanded ? (
@@ -310,22 +330,22 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-4">
+            <CardContent className="flex flex-col gap-3 px-5 pb-3.5 pt-0">
               {/* 进度条 */}
               {task.status !== TaskStatus.PENDING &&
                 task.status !== TaskStatus.FAILED && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between text-xs text-muted-foreground">
                       <span>{isBurning ? '烧录进度' : '进度'}</span>
                       <span>{Math.round(task.progress)}%</span>
                     </div>
-                    <Progress value={task.progress} className="h-2" />
+                    <Progress value={task.progress} className="h-1.5" />
                   </div>
                 )}
 
               {/* 错误信息 */}
               {task.errorMessage && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
                   <p className="text-sm text-destructive">
                     {task.errorMessage}
                   </p>
@@ -334,8 +354,8 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
 
               {/* 展开的详细信息 */}
               {isExpanded && (
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex flex-col gap-3 border-t pt-3">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <span className="font-medium">源语言:</span>{' '}
                       {task.sourceLanguage}
@@ -352,8 +372,8 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
               )}
 
               {/* 操作按钮 */}
-              <div className="flex items-center justify-between pt-2">
-                <div className="flex space-x-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                <div className="flex flex-wrap gap-2">
                   {task.status === TaskStatus.PENDING ||
                   task.status === TaskStatus.DOWNLOADING ||
                   task.status === TaskStatus.EXTRACTING_AUDIO ||
@@ -366,7 +386,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                       size="sm"
                       onClick={() => handleTaskAction('pause', task.id)}
                     >
-                      <Pause className="h-4 w-4 mr-1" />
+                      <Pause className="h-4 w-4" />
                       暂停
                     </Button>
                   ) : null}
@@ -377,7 +397,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                       size="sm"
                       onClick={() => handleTaskAction('resume', task.id)}
                     >
-                      <Play className="h-4 w-4 mr-1" />
+                      <Play className="h-4 w-4" />
                       继续
                     </Button>
                   )}
@@ -389,13 +409,13 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                       size="sm"
                       onClick={() => handleTaskAction('retry', task.id)}
                     >
-                      <RotateCcw className="h-4 w-4 mr-1" />
+                      <RotateCcw className="h-4 w-4" />
                       重试
                     </Button>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* 未在任务创建时烧录：完成后可补烧硬字幕 */}
                   {canBurnSubtitles && (
                     <div className="relative">
@@ -409,11 +429,11 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                           )
                         }
                       >
-                        <Flame className="h-4 w-4 mr-1" />
+                        <Flame className="h-4 w-4" />
                         {isBurning ? '烧录中…' : '烧录'}
                       </Button>
                       {openBurnMenuTaskId === task.id && !isBurning && (
-                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-52 rounded-md border bg-background p-1 shadow-lg">
+                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-52 rounded-md border bg-background p-1 shadow-md">
                           <p className="px-2 py-1.5 text-xs text-muted-foreground">
                             选择要烧录的字幕
                           </p>
@@ -452,9 +472,9 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                         }
                       >
                         {task.outputArtifacts?.burnedVideo ? (
-                          <FileVideo className="h-4 w-4 mr-1" />
+                          <FileVideo className="h-4 w-4" />
                         ) : (
-                          <Captions className="h-4 w-4 mr-1" />
+                          <Captions className="h-4 w-4" />
                         )}
                         {task.outputArtifacts?.burnedVideo
                           ? '查看视频'
@@ -475,7 +495,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                         <ChevronDown className="h-4 w-4" />
                       </Button>
                       {openOutputMenuTaskId === task.id && (
-                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-36 rounded-md border bg-background p-1 shadow-lg">
+                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-36 rounded-md border bg-background p-1 shadow-md">
                           {task.outputArtifacts?.burnedVideo && (
                             <Button
                               variant="ghost"
@@ -485,7 +505,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                                 handleTaskAction('view-subtitle', task.id)
                               }
                             >
-                              <Captions className="h-4 w-4 mr-2" />
+                              <Captions className="h-4 w-4" />
                               查看字幕
                             </Button>
                           )}
@@ -497,7 +517,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                               handleTaskAction('view-output', task.id)
                             }
                           >
-                            <FolderOpen className="h-4 w-4 mr-2" />
+                            <FolderOpen className="h-4 w-4" />
                             查看结果
                           </Button>
                         </div>
@@ -510,7 +530,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                     disabled={isBurning}
                     onClick={() => handleTaskAction('delete', task.id)}
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
+                    <Trash2 className="h-4 w-4" />
                     删除
                   </Button>
                 </div>
