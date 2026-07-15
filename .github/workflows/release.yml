@@ -50,6 +50,8 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
+          version: 11.12.0
+          standalone: true
           run_install: false
 
       - name: Set up Node.js
