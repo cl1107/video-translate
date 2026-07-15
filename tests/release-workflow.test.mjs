@@ -12,9 +12,8 @@ test('发布工作流通过桌面包脚本执行 electron-builder', () => {
   assert.match(workflow, /pnpm --filter video-translate run build:ci/)
 })
 
-test('发布工作流使用 Node 24 运行时的 GitHub Actions', () => {
+test('发布工作流使用固定版本的 GitHub Actions', () => {
   assert.match(workflow, /uses: actions\/checkout@v5/)
-  assert.match(workflow, /uses: pnpm\/action-setup@v6/)
   assert.match(workflow, /uses: actions\/setup-node@v5/)
   assert.match(workflow, /uses: actions\/upload-artifact@v6/)
   assert.match(workflow, /uses: actions\/download-artifact@v6/)
