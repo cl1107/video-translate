@@ -6,12 +6,16 @@ import {
 
 export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 
+/** 识别文本润色后端：本地 Ollama 或用户自备 OpenAI 兼容 API */
+export type PolishProvider = 'ollama' | 'byok'
+
 /** 硬字幕 / ASS 默认色：原文白、译文黄（与历史 ASS 硬编码一致） */
 export const DEFAULT_ORIGINAL_SUBTITLE_COLOR = '#FFFFFF'
 export const DEFAULT_TRANSLATED_SUBTITLE_COLOR = '#FFFF00'
 
 export interface AppSettings {
   asrEngine: AsrEngineId
+  /** 翻译用 Ollama 模型（可与润色模型分离） */
   ollamaModel: string
   sourceLanguage: string
   targetLanguage: string
@@ -21,6 +25,14 @@ export interface AppSettings {
   burnSubtitleMode: SubtitleBurnMode
   /** 识别结果先经大模型润色再翻译 */
   polishTranscript: boolean
+  /** 润色后端：本地 Ollama 或在线 BYOK */
+  polishProvider: PolishProvider
+  /** 本地润色用 Ollama 模型（勿使用 hy-mt 翻译专用模型） */
+  polishOllamaModel: string
+  /** BYOK OpenAI 兼容 Base URL */
+  byokBaseUrl: string
+  /** BYOK 模型 ID */
+  byokModelId: string
   /** 原文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
   originalSubtitleColor: string
   /** 译文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
@@ -36,6 +48,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   burnSubtitles: false,
   burnSubtitleMode: 'bilingual',
   polishTranscript: true,
+  polishProvider: 'ollama',
+  polishOllamaModel: '',
+  byokBaseUrl: '',
+  byokModelId: '',
   originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
 }
@@ -45,6 +61,11 @@ function normalizeBurnSubtitleMode(value?: string | null): SubtitleBurnMode {
     return value
   }
   return DEFAULT_APP_SETTINGS.burnSubtitleMode
+}
+
+function normalizePolishProvider(value?: string | null): PolishProvider {
+  if (value === 'byok' || value === 'ollama') return value
+  return DEFAULT_APP_SETTINGS.polishProvider
 }
 
 /**
@@ -93,6 +114,11 @@ export function normalizeOllamaModel(name?: string | null): string {
   return trimmed || DEFAULT_OLLAMA_MODEL
 }
 
+/** 润色模型允许空（表示未配置）；非空时 trim */
+export function normalizePolishOllamaModel(name?: string | null): string {
+  return (name ?? '').trim()
+}
+
 export function normalizeAsrEngine(value?: string | null): AsrEngineId {
   if (value === 'funasr-nano' || value === 'sensevoice') return value
   return DEFAULT_ASR_ENGINE
@@ -100,6 +126,7 @@ export function normalizeAsrEngine(value?: string | null): AsrEngineId {
 
 /**
  * 合并并清洗 localStorage / 上传用的设置，保证有合法默认值。
+ * 注意：BYOK API Key 不落 localStorage，由主进程 secure store 保管。
  */
 export function normalizeAppSettings(
   raw?: Partial<AppSettings> | null
@@ -122,6 +149,10 @@ export function normalizeAppSettings(
       raw.polishTranscript === undefined
         ? DEFAULT_APP_SETTINGS.polishTranscript
         : Boolean(raw.polishTranscript),
+    polishProvider: normalizePolishProvider(raw.polishProvider),
+    polishOllamaModel: normalizePolishOllamaModel(raw.polishOllamaModel),
+    byokBaseUrl: (raw.byokBaseUrl ?? '').trim(),
+    byokModelId: (raw.byokModelId ?? '').trim(),
     originalSubtitleColor: normalizeHexColor(
       raw.originalSubtitleColor,
       DEFAULT_ORIGINAL_SUBTITLE_COLOR

@@ -34,6 +34,7 @@ import {
   normalizeAppSettings,
   normalizeHexColor,
   normalizeOllamaModel,
+  type PolishProvider,
 } from '../../../shared/settings'
 
 const { App } = window
@@ -126,6 +127,9 @@ export function SettingsPanel() {
   ])
 
   const [settings, setSettings] = useState(DEFAULT_APP_SETTINGS)
+  /** 仅 UI 草稿；落盘走主进程 safeStorage，不进 localStorage */
+  const [byokApiKeyDraft, setByokApiKeyDraft] = useState('')
+  const [byokApiKeyConfigured, setByokApiKeyConfigured] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string>('')
@@ -138,6 +142,10 @@ export function SettingsPanel() {
       description: 'Hunyuan-MT 翻译专用小模型（默认）',
     },
   ]
+
+  const polishCapableModels = ollamaModels.filter(
+    m => m.installed && !/hy-mt/i.test(m.name)
+  )
 
   // 加载设置
   useEffect(() => {
@@ -238,6 +246,12 @@ export function SettingsPanel() {
       } else {
         setSettings({ ...DEFAULT_APP_SETTINGS })
       }
+      try {
+        const keyStatus = await App.getByokApiKeyStatus()
+        setByokApiKeyConfigured(Boolean(keyStatus.configured))
+      } catch {
+        setByokApiKeyConfigured(false)
+      }
     } catch (error) {
       console.error('加载设置失败:', error)
       setSettings({ ...DEFAULT_APP_SETTINGS })
@@ -263,6 +277,17 @@ export function SettingsPanel() {
         'video-translate-settings',
         JSON.stringify(normalized)
       )
+
+      if (byokApiKeyDraft.trim()) {
+        const keyResult = await App.setByokApiKey(byokApiKeyDraft.trim())
+        if (!keyResult.success) {
+          setStatus(`设置已保存，但 API Key 写入失败: ${keyResult.error ?? ''}`)
+          return
+        }
+        setByokApiKeyDraft('')
+        setByokApiKeyConfigured(true)
+      }
+
       setStatus('设置已保存')
       setTimeout(() => setStatus(''), 3000)
     } catch (error) {
@@ -531,7 +556,7 @@ export function SettingsPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="ollama-model">Ollama 模型</Label>
+            <Label htmlFor="ollama-model">翻译模型（Ollama）</Label>
             <Select
               value={
                 ollamaModels.some(
@@ -672,8 +697,146 @@ export function SettingsPanel() {
             <Label htmlFor="polish-transcript">识别结果先润色再翻译</Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            ASR/OCR 文本可能有错字或缺标点；开启后由大模型校对，再进入翻译
+            ASR/OCR 文本可能有错字或缺标点；开启后由大模型校对，再进入翻译。仅发送字幕文本段，不上传音视频。
           </p>
+
+          {settings.polishTranscript && (
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="space-y-2">
+                <Label htmlFor="polish-provider">润色后端</Label>
+                <Select
+                  value={settings.polishProvider}
+                  onValueChange={(value: PolishProvider) =>
+                    setSettings(prev => ({ ...prev, polishProvider: value }))
+                  }
+                >
+                  <SelectTrigger id="polish-provider">
+                    <SelectValue placeholder="选择润色后端" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ollama">
+                      本地 Ollama（OpenAI 兼容 /v1）
+                    </SelectItem>
+                    <SelectItem value="byok">
+                      在线 BYOK（自备 Base URL + Key）
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {settings.polishProvider === 'ollama' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="polish-ollama-model">本地润色模型</Label>
+                  <Select
+                    value={
+                      polishCapableModels.some(
+                        m => m.name === settings.polishOllamaModel
+                      )
+                        ? settings.polishOllamaModel
+                        : undefined
+                    }
+                    onValueChange={value =>
+                      setSettings(prev => ({
+                        ...prev,
+                        polishOllamaModel: value,
+                      }))
+                    }
+                    disabled={
+                      !ollamaStatus.isRunning || polishCapableModels.length === 0
+                    }
+                  >
+                    <SelectTrigger id="polish-ollama-model">
+                      <SelectValue placeholder="选择通用对话/校对模型（勿用 hy-mt）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {polishCapableModels.map(model => (
+                        <SelectItem key={model.name} value={model.name}>
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    与翻译模型分离；hy-mt 等翻译专用模型不会出现在列表中
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="byok-base-url">Base URL</Label>
+                    <input
+                      id="byok-base-url"
+                      type="url"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      placeholder="https://api.openai.com/v1"
+                      value={settings.byokBaseUrl}
+                      onChange={e =>
+                        setSettings(prev => ({
+                          ...prev,
+                          byokBaseUrl: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="byok-model-id">Model ID</Label>
+                    <input
+                      id="byok-model-id"
+                      type="text"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      placeholder="gpt-4o-mini"
+                      value={settings.byokModelId}
+                      onChange={e =>
+                        setSettings(prev => ({
+                          ...prev,
+                          byokModelId: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="byok-api-key">API Key</Label>
+                    <input
+                      id="byok-api-key"
+                      type="password"
+                      autoComplete="off"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      placeholder={
+                        byokApiKeyConfigured
+                          ? '已配置（输入新 Key 可覆盖）'
+                          : 'sk-...'
+                      }
+                      value={byokApiKeyDraft}
+                      onChange={e => setByokApiKeyDraft(e.target.value)}
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        使用系统密钥库加密存储，不会写入 localStorage 或任务日志
+                      </p>
+                      {byokApiKeyConfigured && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            const result = await App.clearByokApiKey()
+                            if (result.success) {
+                              setByokApiKeyConfigured(false)
+                              setByokApiKeyDraft('')
+                              setStatus('已清除 BYOK API Key')
+                              setTimeout(() => setStatus(''), 3000)
+                            }
+                          }}
+                        >
+                          清除 Key
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center space-x-2">
             <input
@@ -951,6 +1114,7 @@ export function SettingsPanel() {
                   navigate('/')
                   localStorage.removeItem('setup-completed')
                   localStorage.removeItem('video-translate-settings')
+                  void App.clearByokApiKey()
                   window.location.reload()
                 }
               }}

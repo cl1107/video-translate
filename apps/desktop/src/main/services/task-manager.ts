@@ -13,6 +13,8 @@ import {
   DEFAULT_TRANSLATED_SUBTITLE_COLOR,
   normalizeHexColor,
   normalizeOllamaModel,
+  normalizePolishOllamaModel,
+  type PolishProvider,
   type SubtitleBurnMode,
 } from '../../shared/settings'
 import {
@@ -41,7 +43,12 @@ import {
 } from './asr/sherpa-transcriber'
 import { databaseManager } from './database/manager'
 import { ffmpegProcessor } from './ffmpeg/processor'
-import { ollamaClient, supportsTranscriptPolish } from './ollama/client'
+import {
+  polishTranscriptBatch,
+  resolvePolishCompletionConfig,
+} from './llm/polish-service'
+import { ollamaClient } from './ollama/client'
+import { getByokApiKey } from './secure-store'
 import { tempWorkspace } from './temp-workspace'
 
 export interface CreateTaskOptions {
@@ -53,6 +60,10 @@ export interface CreateTaskOptions {
   burnSubtitles?: boolean
   burnSubtitleMode?: SubtitleBurnMode
   polishTranscript?: boolean
+  polishProvider?: PolishProvider
+  polishOllamaModel?: string
+  byokBaseUrl?: string
+  byokModelId?: string
   originalSubtitleColor?: string
   translatedSubtitleColor?: string
 }
@@ -63,6 +74,10 @@ interface ProcessTaskOptions {
   burnSubtitles?: boolean
   burnSubtitleMode?: SubtitleBurnMode
   polishTranscript?: boolean
+  polishProvider?: PolishProvider
+  polishOllamaModel?: string
+  byokBaseUrl?: string
+  byokModelId?: string
   originalSubtitleColor?: string
   translatedSubtitleColor?: string
 }
@@ -224,6 +239,10 @@ export class TaskManager {
         burnSubtitles: options.burnSubtitles,
         burnSubtitleMode: options.burnSubtitleMode ?? 'bilingual',
         polishTranscript: options.polishTranscript ?? true,
+        polishProvider: options.polishProvider ?? 'ollama',
+        polishOllamaModel: normalizePolishOllamaModel(options.polishOllamaModel),
+        byokBaseUrl: (options.byokBaseUrl ?? '').trim(),
+        byokModelId: (options.byokModelId ?? '').trim(),
         originalSubtitleColor: normalizeHexColor(
           options.originalSubtitleColor,
           DEFAULT_ORIGINAL_SUBTITLE_COLOR
@@ -337,24 +356,39 @@ export class TaskManager {
       )
 
       const polishRequested = runtime.polishTranscript !== false
-      const shouldPolish =
-        polishRequested && supportsTranscriptPolish(ollamaModel)
-      if (shouldPolish) {
-        context.displaySegments = await this.runPolish(
-          taskId,
-          context.displaySegments,
-          task.sourceLanguage,
-          ollamaModel
-        )
-      } else {
-        if (polishRequested) {
+      if (polishRequested) {
+        const polishResolved = resolvePolishCompletionConfig({
+          polishProvider: runtime.polishProvider ?? 'ollama',
+          polishOllamaModel: runtime.polishOllamaModel,
+          byokBaseUrl: runtime.byokBaseUrl,
+          byokModelId: runtime.byokModelId,
+          // API Key 仅从安全存储读取，不落任务日志
+          byokApiKey:
+            (runtime.polishProvider ?? 'ollama') === 'byok'
+              ? (getByokApiKey() ?? undefined)
+              : undefined,
+        })
+        if (polishResolved.ok) {
+          context.displaySegments = await this.runPolish(
+            taskId,
+            context.displaySegments,
+            task.sourceLanguage,
+            polishResolved.config,
+            polishResolved.label
+          )
+        } else {
           this.addTaskLog(
             taskId,
             'warn',
             '已跳过识别文本润色',
-            `模型 ${ollamaModel} 为翻译专用模型，无法保证润色后仍保持源语言`
+            polishResolved.reason
           )
+          context.displaySegments = context.displaySegments.map(segment => ({
+            ...segment,
+            polishedText: segment.originalText,
+          }))
         }
+      } else {
         context.displaySegments = context.displaySegments.map(segment => ({
           ...segment,
           polishedText: segment.originalText,
@@ -524,26 +558,31 @@ export class TaskManager {
     taskId: string,
     segments: DisplaySegment[],
     sourceLanguage: string,
-    ollamaModel: string
+    polishConfig: {
+      baseUrl: string
+      apiKey: string
+      model: string
+    },
+    polishLabel: string
   ): Promise<DisplaySegment[]> {
     await this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, 60)
+    // 日志只写模型标签，绝不写入 API Key / 完整 Base URL 中的密钥参数
     this.addTaskLog(
       taskId,
       'info',
       '开始润色识别文本',
-      `Ollama 模型: ${ollamaModel}（纠错/补标点后再翻译）`
+      `${polishLabel}（滑动窗口上下文，纠错/补标点后再翻译）`
     )
 
     const texts = segments.map(segment => segment.originalText)
-    const polished = await ollamaClient.polishTranscriptBatch(
-      texts,
+    const polished = await polishTranscriptBatch(texts, {
       sourceLanguage,
-      ollamaModel,
-      (completed, total) => {
+      config: polishConfig,
+      onProgress: (completed, total) => {
         const normalized = 60 + (completed / total) * 5
         void this.updateTaskStatus(taskId, TaskStatus.TRANSLATING, normalized)
-      }
-    )
+      },
+    })
 
     const merged = segments.map((segment, index) => ({
       ...segment,

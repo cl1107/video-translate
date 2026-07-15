@@ -21,6 +21,10 @@ declare global {
           burnSubtitles?: boolean
           burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
           polishTranscript?: boolean
+          polishProvider?: 'ollama' | 'byok'
+          polishOllamaModel?: string
+          byokBaseUrl?: string
+          byokModelId?: string
           originalSubtitleColor?: string
           translatedSubtitleColor?: string
         }
@@ -42,6 +46,16 @@ declare global {
         }
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<any[]>
+
+      // BYOK API Key（主进程 safeStorage，不回传明文）
+      getByokApiKeyStatus: () => Promise<{
+        success: boolean
+        configured: boolean
+      }>
+      setByokApiKey: (
+        apiKey: string
+      ) => Promise<{ success: boolean; error?: string }>
+      clearByokApiKey: () => Promise<{ success: boolean; error?: string }>
 
       // Ollama 服务
       getOllamaModels: () => Promise<{
@@ -151,6 +165,10 @@ const api = {
       burnSubtitles?: boolean
       burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
       polishTranscript?: boolean
+      polishProvider?: 'ollama' | 'byok'
+      polishOllamaModel?: string
+      byokBaseUrl?: string
+      byokModelId?: string
       originalSubtitleColor?: string
       translatedSubtitleColor?: string
     }
@@ -172,6 +190,12 @@ const api = {
     }
   ) => ipcRenderer.invoke('burn-task-subtitles', taskId, mode, colors),
   getTaskLogs: (taskId: string) => ipcRenderer.invoke('get-task-logs', taskId),
+
+  // BYOK API Key
+  getByokApiKeyStatus: () => ipcRenderer.invoke('byok-api-key-status'),
+  setByokApiKey: (apiKey: string) =>
+    ipcRenderer.invoke('set-byok-api-key', apiKey),
+  clearByokApiKey: () => ipcRenderer.invoke('clear-byok-api-key'),
 
   // Ollama 服务
   getOllamaModels: () => ipcRenderer.invoke('get-ollama-models'),

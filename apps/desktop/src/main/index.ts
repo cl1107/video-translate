@@ -2,9 +2,18 @@ import { app, dialog, ipcMain, shell } from 'electron'
 import { makeAppWithSingleInstanceLock } from 'lib/electron-app/factories/app/instance'
 import { makeAppSetup } from 'lib/electron-app/factories/app/setup'
 import type { AsrEngineId } from '../shared/constants'
-import { normalizeOllamaModel } from '../shared/settings'
+import {
+  normalizeOllamaModel,
+  normalizePolishOllamaModel,
+  type PolishProvider,
+} from '../shared/settings'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
 import { ollamaClient } from './services/ollama/client'
+import {
+  clearByokApiKey,
+  hasByokApiKey,
+  setByokApiKey,
+} from './services/secure-store'
 import { taskManager } from './services/task-manager'
 import { ensureGuiCommandPath } from './utils/command-path'
 import {
@@ -30,6 +39,10 @@ function setupIpcHandlers() {
         burnSubtitles?: boolean
         burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
         polishTranscript?: boolean
+        polishProvider?: PolishProvider
+        polishOllamaModel?: string
+        byokBaseUrl?: string
+        byokModelId?: string
         originalSubtitleColor?: string
         translatedSubtitleColor?: string
       }
@@ -47,6 +60,12 @@ function setupIpcHandlers() {
             burnSubtitles: settings.burnSubtitles,
             burnSubtitleMode: settings.burnSubtitleMode,
             polishTranscript: settings.polishTranscript,
+            polishProvider: settings.polishProvider,
+            polishOllamaModel: normalizePolishOllamaModel(
+              settings.polishOllamaModel
+            ),
+            byokBaseUrl: settings.byokBaseUrl,
+            byokModelId: settings.byokModelId,
             originalSubtitleColor: settings.originalSubtitleColor,
             translatedSubtitleColor: settings.translatedSubtitleColor,
           })
@@ -62,6 +81,19 @@ function setupIpcHandlers() {
       }
     }
   )
+
+  // BYOK API Key：仅主进程持有，不回传明文（has 仅返回是否已配置）
+  ipcMain.handle('byok-api-key-status', () => {
+    return { success: true, configured: hasByokApiKey() }
+  })
+
+  ipcMain.handle('set-byok-api-key', (_event, apiKey: string) => {
+    return setByokApiKey(typeof apiKey === 'string' ? apiKey : '')
+  })
+
+  ipcMain.handle('clear-byok-api-key', () => {
+    return clearByokApiKey()
+  })
 
   // 获取所有任务
   ipcMain.handle('get-all-tasks', () => {
