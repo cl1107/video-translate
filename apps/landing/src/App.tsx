@@ -1,7 +1,6 @@
 import {
   ArrowDownToLine,
   ArrowRight,
-  Captions,
   Check,
   FileText,
   Flame,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
+import appLogo from './assets/logo-transparent.png'
 
 const APP_VERSION = '0.5.0'
 const releaseUrl = 'https://github.com/cl1107/video-translate/releases/latest'
@@ -122,9 +122,14 @@ export function App() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="视频翻译助手首页">
-          <span className="brand-mark" aria-hidden="true">
-            <Captions size={20} strokeWidth={2.4} />
-          </span>
+          <img
+            className="brand-mark"
+            src={appLogo}
+            alt=""
+            width={34}
+            height={34}
+            draggable={false}
+          />
           <span>视频翻译助手</span>
         </a>
         <nav aria-label="主导航">
@@ -389,9 +394,14 @@ export function App() {
 
       <footer>
         <a className="brand" href="#top">
-          <span className="brand-mark">
-            <Captions size={20} />
-          </span>
+          <img
+            className="brand-mark"
+            src={appLogo}
+            alt=""
+            width={34}
+            height={34}
+            draggable={false}
+          />
           <span>视频翻译助手</span>
         </a>
         <p>把复杂的本地模型，变成一条清晰的字幕工作流。</p>

@@ -76,13 +76,13 @@ a {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 34px;
   height: 34px;
-  color: var(--ink);
-  background: var(--acid);
-  border-radius: 50%;
+  border-radius: 9px;
+  object-fit: cover;
+  flex-shrink: 0;
+  user-select: none;
 }
 
 nav {
