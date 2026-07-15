@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { DEFAULT_OLLAMA_MODEL } from '../../../shared/constants'
-import { languageDisplayName } from '../../../shared/settings'
 import type { OllamaModel } from '../../../shared/types/video'
 import { resolveCommandPath } from '../../utils/command-path'
+import { OllamaCompletionAdapter } from '../llm/ollama-completion-adapter'
+import { translateTextBatch } from '../llm/text-transform'
 
 // 使用动态导入来处理 node-fetch ES 模块
 let fetch: any
@@ -283,20 +284,10 @@ export class OllamaClient {
     try {
       const fetchFn = await getFetch()
       const url = `${this.baseUrl}/api/generate`
-      console.log('🚀 ~ OllamaClient ~ generate ~ url:', url)
-      console.log(
-        '🚀 ~ OllamaClient ~ generate ~ request:',
-        JSON.stringify(request, null, 2)
-      )
-
       const requestBody = {
         ...request,
-        stream: false, // 使用非流式响应以简化处理
+        stream: false,
       }
-      console.log(
-        '🚀 ~ OllamaClient ~ generate ~ requestBody:',
-        JSON.stringify(requestBody, null, 2)
-      )
 
       const response = await fetchFn(url, {
         method: 'POST',
@@ -306,29 +297,14 @@ export class OllamaClient {
         body: JSON.stringify(requestBody),
       })
 
-      console.log(
-        '🚀 ~ OllamaClient ~ generate ~ response status:',
-        response.status
-      )
       if (!response.ok) {
-        console.log(
-          '🚀 ~ OllamaClient ~ generate ~ response headers:',
-          response.headers
-        )
         const errorText = await response.text()
-        console.log('🚀 ~ OllamaClient ~ generate ~ error response:', errorText)
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(
+          `HTTP error! status: ${response.status}${errorText ? ` body: ${errorText.slice(0, 200)}` : ''}`
+        )
       }
 
       const data = (await response.json()) as OllamaGenerateResponse
-      console.log(
-        '🚀 ~ OllamaClient ~ generate ~ response body:',
-        JSON.stringify(data, null, 2)
-      )
-      console.log(
-        '🚀 ~ OllamaClient ~ generate ~ response text:',
-        data.response
-      )
       return data.response
     } catch (error) {
       console.error('Error generating text:', error)
@@ -337,159 +313,26 @@ export class OllamaClient {
   }
 
   /**
-   * 翻译文本
-   */
-  /**
-   * 翻译文本
-   * @param text - 要翻译的文本
-   * @param sourceLanguage - 源语言
-   * @param targetLanguage - 目标语言
-   * @param model - 使用的模型名称（默认：kaelri/hy-mt2:1.8b）
-   * @returns 返回翻译后的文本
-   * @throws 当翻译失败时抛出错误
-   */
-  async translate(
-    text: string,
-    sourceLanguage: string,
-    targetLanguage: string,
-    model = DEFAULT_OLLAMA_MODEL
-  ): Promise<string> {
-    const trimmed = text.trim()
-    if (!trimmed) return ''
-
-    // 纯标点不翻译
-    if (
-      /^[\s。！？!?；;…、，,.．:：\-—～~「」『』（）()【】[\]]+$/u.test(trimmed)
-    ) {
-      return trimmed
-    }
-
-    const src = languageDisplayName(sourceLanguage)
-    const tgt = languageDisplayName(targetLanguage)
-
-    // 面向 hy-mt2 等翻译专用模型：指令简短，强制目标语
-    const systemPrompt = `你是专业字幕翻译。把用户给出的文本从${src}翻译成${tgt}。只输出译文，不要解释，不要原文，不要引号。`
-    const prompt = [
-      `源语言：${src}`,
-      `目标语言：${tgt}`,
-      `待翻译原文：\n${trimmed}`,
-      '译文：',
-    ].join('\n\n')
-
-    try {
-      const response = await this.generate({
-        model: model || DEFAULT_OLLAMA_MODEL,
-        prompt,
-        system: systemPrompt,
-        options: {
-          temperature: 0.1,
-          max_tokens: 2000,
-        },
-      })
-
-      const translated = cleanTranslation(response)
-      if (!translated) {
-        throw new Error('翻译结果为空')
-      }
-      return translated
-    } catch (error) {
-      console.error('Translation error:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : String(error)
-      throw new Error(`翻译失败: ${errorMessage}`)
-    }
-  }
-
-  /**
-   * 批量翻译文本段落
-   * @param texts - 要翻译的文本数组
-   * @param sourceLanguage - 源语言
-   * @param targetLanguage - 目标语言
-   * @param model - 使用的模型名称（默认：kaelri/hy-mt2:1.8b）
-   * @param onProgress - 进度回调函数（可选）
-   * @returns 返回与输入顺序一致的翻译文本数组
-   * @throws 任一段翻译失败时报告其位置并终止整批处理
+   * 批量翻译：经 OllamaCompletionAdapter → translateTextBatch。
    */
   async translateBatch(
     texts: string[],
     sourceLanguage: string,
     targetLanguage: string,
     model = DEFAULT_OLLAMA_MODEL,
-    onProgress?: (completed: number, total: number) => void
+    onProgress?: (completed: number, total: number) => void,
+    signal?: AbortSignal
   ): Promise<string[]> {
     const resolvedModel = model || DEFAULT_OLLAMA_MODEL
-    const results: string[] = []
-
-    for (let i = 0; i < texts.length; i++) {
-      try {
-        const translated = await this.translate(
-          texts[i],
-          sourceLanguage,
-          targetLanguage,
-          resolvedModel
-        )
-        results.push(translated)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        throw new Error(
-          `translateBatch segment ${i + 1}/${texts.length} failed: ${message}`
-        )
-      }
-
-      if (onProgress) {
-        onProgress(i + 1, texts.length)
-      }
-    }
-
-    return results
+    const client = new OllamaCompletionAdapter(this, resolvedModel)
+    return translateTextBatch(texts, {
+      sourceLanguage,
+      targetLanguage,
+      client,
+      onProgress,
+      signal,
+    })
   }
-
-}
-
-function cleanTranslation(raw: string): string {
-  let text = (raw || '').trim()
-  if (!text) return ''
-
-  // 去掉常见引号包裹
-  text = text.replace(/^["「『]|["」』]$/g, '').trim()
-
-  // 优先提取「译文：」之后的内容（模型有时回显整段提示词）
-  const translationMatch = text.match(
-    /(?:^|\n)\s*(?:译文|翻译|Translation)\s*[:：]\s*([\s\S]+)$/i
-  )
-  if (translationMatch?.[1]) {
-    text = translationMatch[1].trim()
-  } else if (
-    /源语言\s*[:：]/.test(text) ||
-    /目标语言\s*[:：]/.test(text) ||
-    /原文\s*[:：]/.test(text)
-  ) {
-    // 模型把提示模板整段回显，且把译文写在「原文：」字段里
-    const originalField = text.match(
-      /原文\s*[:：]\s*([\s\S]+?)(?=\n\s*(?:译文|翻译|Translation)\s*[:：]|$)/i
-    )
-    if (originalField?.[1]?.trim()) {
-      text = originalField[1].trim()
-    } else {
-      // 去掉元信息行，只保留可能有用的正文
-      text = text
-        .split('\n')
-        .filter(
-          line =>
-            !/^\s*(源语言|目标语言|原文|译文|翻译|Translation)\s*[:：]/.test(
-              line
-            )
-        )
-        .join('\n')
-        .trim()
-    }
-  }
-
-  // 再清一次残留前缀
-  text = text.replace(/^(译文|翻译|Translation)\s*[:：]\s*/i, '').trim()
-  text = text.replace(/^["「『]|["」』]$/g, '').trim()
-
-  return text
 }
 
 // 单例实例

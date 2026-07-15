@@ -36,6 +36,7 @@ import {
   normalizeOllamaModel,
   type PolishProvider,
 } from '../../../shared/settings'
+import type { OllamaModel } from '../../../shared/types/video'
 
 const { App } = window
 
@@ -49,13 +50,6 @@ interface ModelInfo {
 interface LanguageInfo {
   code: string
   name: string
-}
-
-interface OllamaModel {
-  name: string
-  size: number
-  digest: string
-  modified_at: string
 }
 
 interface DownloadProgress {

@@ -1,4 +1,10 @@
 import OpenAI from 'openai'
+import type {
+  CompleteOptions,
+  TextCompletionPort,
+} from './completion-port'
+
+export type { CompleteOptions }
 
 /** OpenAI 兼容 chat completion 配置（本地 Ollama /v1 与在线 BYOK 共用） */
 export interface CompletionClientConfig {
@@ -8,13 +14,6 @@ export interface CompletionClientConfig {
   apiKey: string
   /** 模型 ID */
   model: string
-}
-
-export interface CompleteOptions {
-  system: string
-  user: string
-  temperature?: number
-  maxTokens?: number
 }
 
 export const OLLAMA_OPENAI_BASE_URL = 'http://127.0.0.1:11434/v1'
@@ -35,8 +34,9 @@ export function normalizeOpenAiBaseUrl(raw: string): string {
 
 /**
  * 基于官方 OpenAI Node SDK 的薄封装，统一本地 Ollama 与 BYOK 在线端点。
+ * 实现 TextCompletionPort，作为 Completion 接缝的适配器之一。
  */
-export class OpenAiCompletionClient {
+export class OpenAiCompletionClient implements TextCompletionPort {
   private readonly client: OpenAI
   private readonly model: string
 

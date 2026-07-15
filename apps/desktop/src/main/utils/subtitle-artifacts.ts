@@ -12,6 +12,10 @@ import type {
   TranscriptionSegment,
 } from '../../shared/types/video'
 import type { DisplaySegment } from './display-segment-builder'
+import {
+  getAsrSourceForArtifacts,
+  getTranslatedText,
+} from './segment-text'
 import { SubtitleGenerator } from './subtitle-generator'
 import {
   computeSubtitleLayout,
@@ -69,16 +73,18 @@ export interface SubtitleArtifactValidation {
   }
 }
 
+/** 产物「原文」轨：ASR 不可变文本（见 segment-text 策略） */
 function displaySourceText(
   segment: DisplaySegment | TranscriptionSegment
 ): string {
-  return segment.originalText.trim()
+  return getAsrSourceForArtifacts(segment)
 }
 
+/** 产物「译文」轨 */
 function displayTargetText(
   segment: DisplaySegment | TranscriptionSegment
 ): string {
-  return (segment.translatedText || displaySourceText(segment)).trim()
+  return getTranslatedText(segment)
 }
 
 export function segmentsToOriginalSubtitles(

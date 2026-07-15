@@ -1,11 +1,10 @@
 import { app, dialog, ipcMain, shell } from 'electron'
 import { makeAppWithSingleInstanceLock } from 'lib/electron-app/factories/app/instance'
 import { makeAppSetup } from 'lib/electron-app/factories/app/setup'
-import type { AsrEngineId } from '../shared/constants'
+import { IpcChannels } from '../shared/ipc'
 import {
-  normalizeOllamaModel,
-  normalizePolishOllamaModel,
-  type PolishProvider,
+  normalizeAppSettings,
+  type SubtitleBurnMode,
 } from '../shared/settings'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
 import { ollamaClient } from './services/ollama/client'
@@ -23,51 +22,20 @@ import {
 import { getAppDiagnosticPaths } from './utils/system-logger'
 import { MainWindow } from './windows/main'
 
-// IPC 处理器
 function setupIpcHandlers() {
-  // 文件上传处理
   ipcMain.handle(
-    'upload-files',
-    async (
-      _event,
-      filePaths: string[],
-      settings: {
-        sourceLanguage: string
-        targetLanguage: string
-        ollamaModel?: string
-        asrEngine?: AsrEngineId
-        burnSubtitles?: boolean
-        burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
-        polishTranscript?: boolean
-        polishProvider?: PolishProvider
-        polishOllamaModel?: string
-        byokBaseUrl?: string
-        byokModelId?: string
-        originalSubtitleColor?: string
-        translatedSubtitleColor?: string
-      }
-    ) => {
+    IpcChannels.uploadFiles,
+    async (_event, filePaths: string[], settingsRaw: unknown) => {
       try {
+        const settings = normalizeAppSettings(
+          settingsRaw as Parameters<typeof normalizeAppSettings>[0]
+        )
         const taskIds: string[] = []
 
         for (const filePath of filePaths) {
           const taskId = await taskManager.createTask({
             filePath,
-            sourceLanguage: settings.sourceLanguage,
-            targetLanguage: settings.targetLanguage,
-            ollamaModel: normalizeOllamaModel(settings.ollamaModel),
-            asrEngine: settings.asrEngine,
-            burnSubtitles: settings.burnSubtitles,
-            burnSubtitleMode: settings.burnSubtitleMode,
-            polishTranscript: settings.polishTranscript,
-            polishProvider: settings.polishProvider,
-            polishOllamaModel: normalizePolishOllamaModel(
-              settings.polishOllamaModel
-            ),
-            byokBaseUrl: settings.byokBaseUrl,
-            byokModelId: settings.byokModelId,
-            originalSubtitleColor: settings.originalSubtitleColor,
-            translatedSubtitleColor: settings.translatedSubtitleColor,
+            ...settings,
           })
           taskIds.push(taskId)
         }
@@ -82,60 +50,51 @@ function setupIpcHandlers() {
     }
   )
 
-  // BYOK API Key：仅主进程持有，不回传明文（has 仅返回是否已配置）
-  ipcMain.handle('byok-api-key-status', () => {
+  ipcMain.handle(IpcChannels.byokApiKeyStatus, () => {
     return { success: true, configured: hasByokApiKey() }
   })
 
-  ipcMain.handle('set-byok-api-key', (_event, apiKey: string) => {
+  ipcMain.handle(IpcChannels.setByokApiKey, (_event, apiKey: string) => {
     return setByokApiKey(typeof apiKey === 'string' ? apiKey : '')
   })
 
-  ipcMain.handle('clear-byok-api-key', () => {
+  ipcMain.handle(IpcChannels.clearByokApiKey, () => {
     return clearByokApiKey()
   })
 
-  // 获取所有任务
-  ipcMain.handle('get-all-tasks', () => {
+  ipcMain.handle(IpcChannels.getAllTasks, () => {
     return taskManager.getAllTasks()
   })
 
-  // 获取特定任务
-  ipcMain.handle('get-task', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.getTask, (_event, taskId: string) => {
     return taskManager.getTask(taskId)
   })
 
-  // 暂停任务
-  ipcMain.handle('pause-task', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.pauseTask, (_event, taskId: string) => {
     taskManager.pauseTask(taskId)
     return { success: true }
   })
 
-  // 恢复任务
-  ipcMain.handle('resume-task', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.resumeTask, (_event, taskId: string) => {
     taskManager.resumeTask(taskId)
     return { success: true }
   })
 
-  // 删除任务
-  ipcMain.handle('delete-task', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.deleteTask, (_event, taskId: string) => {
     taskManager.deleteTask(taskId)
     return { success: true }
   })
 
-  // 重试任务
-  ipcMain.handle('retry-task', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.retryTask, (_event, taskId: string) => {
     taskManager.retryTask(taskId)
     return { success: true }
   })
 
-  // 获取任务日志
-  ipcMain.handle('get-task-logs', (event, taskId: string) => {
+  ipcMain.handle(IpcChannels.getTaskLogs, (_event, taskId: string) => {
     return taskManager.getTaskLogs(taskId)
   })
 
-  // 获取 Ollama 模型列表
-  ipcMain.handle('get-ollama-models', async () => {
+  ipcMain.handle(IpcChannels.getOllamaModels, async () => {
     try {
       const models = await ollamaClient.listModels()
       return { success: true, models }
@@ -147,8 +106,7 @@ function setupIpcHandlers() {
     }
   })
 
-  // 检查 Ollama 服务状态
-  ipcMain.handle('check-ollama-status', async () => {
+  ipcMain.handle(IpcChannels.checkOllamaStatus, async () => {
     try {
       const isRunning = await ollamaClient.isRunning()
       return { success: true, isRunning }
@@ -158,28 +116,31 @@ function setupIpcHandlers() {
     }
   })
 
-  // 拉取 Ollama 模型
-  ipcMain.handle('pull-ollama-model', async (event, modelName: string) => {
-    try {
-      await ollamaClient.pullModel(modelName, progress => {
-        // 发送进度更新到前端
-        event.sender.send('ollama-pull-progress', { modelName, progress })
-      })
-      return { success: true }
-    } catch (error) {
-      console.error('拉取 Ollama 模型失败:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : String(error)
-      return { success: false, error: errorMessage }
+  ipcMain.handle(
+    IpcChannels.pullOllamaModel,
+    async (event, modelName: string) => {
+      try {
+        await ollamaClient.pullModel(modelName, progress => {
+          event.sender.send(IpcChannels.ollamaPullProgress, {
+            modelName,
+            progress,
+          })
+        })
+        return { success: true }
+      } catch (error) {
+        console.error('拉取 Ollama 模型失败:', error)
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
+      }
     }
-  })
+  )
 
-  // 检查系统依赖
-  ipcMain.handle('check-system-dependencies', async event => {
+  ipcMain.handle(IpcChannels.checkSystemDependencies, async event => {
     try {
       const results = await checkSystemDependencies({
         onProgress: progress => {
-          event.sender.send('system-check-progress', progress)
+          event.sender.send(IpcChannels.systemCheckProgress, progress)
         },
       })
       const suggestions = getInstallationSuggestions(results)
@@ -199,13 +160,11 @@ function setupIpcHandlers() {
     }
   })
 
-  // 获取诊断路径（日志目录 / userData）
-  ipcMain.handle('get-diagnostic-paths', () => {
+  ipcMain.handle(IpcChannels.getDiagnosticPaths, () => {
     return { success: true, ...getAppDiagnosticPaths() }
   })
 
-  // 在文件管理器中打开日志目录
-  ipcMain.handle('open-logs-dir', async () => {
+  ipcMain.handle(IpcChannels.openLogsDir, async () => {
     try {
       const { logsDir } = getAppDiagnosticPaths()
       const error = await shell.openPath(logsDir)
@@ -220,8 +179,7 @@ function setupIpcHandlers() {
     }
   })
 
-  // ASR 模型状态
-  ipcMain.handle('get-asr-status', async () => {
+  ipcMain.handle(IpcChannels.getAsrStatus, async () => {
     try {
       const models = sherpaTranscriber.getStatus()
       return { success: true, models }
@@ -232,8 +190,7 @@ function setupIpcHandlers() {
     }
   })
 
-  // 打开文件对话框
-  ipcMain.handle('open-file-dialog', async () => {
+  ipcMain.handle(IpcChannels.openFileDialog, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: [
@@ -248,7 +205,7 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle(
-    'open-task-artifact',
+    IpcChannels.openTaskArtifact,
     async (_event, taskId: string, kind: 'video' | 'subtitle' | 'result') => {
       const task = taskManager.getTask(taskId)
       if (!task) {
@@ -271,13 +228,12 @@ function setupIpcHandlers() {
     }
   )
 
-  // 任务完成后补烧硬字幕
   ipcMain.handle(
-    'burn-task-subtitles',
+    IpcChannels.burnTaskSubtitles,
     async (
       _event,
       taskId: string,
-      mode: 'bilingual' | 'translated' | 'original',
+      mode: SubtitleBurnMode,
       colors?: {
         originalColor?: string
         translatedColor?: string
@@ -294,13 +250,11 @@ function setupIpcHandlers() {
     }
   )
 
-  // 获取统计信息
-  ipcMain.handle('get-statistics', () => {
+  ipcMain.handle(IpcChannels.getStatistics, () => {
     return taskManager.getStatistics()
   })
 
-  // 临时缓存状态
-  ipcMain.handle('get-temp-cache-stats', async () => {
+  ipcMain.handle(IpcChannels.getTempCacheStats, async () => {
     try {
       const stats = await taskManager.getTempCacheStats()
       return { success: true, ...stats }
@@ -318,8 +272,7 @@ function setupIpcHandlers() {
     }
   })
 
-  // 清理临时缓存（保留进行中任务目录）
-  ipcMain.handle('clear-temp-cache', async () => {
+  ipcMain.handle(IpcChannels.clearTempCache, async () => {
     try {
       const result = await taskManager.clearTempCache()
       return { success: true, ...result }
@@ -335,8 +288,7 @@ function setupIpcHandlers() {
     }
   })
 
-  // 在文件管理器中打开临时缓存目录
-  ipcMain.handle('open-temp-cache-dir', async () => {
+  ipcMain.handle(IpcChannels.openTempCacheDir, async () => {
     try {
       const stats = await taskManager.getTempCacheStats()
       await shell.openPath(stats.path)
@@ -352,20 +304,13 @@ function setupIpcHandlers() {
 makeAppWithSingleInstanceLock(async () => {
   await app.whenReady()
 
-  // 打包后 GUI 进程 PATH 极短，补齐 Homebrew / Ollama 等常见路径
   ensureGuiCommandPath()
-
-  // 设置 IPC 处理器
   setupIpcHandlers()
 
-  // 创建主窗口
   const mainWindow = await makeAppSetup(MainWindow)
-
-  // 设置任务管理器的主窗口引用
   taskManager.setMainWindow(mainWindow)
 })
 
-// 应用退出时清理资源
 app.on('before-quit', () => {
   taskManager.cleanup()
 })

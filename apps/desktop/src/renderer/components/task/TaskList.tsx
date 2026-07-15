@@ -54,6 +54,8 @@ const getStatusText = (status: TaskStatus) => {
       return '提取音频'
     case TaskStatus.TRANSCRIBING:
       return '语音识别'
+    case TaskStatus.POLISHING:
+      return '润色中'
     case TaskStatus.TRANSLATING:
       return '翻译中'
     case TaskStatus.GENERATING_SUBTITLES:
@@ -66,6 +68,8 @@ const getStatusText = (status: TaskStatus) => {
       return '失败'
     case TaskStatus.PAUSED:
       return '已暂停'
+    case TaskStatus.CANCELLED:
+      return '已取消'
     default:
       return '未知状态'
   }
@@ -76,6 +80,7 @@ const getStatusVariant = (status: TaskStatus) => {
     case TaskStatus.COMPLETED:
       return 'default' as const
     case TaskStatus.FAILED:
+    case TaskStatus.CANCELLED:
       return 'destructive' as const
     case TaskStatus.PAUSED:
       return 'secondary' as const
@@ -342,6 +347,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                   {task.status === TaskStatus.PENDING ||
                   task.status === TaskStatus.EXTRACTING_AUDIO ||
                   task.status === TaskStatus.TRANSCRIBING ||
+                  task.status === TaskStatus.POLISHING ||
                   task.status === TaskStatus.TRANSLATING ||
                   task.status === TaskStatus.GENERATING_SUBTITLES ? (
                     <Button
@@ -365,7 +371,8 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                     </Button>
                   )}
 
-                  {task.status === TaskStatus.FAILED && (
+                  {(task.status === TaskStatus.FAILED ||
+                    task.status === TaskStatus.CANCELLED) && (
                     <Button
                       variant="outline"
                       size="sm"

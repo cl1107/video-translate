@@ -3,6 +3,12 @@ import {
   type PolishProvider,
 } from '../../../shared/settings'
 import {
+  cleanModelText,
+  isPunctuationOnly,
+  type TextCompletionPort,
+  throwIfAborted,
+} from './completion-port'
+import {
   type CompletionClientConfig,
   createCompletionClient,
   OLLAMA_OPENAI_BASE_URL,
@@ -12,8 +18,6 @@ import {
 
 /**
  * 上下文策略：滑动窗口（prev/next N 段只读上下文，输出仅当前段）。
- * 选择原因：与现有 1:1 显示段 / fail-fast 批处理对齐，解析失败面更小；
- * 微批量合并虽少 round-trip，但对齐与失败半径更难控，v1 不采用。
  */
 export const POLISH_CONTEXT_RADIUS = 1
 
@@ -21,37 +25,9 @@ export function supportsTranscriptPolish(model: string): boolean {
   return !/hy-mt/i.test(model)
 }
 
-const PUNCTUATION_ONLY =
-  /^[\s。！？!?；;…、，,.．:：\-—～~「」『』（）()【】[\]]+$/u
-
+/** @deprecated 使用 cleanModelText(raw, 'polish') */
 export function cleanPolishedText(raw: string): string {
-  let text = (raw || '').trim()
-  if (!text) return ''
-
-  text = text.replace(/^["「『]|["」』]$/g, '').trim()
-
-  const polishedMatch = text.match(
-    /(?:^|\n)\s*(?:润色结果|校对结果|结果|Output)\s*[:：]\s*([\s\S]+)$/i
-  )
-  if (polishedMatch?.[1]) {
-    text = polishedMatch[1].trim()
-  } else if (/识别原文\s*[:：]/.test(text) || /语言\s*[:：]/.test(text)) {
-    text = text
-      .split('\n')
-      .filter(
-        line =>
-          !/^\s*(语言|识别原文|润色结果|校对结果|结果|Output|上文|下文|当前段)\s*[:：]/.test(
-            line
-          )
-      )
-      .join('\n')
-      .trim()
-  }
-
-  text = text.replace(/^(润色结果|校对结果|结果|Output)\s*[:：]\s*/i, '').trim()
-  text = text.replace(/^["「『]|["」』]$/g, '').trim()
-
-  return text
+  return cleanModelText(raw, 'polish')
 }
 
 /**
@@ -96,26 +72,58 @@ export interface PolishBatchOptions {
   /** 滑动窗口半径，默认 1（前后各 1 段） */
   contextRadius?: number
   onProgress?: (completed: number, total: number) => void
+  signal?: AbortSignal
   /** 测试注入用；默认按 config 创建 */
-  client?: OpenAiCompletionClient
+  client?: TextCompletionPort
 }
 
 /**
  * 逐段润色（带滑动窗口上下文）；任一段失败时终止整批。
+ * 走 TextCompletionPort 接缝。
  */
 export async function polishTranscriptBatch(
   texts: string[],
   options: PolishBatchOptions
 ): Promise<string[]> {
-  const client = options.client ?? createCompletionClient(options.config)
+  const client: TextCompletionPort =
+    options.client ?? createCompletionClient(options.config)
   const radius = options.contextRadius ?? POLISH_CONTEXT_RADIUS
   const results: string[] = []
+  const system = buildPolishSystemPrompt()
 
   for (let i = 0; i < texts.length; i++) {
+    throwIfAborted(options.signal)
+    const trimmed = (texts[i] ?? '').trim()
+    if (!trimmed) {
+      results.push('')
+      options.onProgress?.(i + 1, texts.length)
+      continue
+    }
+    if (isPunctuationOnly(trimmed)) {
+      results.push(trimmed)
+      options.onProgress?.(i + 1, texts.length)
+      continue
+    }
+
     try {
-      const polished = await polishOneSegment(texts, i, options.sourceLanguage, client, radius)
+      const response = await client.complete({
+        system,
+        user: buildPolishUserPrompt(
+          texts,
+          i,
+          options.sourceLanguage,
+          radius
+        ),
+        temperature: 0.1,
+        maxTokens: 2000,
+      })
+      const polished = cleanModelText(response, 'polish')
+      if (!polished) {
+        throw new Error('润色结果为空')
+      }
       results.push(polished)
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error
       const message = error instanceof Error ? error.message : String(error)
       throw new Error(
         `polishTranscriptBatch segment ${i + 1}/${texts.length} failed: ${message}`
@@ -126,39 +134,6 @@ export async function polishTranscriptBatch(
   }
 
   return results
-}
-
-async function polishOneSegment(
-  texts: string[],
-  index: number,
-  sourceLanguage: string,
-  client: OpenAiCompletionClient,
-  contextRadius: number
-): Promise<string> {
-  const trimmed = (texts[index] ?? '').trim()
-  if (!trimmed) return ''
-
-  if (PUNCTUATION_ONLY.test(trimmed)) {
-    return trimmed
-  }
-
-  try {
-    const response = await client.complete({
-      system: buildPolishSystemPrompt(),
-      user: buildPolishUserPrompt(texts, index, sourceLanguage, contextRadius),
-      temperature: 0.1,
-      maxTokens: 2000,
-    })
-    const polished = cleanPolishedText(response)
-    if (!polished) {
-      throw new Error('润色结果为空')
-    }
-    return polished
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    // 避免把可能含密钥的 URL 细节原样打进任务日志以外；此处仅包装业务错误
-    throw new Error(`识别文本润色失败: ${errorMessage}`)
-  }
 }
 
 export type { PolishProvider }
@@ -224,3 +199,6 @@ export function resolvePolishCompletionConfig(
     label: `Ollama ${model}`,
   }
 }
+
+// re-export for callers that need OpenAi type
+export type { OpenAiCompletionClient }

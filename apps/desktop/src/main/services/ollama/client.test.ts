@@ -13,9 +13,11 @@ test('找不到 Ollama 可执行文件时启动守护进程返回失败而不抛
 
 test('translateBatch 在任一段翻译失败时报告段落位置并终止', async () => {
   const client = new OllamaClient()
-  client.translate = async text => {
-    if (text === 'second') throw new Error('model unavailable')
-    return `translated:${text}`
+  let calls = 0
+  client.generate = async () => {
+    calls += 1
+    if (calls === 2) throw new Error('model unavailable')
+    return '译文'
   }
 
   await assert.rejects(
@@ -48,5 +50,8 @@ test('翻译模型返回空文本时明确失败', async () => {
   const client = new OllamaClient()
   client.generate = async () => '   '
 
-  await assert.rejects(client.translate('source', 'en', 'zh'), /翻译结果为空/)
+  await assert.rejects(
+    client.translateBatch(['source'], 'en', 'zh'),
+    /翻译结果为空/
+  )
 })

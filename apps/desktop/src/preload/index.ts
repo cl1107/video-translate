@@ -1,36 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import {
+  IpcChannels,
+  type ArtifactKind,
+  type BurnSubtitleColors,
+} from '../shared/ipc'
+import type { AppSettings, SubtitleBurnMode } from '../shared/settings'
 import type { SystemCheckProgress } from '../shared/system-check'
-import type { TranslationTask } from '../shared/types/video'
+import type {
+  OllamaModel,
+  TaskLog,
+  TranslationTask,
+} from '../shared/types/video'
 
 declare global {
   interface Window {
     App: {
-      // 文件操作
       openFileDialog: () => Promise<string[]>
       openTaskArtifact: (
         taskId: string,
-        kind: 'video' | 'subtitle' | 'result'
+        kind: ArtifactKind
       ) => Promise<{ success: boolean; error?: string }>
       uploadFiles: (
         filePaths: string[],
-        settings: {
-          sourceLanguage: string
-          targetLanguage: string
-          ollamaModel?: string
-          asrEngine?: 'sensevoice' | 'funasr-nano'
-          burnSubtitles?: boolean
-          burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
-          polishTranscript?: boolean
-          polishProvider?: 'ollama' | 'byok'
-          polishOllamaModel?: string
-          byokBaseUrl?: string
-          byokModelId?: string
-          originalSubtitleColor?: string
-          translatedSubtitleColor?: string
-        }
+        settings: AppSettings | Partial<AppSettings>
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
 
-      // 任务管理
       getAllTasks: () => Promise<TranslationTask[]>
       getTask: (taskId: string) => Promise<TranslationTask | null>
       pauseTask: (taskId: string) => Promise<{ success: boolean }>
@@ -39,15 +33,11 @@ declare global {
       retryTask: (taskId: string) => Promise<{ success: boolean }>
       burnTaskSubtitles: (
         taskId: string,
-        mode: 'bilingual' | 'translated' | 'original',
-        colors?: {
-          originalColor?: string
-          translatedColor?: string
-        }
+        mode: SubtitleBurnMode,
+        colors?: BurnSubtitleColors
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
-      getTaskLogs: (taskId: string) => Promise<any[]>
+      getTaskLogs: (taskId: string) => Promise<TaskLog[]>
 
-      // BYOK API Key（主进程 safeStorage，不回传明文）
       getByokApiKeyStatus: () => Promise<{
         success: boolean
         configured: boolean
@@ -57,10 +47,9 @@ declare global {
       ) => Promise<{ success: boolean; error?: string }>
       clearByokApiKey: () => Promise<{ success: boolean; error?: string }>
 
-      // Ollama 服务
       getOllamaModels: () => Promise<{
         success: boolean
-        models: any[]
+        models: OllamaModel[]
         error?: string
       }>
       checkOllamaStatus: () => Promise<{
@@ -71,7 +60,6 @@ declare global {
         modelName: string
       ) => Promise<{ success: boolean; error?: string }>
 
-      // ASR 状态
       getAsrStatus: () => Promise<{
         success: boolean
         models: Array<{
@@ -83,7 +71,6 @@ declare global {
         error?: string
       }>
 
-      // 系统检查
       checkSystemDependencies: () => Promise<{
         success: boolean
         results: Array<{
@@ -113,10 +100,8 @@ declare global {
         error?: string
       }>
 
-      // 统计信息
-      getStatistics: () => Promise<any>
+      getStatistics: () => Promise<unknown>
 
-      // 临时缓存
       getTempCacheStats: () => Promise<{
         success: boolean
         path: string
@@ -137,7 +122,6 @@ declare global {
         error?: string
       }>
 
-      // 事件监听
       onTaskUpdated: (callback: (task: TranslationTask) => void) => () => void
       onTaskDeleted: (callback: (taskId: string) => void) => () => void
       onOllamaPullProgress: (
@@ -151,97 +135,80 @@ declare global {
 }
 
 const api = {
-  // 文件操作
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
-  openTaskArtifact: (taskId: string, kind: 'video' | 'subtitle' | 'result') =>
-    ipcRenderer.invoke('open-task-artifact', taskId, kind),
+  openFileDialog: () => ipcRenderer.invoke(IpcChannels.openFileDialog),
+  openTaskArtifact: (taskId: string, kind: ArtifactKind) =>
+    ipcRenderer.invoke(IpcChannels.openTaskArtifact, taskId, kind),
   uploadFiles: (
     filePaths: string[],
-    settings: {
-      sourceLanguage: string
-      targetLanguage: string
-      ollamaModel?: string
-      asrEngine?: 'sensevoice' | 'funasr-nano'
-      burnSubtitles?: boolean
-      burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
-      polishTranscript?: boolean
-      polishProvider?: 'ollama' | 'byok'
-      polishOllamaModel?: string
-      byokBaseUrl?: string
-      byokModelId?: string
-      originalSubtitleColor?: string
-      translatedSubtitleColor?: string
-    }
-  ) => ipcRenderer.invoke('upload-files', filePaths, settings),
+    settings: AppSettings | Partial<AppSettings>
+  ) => ipcRenderer.invoke(IpcChannels.uploadFiles, filePaths, settings),
 
-  // 任务管理
-  getAllTasks: () => ipcRenderer.invoke('get-all-tasks'),
-  getTask: (taskId: string) => ipcRenderer.invoke('get-task', taskId),
-  pauseTask: (taskId: string) => ipcRenderer.invoke('pause-task', taskId),
-  resumeTask: (taskId: string) => ipcRenderer.invoke('resume-task', taskId),
-  deleteTask: (taskId: string) => ipcRenderer.invoke('delete-task', taskId),
-  retryTask: (taskId: string) => ipcRenderer.invoke('retry-task', taskId),
+  getAllTasks: () => ipcRenderer.invoke(IpcChannels.getAllTasks),
+  getTask: (taskId: string) => ipcRenderer.invoke(IpcChannels.getTask, taskId),
+  pauseTask: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.pauseTask, taskId),
+  resumeTask: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.resumeTask, taskId),
+  deleteTask: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.deleteTask, taskId),
+  retryTask: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.retryTask, taskId),
   burnTaskSubtitles: (
     taskId: string,
-    mode: 'bilingual' | 'translated' | 'original',
-    colors?: {
-      originalColor?: string
-      translatedColor?: string
-    }
-  ) => ipcRenderer.invoke('burn-task-subtitles', taskId, mode, colors),
-  getTaskLogs: (taskId: string) => ipcRenderer.invoke('get-task-logs', taskId),
+    mode: SubtitleBurnMode,
+    colors?: BurnSubtitleColors
+  ) =>
+    ipcRenderer.invoke(IpcChannels.burnTaskSubtitles, taskId, mode, colors),
+  getTaskLogs: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.getTaskLogs, taskId),
 
-  // BYOK API Key
-  getByokApiKeyStatus: () => ipcRenderer.invoke('byok-api-key-status'),
+  getByokApiKeyStatus: () => ipcRenderer.invoke(IpcChannels.byokApiKeyStatus),
   setByokApiKey: (apiKey: string) =>
-    ipcRenderer.invoke('set-byok-api-key', apiKey),
-  clearByokApiKey: () => ipcRenderer.invoke('clear-byok-api-key'),
+    ipcRenderer.invoke(IpcChannels.setByokApiKey, apiKey),
+  clearByokApiKey: () => ipcRenderer.invoke(IpcChannels.clearByokApiKey),
 
-  // Ollama 服务
-  getOllamaModels: () => ipcRenderer.invoke('get-ollama-models'),
-  checkOllamaStatus: () => ipcRenderer.invoke('check-ollama-status'),
+  getOllamaModels: () => ipcRenderer.invoke(IpcChannels.getOllamaModels),
+  checkOllamaStatus: () => ipcRenderer.invoke(IpcChannels.checkOllamaStatus),
   pullOllamaModel: (modelName: string) =>
-    ipcRenderer.invoke('pull-ollama-model', modelName),
+    ipcRenderer.invoke(IpcChannels.pullOllamaModel, modelName),
 
-  // ASR 状态
-  getAsrStatus: () => ipcRenderer.invoke('get-asr-status'),
+  getAsrStatus: () => ipcRenderer.invoke(IpcChannels.getAsrStatus),
 
-  // 系统检查
   checkSystemDependencies: () =>
-    ipcRenderer.invoke('check-system-dependencies'),
-  getDiagnosticPaths: () => ipcRenderer.invoke('get-diagnostic-paths'),
-  openLogsDir: () => ipcRenderer.invoke('open-logs-dir'),
+    ipcRenderer.invoke(IpcChannels.checkSystemDependencies),
+  getDiagnosticPaths: () => ipcRenderer.invoke(IpcChannels.getDiagnosticPaths),
+  openLogsDir: () => ipcRenderer.invoke(IpcChannels.openLogsDir),
 
-  // 统计信息
-  getStatistics: () => ipcRenderer.invoke('get-statistics'),
+  getStatistics: () => ipcRenderer.invoke(IpcChannels.getStatistics),
 
-  // 临时缓存
-  getTempCacheStats: () => ipcRenderer.invoke('get-temp-cache-stats'),
-  clearTempCache: () => ipcRenderer.invoke('clear-temp-cache'),
-  openTempCacheDir: () => ipcRenderer.invoke('open-temp-cache-dir'),
+  getTempCacheStats: () => ipcRenderer.invoke(IpcChannels.getTempCacheStats),
+  clearTempCache: () => ipcRenderer.invoke(IpcChannels.clearTempCache),
+  openTempCacheDir: () => ipcRenderer.invoke(IpcChannels.openTempCacheDir),
 
-  // 事件监听
   onTaskUpdated: (callback: (task: TranslationTask) => void) => {
-    const listener = (event: any, task: TranslationTask) => callback(task)
-    ipcRenderer.on('task-updated', listener)
-    return () => ipcRenderer.removeListener('task-updated', listener)
+    const listener = (_event: unknown, task: TranslationTask) => callback(task)
+    ipcRenderer.on(IpcChannels.taskUpdated, listener)
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.taskUpdated, listener)
   },
 
   onTaskDeleted: (callback: (taskId: string) => void) => {
-    const listener = (event: any, taskId: string) => callback(taskId)
-    ipcRenderer.on('task-deleted', listener)
-    return () => ipcRenderer.removeListener('task-deleted', listener)
+    const listener = (_event: unknown, taskId: string) => callback(taskId)
+    ipcRenderer.on(IpcChannels.taskDeleted, listener)
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.taskDeleted, listener)
   },
 
   onOllamaPullProgress: (
     callback: (data: { modelName: string; progress: string }) => void
   ) => {
     const listener = (
-      event: any,
+      _event: unknown,
       data: { modelName: string; progress: string }
     ) => callback(data)
-    ipcRenderer.on('ollama-pull-progress', listener)
-    return () => ipcRenderer.removeListener('ollama-pull-progress', listener)
+    ipcRenderer.on(IpcChannels.ollamaPullProgress, listener)
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.ollamaPullProgress, listener)
   },
 
   onSystemCheckProgress: (
@@ -249,8 +216,9 @@ const api = {
   ) => {
     const listener = (_event: unknown, progress: SystemCheckProgress) =>
       callback(progress)
-    ipcRenderer.on('system-check-progress', listener)
-    return () => ipcRenderer.removeListener('system-check-progress', listener)
+    ipcRenderer.on(IpcChannels.systemCheckProgress, listener)
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.systemCheckProgress, listener)
   },
 }
 

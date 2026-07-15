@@ -53,21 +53,10 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
           JSON.stringify(settings)
         )
 
-        const result = await (window as any).App.uploadFiles(filePaths, {
-          sourceLanguage: settings.sourceLanguage,
-          targetLanguage: settings.targetLanguage,
-          ollamaModel: settings.ollamaModel,
-          asrEngine: settings.asrEngine,
-          burnSubtitles: settings.burnSubtitles,
-          burnSubtitleMode: settings.burnSubtitleMode,
-          polishTranscript: settings.polishTranscript,
-          polishProvider: settings.polishProvider,
-          polishOllamaModel: settings.polishOllamaModel,
-          byokBaseUrl: settings.byokBaseUrl,
-          byokModelId: settings.byokModelId,
-          originalSubtitleColor: settings.originalSubtitleColor,
-          translatedSubtitleColor: settings.translatedSubtitleColor,
-        })
+        const result = await (window as any).App.uploadFiles(
+          filePaths,
+          settings
+        )
         if (result.success) {
           console.log('文件上传成功，任务ID:', result.taskIds)
           onUploadSuccess?.()

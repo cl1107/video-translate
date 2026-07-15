@@ -3,8 +3,14 @@ import dayjs from 'dayjs'
 import { app } from 'electron'
 import path from 'node:path'
 import {
+  parseTaskRuntimeOptionsJson,
+  serializeTaskRuntimeOptions,
+} from '../../../shared/task-options'
+import {
   TaskStatus,
   type TaskLog,
+  type TaskOutputArtifacts,
+  type TaskRuntimeOptions,
   type TranscriptionSegment,
   type TranslationTask,
   type VideoFile,
@@ -109,6 +115,74 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_segments_task ON transcription_segments (task_id);
       CREATE INDEX IF NOT EXISTS idx_tasks_created ON translation_tasks (created_at);
     `)
+
+    this.migrateTaskColumns()
+  }
+
+  /** 兼容旧库：任务运行配置与产物路径一等字段 */
+  private migrateTaskColumns(): void {
+    const columns = this.db
+      .prepare(`PRAGMA table_info(translation_tasks)`)
+      .all() as Array<{ name: string }>
+    const names = new Set(columns.map(c => c.name))
+    if (!names.has('options_json')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN options_json TEXT NULL`
+      )
+    }
+    if (!names.has('artifacts_json')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN artifacts_json TEXT NULL`
+      )
+    }
+  }
+
+  private parseArtifactsJson(
+    json: string | null | undefined
+  ): TaskOutputArtifacts | undefined {
+    if (!json) return undefined
+    try {
+      const parsed = JSON.parse(json) as TaskOutputArtifacts
+      if (!parsed || typeof parsed !== 'object') return undefined
+      if (typeof parsed.outputDirectory !== 'string') return undefined
+      return parsed
+    } catch {
+      return undefined
+    }
+  }
+
+  private mapTaskRow(row: Record<string, unknown>): TranslationTask {
+    const taskId = String(row.id)
+    const segments = this.getTranscriptionSegments(taskId)
+    return {
+      id: taskId,
+      videoFile: {
+        id: String(row.video_file_id),
+        name: String(row.video_name),
+        path: String(row.video_path),
+        size: Number(row.video_size),
+        duration: Number(row.video_duration),
+        format: String(row.video_format),
+        createdAt: String(row.video_created_at),
+      },
+      status: row.status as TaskStatus,
+      progress: Number(row.progress ?? 0),
+      sourceLanguage: String(row.source_language),
+      targetLanguage: String(row.target_language),
+      options: parseTaskRuntimeOptionsJson(
+        row.options_json as string | null | undefined
+      ),
+      outputArtifacts: this.parseArtifactsJson(
+        row.artifacts_json as string | null | undefined
+      ),
+      segments,
+      subtitles: [],
+      logs: [],
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      completedAt: (row.completed_at as string | null) || undefined,
+      errorMessage: (row.error_message as string | null) || undefined,
+    }
   }
 
   /**
@@ -175,8 +249,9 @@ export class DatabaseManager {
   ): void {
     const stmt = this.db.prepare(`
       INSERT INTO translation_tasks
-      (id, video_file_id, status, progress, source_language, target_language, created_at, updated_at, completed_at, error_message)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, video_file_id, status, progress, source_language, target_language,
+       created_at, updated_at, completed_at, error_message, options_json, artifacts_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -189,8 +264,62 @@ export class DatabaseManager {
       task.createdAt,
       task.updatedAt,
       task.completedAt || null,
-      task.errorMessage || null
+      task.errorMessage || null,
+      task.options ? serializeTaskRuntimeOptions(task.options) : null,
+      task.outputArtifacts ? JSON.stringify(task.outputArtifacts) : null
     )
+  }
+
+  /** 持久化任务运行配置 */
+  saveTaskOptions(taskId: string, options: TaskRuntimeOptions): void {
+    const stmt = this.db.prepare(`
+      UPDATE translation_tasks
+      SET options_json = ?, updated_at = ?
+      WHERE id = ?
+    `)
+    stmt.run(
+      serializeTaskRuntimeOptions(options),
+      dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      taskId
+    )
+  }
+
+  /** 持久化产物路径（不再依赖日志解析） */
+  saveTaskArtifacts(taskId: string, artifacts: TaskOutputArtifacts): void {
+    const stmt = this.db.prepare(`
+      UPDATE translation_tasks
+      SET artifacts_json = ?, updated_at = ?
+      WHERE id = ?
+    `)
+    stmt.run(
+      JSON.stringify(artifacts),
+      dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      taskId
+    )
+  }
+
+  /** 合并更新产物路径中的部分字段 */
+  mergeTaskArtifacts(
+    taskId: string,
+    partial: Partial<TaskOutputArtifacts>
+  ): TaskOutputArtifacts {
+    const existing = this.getTranslationTask(taskId)?.outputArtifacts
+    const merged: TaskOutputArtifacts = {
+      outputDirectory:
+        partial.outputDirectory ||
+        existing?.outputDirectory ||
+        '',
+      originalSubtitle:
+        partial.originalSubtitle ?? existing?.originalSubtitle,
+      translatedSubtitle:
+        partial.translatedSubtitle ?? existing?.translatedSubtitle,
+      bilingualSubtitle:
+        partial.bilingualSubtitle ?? existing?.bilingualSubtitle,
+      bilingualAss: partial.bilingualAss ?? existing?.bilingualAss,
+      burnedVideo: partial.burnedVideo ?? existing?.burnedVideo,
+    }
+    this.saveTaskArtifacts(taskId, merged)
+    return merged
   }
 
   /**
@@ -254,43 +383,13 @@ export class DatabaseManager {
       WHERE t.id = ?
     `)
 
-    const row = stmt.get(taskId) as any
+    const row = stmt.get(taskId) as Record<string, unknown> | undefined
     if (!row) return null
-
-    // 获取转录段落
-    const segments = this.getTranscriptionSegments(taskId)
-
-    return {
-      id: row.id,
-      videoFile: {
-        id: row.video_file_id,
-        name: row.video_name,
-        path: row.video_path,
-        size: row.video_size,
-        duration: row.video_duration,
-        format: row.video_format,
-        createdAt: row.video_created_at,
-      },
-      status: row.status as TaskStatus,
-      progress: row.progress,
-      sourceLanguage: row.source_language,
-      targetLanguage: row.target_language,
-      segments,
-      subtitles: [], // 从段落生成
-      logs: [],
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      completedAt: row.completed_at,
-      errorMessage: row.error_message,
-    }
+    return this.mapTaskRow(row)
   }
 
   /**
-   * 获取所有翻译任务
-   */
-  /**
-   * 获取所有翻译任务列表
-   * @returns 返回按创建时间倒序排列的翻译任务数组
+   * 获取所有翻译任务列表（按创建时间倒序）
    */
   getAllTranslationTasks(): TranslationTask[] {
     const stmt = this.db.prepare(`
@@ -301,35 +400,8 @@ export class DatabaseManager {
       ORDER BY t.created_at DESC
     `)
 
-    const rows = stmt.all() as any[]
-
-    return rows.map(row => {
-      const segments = this.getTranscriptionSegments(row.id)
-
-      return {
-        id: row.id,
-        videoFile: {
-          id: row.video_file_id,
-          name: row.video_name,
-          path: row.video_path,
-          size: row.video_size,
-          duration: row.video_duration,
-          format: row.video_format,
-          createdAt: row.video_created_at,
-        },
-        status: row.status as TaskStatus,
-        progress: row.progress,
-        sourceLanguage: row.source_language,
-        targetLanguage: row.target_language,
-        segments: segments,
-        subtitles: [],
-        logs: [],
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        completedAt: row.completed_at,
-        errorMessage: row.error_message,
-      }
-    })
+    const rows = stmt.all() as Array<Record<string, unknown>>
+    return rows.map(row => this.mapTaskRow(row))
   }
 
   /**
