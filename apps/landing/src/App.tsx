@@ -19,7 +19,7 @@ import {
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 
-const APP_VERSION = '0.4.1'
+const APP_VERSION = '0.5.0'
 const releaseUrl = 'https://github.com/cl1107/video-translate/releases/latest'
 const repositoryUrl = 'https://github.com/cl1107/video-translate'
 const siteUrl = 'https://cl1107.github.io/video-translate/'
