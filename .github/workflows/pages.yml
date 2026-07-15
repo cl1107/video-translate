@@ -1,9 +1,17 @@
 name: Deploy Landing Page
 
+# 将 apps/landing 构建产物发布到 GitHub Pages
+# 站点地址: https://cl1107.github.io/video-translate/
 on:
   push:
     branches:
       - main
+    paths:
+      - 'apps/landing/**'
+      - '.github/workflows/pages.yml'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
   workflow_dispatch:
 
 permissions:
@@ -35,7 +43,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build landing page
+        # vite.config.ts 在 GITHUB_ACTIONS=true 时使用 base=/video-translate/
+        env:
+          GITHUB_ACTIONS: 'true'
         run: pnpm --filter @video-translate/landing run build
+
+      - name: Add SPA fallback for project pages
+        # 子路径刷新时避免 404（静态托管无服务端路由）
+        run: cp apps/landing/dist/index.html apps/landing/dist/404.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

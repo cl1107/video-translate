@@ -3,22 +3,26 @@ import {
   ArrowRight,
   Captions,
   Check,
-  Cpu,
   FileText,
+  Flame,
   Github,
   Languages,
+  Link2,
   LockKeyhole,
   Play,
   ScanLine,
   Sparkles,
+  Subtitles,
   WandSparkles,
   Waves,
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 
+const APP_VERSION = '0.4.1'
 const releaseUrl = 'https://github.com/cl1107/video-translate/releases/latest'
 const repositoryUrl = 'https://github.com/cl1107/video-translate'
+const siteUrl = 'https://cl1107.github.io/video-translate/'
 
 const translations = {
   中文: '你的素材，始终留在自己的电脑里。',
@@ -27,10 +31,30 @@ const translations = {
 }
 
 const workflow = [
-  { number: '01', label: '导入视频', detail: '拖入本地视频文件' },
-  { number: '02', label: '识别语音', detail: 'sherpa-onnx 本地转录' },
-  { number: '03', label: '翻译文本', detail: 'Ollama 本地模型翻译' },
-  { number: '04', label: '导出字幕', detail: 'SRT · VTT · TXT' },
+  {
+    number: '01',
+    label: '导入视频',
+    detail: '本地文件，或粘贴 YouTube / B 站链接',
+    icon: Link2,
+  },
+  {
+    number: '02',
+    label: '获取原文',
+    detail: '平台字幕优先；无字幕再本地 ASR',
+    icon: Subtitles,
+  },
+  {
+    number: '03',
+    label: '翻译润色',
+    detail: 'Ollama 本地模型，可选 BYOK 在线润色',
+    icon: Languages,
+  },
+  {
+    number: '04',
+    label: '导出字幕',
+    detail: 'SRT / ASS，可选双语硬字幕烧录',
+    icon: FileText,
+  },
 ]
 
 const waveformBars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123'
@@ -39,10 +63,18 @@ const waveformBars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123'
 
 const features = [
   {
-    icon: LockKeyhole,
-    eyebrow: 'LOCAL FIRST',
-    title: '素材不离开设备',
-    description: '识别、翻译和字幕生成都在本机完成。视频无需上传到第三方云端。',
+    icon: Link2,
+    eyebrow: 'URL IMPORT',
+    title: '链接也能一键翻译',
+    description:
+      '粘贴 YouTube、B 站等 yt-dlp 支持的链接，自动下载最高画质后进入同一流水线。',
+  },
+  {
+    icon: Subtitles,
+    eyebrow: 'PLATFORM FIRST',
+    title: '平台字幕优先',
+    description:
+      '有站内人工或自动字幕时直接翻译，跳过语音识别；没有字幕再走本地 ASR。',
   },
   {
     icon: Waves,
@@ -53,11 +85,34 @@ const features = [
   },
   {
     icon: Languages,
-    eyebrow: 'OLLAMA',
+    eyebrow: 'OLLAMA / BYOK',
     title: '翻译由你掌控',
     description:
-      '连接本地 Ollama 模型，自由选择目标语言和模型，不绑定在线额度。',
+      '连接本地 Ollama，或配置兼容 OpenAI 的在线接口做润色，不绑定固定额度。',
   },
+  {
+    icon: Flame,
+    eyebrow: 'HARD SUBS',
+    title: '双语硬字幕烧录',
+    description:
+      '生成双语 ASS，可选仅原文 / 仅译文 / 堆叠双语，颜色可自定义。',
+  },
+  {
+    icon: LockKeyhole,
+    eyebrow: 'LOCAL FIRST',
+    title: '素材不离开设备',
+    description:
+      '识别、翻译和字幕生成默认在本机完成。视频无需上传到第三方云端。',
+  },
+]
+
+const highlights = [
+  '在线链接下载 + 翻译',
+  '平台字幕优先于 ASR',
+  '本地 SenseVoice 识别',
+  'Ollama 批量翻译',
+  '双语 SRT / ASS 导出',
+  '可选硬字幕烧录',
 ]
 
 export function App() {
@@ -75,12 +130,13 @@ export function App() {
         <nav aria-label="主导航">
           <a href="#features">能力</a>
           <a href="#workflow">工作流</a>
+          <a href="#privacy">隐私</a>
           <a href={repositoryUrl} target="_blank" rel="noreferrer">
             GitHub
           </a>
         </nav>
         <a className="header-download" href={releaseUrl}>
-          下载 v0.4.1
+          下载 v{APP_VERSION}
           <ArrowDownToLine size={16} />
         </a>
       </header>
@@ -89,7 +145,7 @@ export function App() {
         <div className="hero-glow" aria-hidden="true" />
         <div className="hero-copy reveal reveal-one">
           <p className="kicker">
-            <span /> 面向创作者的本地视频翻译工作台
+            <span /> 本地优先 · 链接也能翻 · 字幕工作台
           </p>
           <h1>
             让每段声音
@@ -97,8 +153,8 @@ export function App() {
             <em>跨越语言。</em>
           </h1>
           <p className="hero-description">
-            从语音识别到多语言字幕，一条完全运行在本地的工作流。
-            保留素材隐私，也保留创作节奏。
+            本地文件或在线链接，平台字幕优先、没有再 ASR。
+            翻译、润色与双语字幕一条流水线完成——素材默认留在你的电脑里。
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href={releaseUrl}>
@@ -116,8 +172,16 @@ export function App() {
             <span>Windows</span>
             <i />
             <span>Linux</span>
-            <small>开源 · 离线优先</small>
+            <small>开源 · 离线优先 · MIT</small>
           </div>
+          <ul className="hero-highlights" aria-label="核心能力速览">
+            {highlights.map(item => (
+              <li key={item}>
+                <Check size={13} strokeWidth={2.6} />
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="studio-shell reveal reveal-two">
@@ -147,6 +211,10 @@ export function App() {
               </button>
               <div className="subtitle-preview">{translations[language]}</div>
               <span className="timecode">00:01:24:18</span>
+              <span className="source-pill">
+                <Link2 size={11} />
+                youtube.com/…
+              </span>
             </div>
             <fieldset className="language-switcher">
               <legend className="sr-only">字幕语言</legend>
@@ -165,7 +233,7 @@ export function App() {
             </fieldset>
             <div className="timeline">
               <div className="timeline-head">
-                <span>语音轨道 / 01</span>
+                <span>平台字幕 / 跳过 ASR</span>
                 <span>01:42</span>
               </div>
               <div className="waveform" aria-hidden="true">
@@ -179,7 +247,7 @@ export function App() {
               </div>
               <div className="caption-track">
                 <span>00:58</span>
-                <strong>素材始终留在本地</strong>
+                <strong>有字幕直接译 · 无字幕再识别</strong>
                 <span>01:05</span>
               </div>
             </div>
@@ -187,8 +255,8 @@ export function App() {
           <div className="floating-card status-card">
             <ScanLine size={17} />
             <div>
-              <span>正在识别</span>
-              <strong>87%</strong>
+              <span>平台字幕</span>
+              <strong>已就绪</strong>
             </div>
             <i>
               <span />
@@ -198,15 +266,20 @@ export function App() {
             <Check size={16} />
             视频未上传云端
           </div>
+          <div className="floating-card url-card">
+            <WandSparkles size={15} />
+            链接 → 下载 → 字幕
+          </div>
         </div>
       </section>
 
       <div className="marquee" aria-hidden="true">
         <div>
+          在线链接下载 <Sparkles size={16} /> 平台字幕优先 <Sparkles size={16} />
           本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
-          字幕自动生成 <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
-          本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
-          字幕自动生成
+          双语硬字幕 <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
+          在线链接下载 <Sparkles size={16} /> 平台字幕优先 <Sparkles size={16} />
+          本地语音识别
         </div>
       </div>
 
@@ -214,52 +287,53 @@ export function App() {
         <div className="section-heading">
           <p className="section-index">01 / 核心能力</p>
           <h2>
-            专注创作，
+            从链接到成片字幕，
             <br />
-            <span>其余交给本地算力。</span>
+            <span>都在同一条本地流水线。</span>
           </h2>
         </div>
-        <div className="feature-grid">
-          {features.map(
-            ({ icon: Icon, eyebrow, title, description }, index) => (
-              <article className="feature-card" key={title}>
-                <div className="feature-number">0{index + 1}</div>
-                <Icon size={27} strokeWidth={1.7} />
-                <p>{eyebrow}</p>
-                <h3>{title}</h3>
-                <span>{description}</span>
-              </article>
-            )
-          )}
+        <div className="feature-grid feature-grid-six">
+          {features.map(({ icon: Icon, eyebrow, title, description }, index) => (
+            <article className="feature-card" key={title}>
+              <div className="feature-number">
+                {String(index + 1).padStart(2, '0')}
+              </div>
+              <Icon size={27} strokeWidth={1.7} />
+              <p>{eyebrow}</p>
+              <h3>{title}</h3>
+              <span>{description}</span>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="section workflow-section" id="workflow">
         <div className="workflow-intro">
           <p className="section-index">02 / 工作流</p>
-          <h2>从视频到字幕，四步完成。</h2>
+          <h2>从素材到字幕，四步完成。</h2>
           <p>
-            自动提取音频、切分语音、调用本地模型，并生成可继续编辑的字幕文件。
+            本地文件或在线链接；有平台字幕就跳过识别，没有再走
+            SenseVoice。翻译后导出 SRT / ASS，也可烧录双语硬字幕。
           </p>
         </div>
         <div className="workflow-list">
-          {workflow.map((item, index) => (
-            <article key={item.number}>
-              <span>{item.number}</span>
-              <div>
-                <h3>{item.label}</h3>
-                <p>{item.detail}</p>
-              </div>
-              {index === 0 ? <WandSparkles /> : null}
-              {index === 1 ? <Cpu /> : null}
-              {index === 2 ? <Languages /> : null}
-              {index === 3 ? <FileText /> : null}
-            </article>
-          ))}
+          {workflow.map(item => {
+            const Icon = item.icon
+            return (
+              <article key={item.number}>
+                <span>{item.number}</span>
+                <div>
+                  <h3>{item.label}</h3>
+                  <p>{item.detail}</p>
+                </div>
+                <Icon size={22} strokeWidth={1.7} />
+              </article>
+            )
+          })}
         </div>
       </section>
 
-      <section className="section privacy-section">
+      <section className="section privacy-section" id="privacy">
         <div className="privacy-visual" aria-hidden="true">
           <div className="orbit orbit-one" />
           <div className="orbit orbit-two" />
@@ -277,13 +351,14 @@ export function App() {
           <h2>你的素材，只属于你的设备。</h2>
           <p>
             视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本和字幕产物都保存在本机路径中。
+            在线润色（BYOK）仅在你主动配置时才会请求你指定的接口。
           </p>
           <ul>
             <li>
               <Check size={16} /> 无需注册账号
             </li>
             <li>
-              <Check size={16} /> 无在线 API 额度
+              <Check size={16} /> 无强制在线 API 额度
             </li>
             <li>
               <Check size={16} /> 开源代码可审查
@@ -306,7 +381,10 @@ export function App() {
             查看源代码
           </a>
         </div>
-        <span>v0.4.1 · MIT License · macOS / Windows / Linux</span>
+        <span>
+          v{APP_VERSION} · MIT License · macOS / Windows / Linux ·{' '}
+          <a href={siteUrl}>官网</a>
+        </span>
       </section>
 
       <footer>

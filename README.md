@@ -2,13 +2,18 @@
 
 基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
 
+**产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
+
 ![视频翻译助手](https://img.shields.io/badge/version-0.4.1-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Pages](https://img.shields.io/badge/GitHub%20Pages-live-success.svg)
 
 ## ✨ 特性
 
 - 🚀 **本地处理** - 视频、识别结果和翻译内容无需上传到第三方服务
+- 🔗 **在线链接** - 粘贴 YouTube / B 站等链接，经 yt-dlp 下载后走同一流水线
+- 📝 **平台字幕优先** - 有站内人工/自动字幕时直接翻译，跳过 ASR；无字幕再本地识别
 - 🎯 **高精度识别** - 基于 sherpa-onnx，默认 SenseVoice Small（中/英/日/韩/粤）
 - 🌍 **多语言翻译** - 通过本地 Ollama 大模型进行文本翻译
 - ⚡ **智能处理** - 自动音频提取、分段识别与进度回调
@@ -27,7 +32,10 @@
 
 ### 工作流程
 
-1. 📹 **视频上传** → 2. 🎵 **音频提取** → 3. 🗣️ **语音识别 (ASR)** → 4. 🌐 **文本翻译** → 5. 📝 **字幕生成**（可选硬字幕烧录）
+1. 📹 **本地上传** 或 🔗 **在线链接（yt-dlp）**
+2. 🎵 **音频提取**（有平台字幕时可跳过）
+3. 🗣️ **语音识别 (ASR)** 或 直接使用**平台字幕**
+4. 🌐 **文本翻译** → 5. 📝 **字幕生成**（可选硬字幕烧录）
 
 ## 🚀 快速开始
 
@@ -156,13 +164,14 @@ ollama pull kaelri/hy-mt2:1.8b
 
 ### 翻译流水线
 
-1. **文件上传** → 创建任务与视频元数据
-2. **音频提取** → FFmpeg 提取音轨
-3. **语音识别** → sherpa-onnx 转录（SenseVoice / Fun-ASR-Nano）
-4. **文本翻译** → Ollama 批量翻译
-5. **字幕生成** → 输出 SRT / VTT / TXT
-6. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）
-7. **清理** → 删除临时文件并完成任务
+1. **本地上传** 或 **在线链接**（yt-dlp 下载视频 + 平台字幕）
+2. **源文获取**（二选一）
+   - **平台字幕优先**：解析站内人工/自动字幕，跳过音频提取与 ASR
+   - **否则 ASR**：FFmpeg 抽音轨 → sherpa-onnx 转录
+3. **文本润色 / 翻译** → Ollama（或 BYOK）
+4. **字幕生成** → 输出 SRT / ASS 等
+5. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）
+6. **清理** → 删除临时文件并完成任务
 
 ## 📚 详细文档
 
@@ -203,6 +212,10 @@ pnpm dev:desktop
 
 # 启动 landing page
 pnpm dev:landing
+
+# 构建 / 预览产品官网（GitHub Pages 同源构建）
+pnpm build:landing
+pnpm preview:landing
 
 # 预览构建结果
 pnpm start:desktop
@@ -246,7 +259,45 @@ pnpm --filter video-translate rebuild:native
 - ✅ **沙盒隔离** - 遵循 Electron 安全实践
 - ✅ **无云端上传** - 视频文件不上传到第三方云服务（除本地 Ollama / 首次下载 ASR 模型外）
 
+## 📦 发布包说明（macOS CI）
+
+GitHub Actions 等 CI 打出的 **macOS 包为未签名、未公证** 构建（`UNSIGNED_BUILD=1`），从浏览器下载后会被 Gatekeeper 隔离（quarantine）。
+
+首次打开前请在终端对 `.app` 或解压后的应用目录执行：
+
+```bash
+# 推荐：清除隔离属性与扩展属性（对 .app 目录递归）
+xattr -cr "/path/to/视频翻译助手.app"
+
+# 若只想去掉 quarantine：
+# xattr -dr com.apple.quarantine "/path/to/视频翻译助手.app"
+```
+
+然后即可从 Finder 正常打开。若仍提示「已损坏」或无法打开，可再试：
+
+```bash
+sudo xattr -cr "/path/to/视频翻译助手.app"
+```
+
+> 正式对外分发应使用 Apple Developer 证书签名并公证；当前 CI 产物仅适合自用 / 内测。
+
+### 在线下载（yt-dlp，可选）
+
+```bash
+# macOS
+brew install yt-dlp
+
+# 或其他平台
+pip install -U yt-dlp
+```
+
+仅本地文件翻译可不安装。部分站点（如 YouTube）可能要求本机浏览器已登录，应用会在需要时尝试读取 Chrome / Safari 等 Cookie。
+
 ## ⚠️ 常见问题
+
+### macOS 上 CI / 网盘下载的应用打不开
+
+见上文 [发布包说明（macOS CI）](#-发布包说明macos-ci)：对 `.app` 执行 `xattr -cr`。
 
 ### macOS 上提示找不到 FFmpeg
 
