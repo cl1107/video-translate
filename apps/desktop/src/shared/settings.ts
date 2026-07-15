@@ -4,15 +4,6 @@ import {
   type AsrEngineId,
 } from './constants'
 
-/** 旧版默认模型，自动迁移 */
-const LEGACY_OLLAMA_MODELS = new Set([
-  'qwen3:4b-instruct',
-  'qwen2.5:7b',
-  'qwen2.5:3b',
-  'llama3.2',
-  'llama3.1',
-])
-
 export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 
 /** 硬字幕 / ASS 默认色：原文白、译文黄（与历史 ASS 硬编码一致） */
@@ -99,10 +90,7 @@ export function hexToAssPrimaryColour(hex: string): string {
 
 export function normalizeOllamaModel(name?: string | null): string {
   const trimmed = (name ?? '').trim()
-  if (!trimmed || LEGACY_OLLAMA_MODELS.has(trimmed)) {
-    return DEFAULT_OLLAMA_MODEL
-  }
-  return trimmed
+  return trimmed || DEFAULT_OLLAMA_MODEL
 }
 
 export function normalizeAsrEngine(value?: string | null): AsrEngineId {

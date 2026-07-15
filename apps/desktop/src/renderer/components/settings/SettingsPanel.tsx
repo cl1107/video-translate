@@ -231,7 +231,6 @@ export function SettingsPanel() {
       if (savedSettings) {
         const normalized = normalizeAppSettings(JSON.parse(savedSettings))
         setSettings(normalized)
-        // 写回清洗后的设置，避免下次仍读到旧 qwen 模型
         localStorage.setItem(
           'video-translate-settings',
           JSON.stringify(normalized)

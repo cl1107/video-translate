@@ -43,7 +43,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       // 直接调用系统文件选择对话框
       const filePaths = await (window as any).App.openFileDialog()
       if (filePaths.length > 0) {
-        // 从 localStorage 读取并清洗设置（迁移旧 qwen 默认模型等）
+        // 从 localStorage 读取并规范化设置
         const savedSettings = localStorage.getItem('video-translate-settings')
         const settings = normalizeAppSettings(
           savedSettings ? JSON.parse(savedSettings) : DEFAULT_APP_SETTINGS
