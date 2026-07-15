@@ -197,3 +197,16 @@ SQLite 数据库使用以下主要表：
 - 临时文件自动清理
 - 实施了 Electron 安全最佳实践
 - 除本地 Ollama 服务外无外部 API 调用
+
+## Design Context
+
+UI / 设计工作请先读对应应用的产品与视觉上下文（Impeccable）：
+
+| 应用 | Register | PRODUCT | DESIGN |
+|------|----------|---------|--------|
+| 桌面端 | product | `apps/desktop/PRODUCT.md` | `apps/desktop/DESIGN.md` |
+| 官网 | brand | `apps/landing/PRODUCT.md` | `apps/landing/DESIGN.md` |
+
+- **North stars:** desktop = *The Quiet Workbench*；landing = *The Acid Studio*
+- **Live 配置:** `apps/desktop/.impeccable/live/config.json`、`apps/landing/.impeccable/live/config.json`
+- 命令入口：`$impeccable`（需指定 target 应用）。设计相关原则与 anti-references 以 PRODUCT/DESIGN 为准，勿与实现细节混写。

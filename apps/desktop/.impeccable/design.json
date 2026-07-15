@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-15T16:33:20Z",
+  "title": "Design System: 视频翻译助手 · Desktop",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Near-black Ink",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.205 0 0)",
+          "oklch(0.3 0 0)",
+          "oklch(0.45 0 0)",
+          "oklch(0.556 0 0)",
+          "oklch(0.708 0 0)",
+          "oklch(0.922 0 0)",
+          "oklch(0.97 0 0)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Pure Surface",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.145 0 0)",
+          "oklch(0.269 0 0)",
+          "oklch(0.4 0 0)",
+          "oklch(0.556 0 0)",
+          "oklch(0.708 0 0)",
+          "oklch(0.922 0 0)",
+          "oklch(0.97 0 0)",
+          "oklch(1 0 0)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Muted Text",
+        "canonical": "oklch(0.556 0 0)",
+        "tonalRamp": [
+          "oklch(0.3 0 0)",
+          "oklch(0.4 0 0)",
+          "oklch(0.5 0 0)",
+          "oklch(0.556 0 0)",
+          "oklch(0.65 0 0)",
+          "oklch(0.75 0 0)",
+          "oklch(0.85 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "destructive": {
+        "role": "semantic",
+        "displayName": "Destructive",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": [
+          "oklch(0.35 0.15 27)",
+          "oklch(0.45 0.2 27)",
+          "oklch(0.577 0.245 27.325)",
+          "oklch(0.65 0.2 27)",
+          "oklch(0.72 0.16 27)",
+          "oklch(0.8 0.1 27)",
+          "oklch(0.9 0.05 27)",
+          "oklch(0.96 0.02 27)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "页面主标题，最大约 text-lg。" },
+      "body": { "displayName": "Body", "purpose": "默认正文与说明，text-sm。" },
+      "label": { "displayName": "Label", "purpose": "按钮与控件标签。" }
+    },
+    "shadows": [
+      {
+        "name": "control-xs",
+        "value": "0 1px 2px rgba(0,0,0,0.05)",
+        "purpose": "按钮等控件的轻微实体感（shadow-xs）。"
+      },
+      {
+        "name": "card-sm",
+        "value": "0 1px 3px rgba(0,0,0,0.08)",
+        "purpose": "卡片安静落差（shadow-sm）。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-state",
+        "value": "transition-all 150ms ease",
+        "purpose": "控件状态反馈；无编排入场。"
+      }
+    ],
+    "breakpoints": [
+      { "name": "content-max", "value": "64rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "近黑主按钮，任务主操作。",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">开始翻译</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border:0;border-radius:8px;background:oklch(0.205 0 0);color:oklch(0.985 0 0);font:500 14px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:background .15s ease}.ds-btn-primary:hover{background:oklch(0.205 0 0/.9)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.708 0 0/.5)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "次级描边按钮，如设置入口。",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">设置</button>",
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border:1px solid oklch(0.922 0 0);border-radius:8px;background:oklch(1 0 0);color:oklch(0.145 0 0);font:500 14px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:background .15s ease}.ds-btn-outline:hover{background:oklch(0.97 0 0)}.ds-btn-outline:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.708 0 0/.5)}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "分段导航未选中态。",
+      "html": "<button class=\"ds-btn-ghost\" type=\"button\">任务</button>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:oklch(0.145 0 0);font:500 14px/1 system-ui,sans-serif;cursor:pointer}.ds-btn-ghost:hover{background:oklch(0.97 0 0)}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.708 0 0/.5)}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "上传区与任务卡片容器。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">添加视频</div><p class=\"ds-card-desc\">本地文件或在线链接</p></div>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:8px;padding:24px;border:1px solid oklch(0.922 0 0);border-radius:12px;background:oklch(1 0 0);color:oklch(0.145 0 0);box-shadow:0 1px 3px rgba(0,0,0,.08);font-family:system-ui,sans-serif}.ds-card-title{font-weight:600;font-size:16px}.ds-card-desc{margin:0;font-size:14px;color:oklch(0.556 0 0)}"
+    },
+    {
+      "name": "Top Navigation",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "粘性顶栏：品牌 + 分段标签 + 设置。",
+      "html": "<header class=\"ds-nav\"><span class=\"ds-nav-brand\">视频翻译助手</span><div class=\"ds-nav-seg\"><button class=\"ds-nav-on\">添加视频</button><button class=\"ds-nav-off\">任务</button></div></header>",
+      "css": ".ds-nav{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 24px;border-bottom:1px solid oklch(0.922 0 0);background:oklch(1 0 0);font-family:system-ui,sans-serif}.ds-nav-brand{font-weight:600;font-size:16px;color:oklch(0.145 0 0)}.ds-nav-seg{display:flex;gap:2px;padding:4px;border-radius:8px;background:oklch(0.97 0 0)}.ds-nav-on{height:32px;padding:0 12px;border:0;border-radius:6px;background:oklch(0.205 0 0);color:oklch(0.985 0 0);font:500 13px/1 system-ui,sans-serif}.ds-nav-off{height:32px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:oklch(0.145 0 0);font:500 13px/1 system-ui,sans-serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Workbench",
+    "overview": "桌面端是安静工作台：中性、可扫读、密度服务任务。视觉来自 shadcn/ui New York + neutral 基底，用 OKLCH 中性斜坡支撑锋利·现代·自信。深度几乎只靠边框与轻阴影。",
+    "keyCharacteristics": [
+      "中性 OKLCH 斜坡；主色近黑墨色",
+      "任务优先：上传 / 任务 / 设置",
+      "扁平分层，无戏剧 elevation",
+      "系统字体；text-sm / text-base 为主",
+      "支持 .dark 语义反转"
+    ],
+    "rules": [
+      {
+        "name": "The Ink-Not-Brand Rule",
+        "body": "桌面主色是墨色中性，不是 landing 的酸绿。",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable Muted Rule",
+        "body": "muted-foreground 禁止再洗成更浅灰。",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Hero-Type Rule",
+        "body": "桌面禁止 marketing 级 clamp 大标题。",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "表面静止时几乎平坦；阴影只服务控件与卡片落差。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 让每一屏主路径指向导入 → 处理 → 导出字幕。",
+      "Do 用语义 token，而不是任意灰。",
+      "Do 保持错误与依赖状态可行动。",
+      "Do 尊重 prefers-reduced-motion。",
+      "Do 文案短、准、中文优先。"
+    ],
+    "donts": [
+      "Don't 通用 SaaS 仪表盘：紫渐变、万能卡片网格、空泛 AI 口号。",
+      "Don't 企业级沉重后台。",
+      "Don't 花哨 AI 演示站。",
+      "Don't 廉价绿色科技感。",
+      "Don't 把 landing 酸绿大面积搬进工具主色。",
+      "Don't 侧边彩条、渐变文字、32px+ 夸张圆角卡片。"
+    ]
+  }
+}

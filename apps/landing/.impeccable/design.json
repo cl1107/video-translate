@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-15T16:33:20Z",
+  "title": "Design System: 视频翻译助手 · Landing",
+  "extensions": {
+    "colorMeta": {
+      "acid": {
+        "role": "primary",
+        "displayName": "Acid Lime",
+        "canonical": "#d9ff65",
+        "tonalRamp": [
+          "#3d4a12",
+          "#6b821f",
+          "#9ab82e",
+          "#c4e84a",
+          "#d9ff65",
+          "#e5ff91",
+          "#f0ffb8",
+          "#f8ffe0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Void Ink",
+        "canonical": "#0b0d0c",
+        "tonalRamp": [
+          "#0b0d0c",
+          "#161917",
+          "#242924",
+          "#3c3f3b",
+          "#777872",
+          "#aaa9a2",
+          "#f0efe7",
+          "#f4f4ef"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#f0efe7",
+        "tonalRamp": [
+          "#3a3934",
+          "#6a6860",
+          "#9a9890",
+          "#c5c4bb",
+          "#e0dfd6",
+          "#f0efe7",
+          "#f7f6f1",
+          "#fcfcf9"
+        ]
+      },
+      "orange": {
+        "role": "secondary",
+        "displayName": "Signal Orange",
+        "canonical": "#ff6b3d",
+        "tonalRamp": [
+          "#4a1c0f",
+          "#7a2e18",
+          "#b34424",
+          "#e0552e",
+          "#ff6b3d",
+          "#ff8f6a",
+          "#ffb59a",
+          "#ffd8c9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero 主标题；极端字重与字距。"
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "区块大标题。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Hero 说明与长文，行高宽松。"
+      },
+      "label": {
+        "displayName": "Label / Kicker",
+        "purpose": "少量 uppercase kicker；禁止每节滥用。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "studio-stage",
+        "value": "0 42px 110px rgba(0,0,0,0.45)",
+        "purpose": "主演示壳舞台阴影。"
+      },
+      {
+        "name": "control",
+        "value": "0 8px 35px rgba(0,0,0,0.26)",
+        "purpose": "播放钮等控件。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-lift",
+        "value": "180ms ease",
+        "purpose": "按钮抬起、色变；非编排长动画。"
+      }
+    ],
+    "breakpoints": [
+      { "name": "page-max", "value": "1440px" },
+      { "name": "hero-max", "value": "1340px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary CTA",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "免费下载主按钮：酸绿 pill。",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">免费下载</a>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 23px;border:1px solid transparent;border-radius:99px;background:#d9ff65;color:#0b0d0c;font:740 13px/1 'Noto Sans SC Variable',sans-serif;text-decoration:none;transition:transform 180ms ease,background 180ms ease}.ds-btn-primary:hover{background:#e5ff91;transform:translateY(-3px)}.ds-btn-primary:focus-visible{outline:2px solid #d9ff65;outline-offset:3px}"
+    },
+    {
+      "name": "Ghost CTA",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "次 CTA：看它如何工作。",
+      "html": "<a class=\"ds-btn-ghost\" href=\"#workflow\">看它如何工作</a>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 23px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:transparent;color:#f4f4ef;font:740 13px/1 'Noto Sans SC Variable',sans-serif;text-decoration:none;transition:transform 180ms ease,border-color 180ms ease}.ds-btn-ghost:hover{border-color:rgba(255,255,255,.42);transform:translateY(-3px)}.ds-btn-ghost:focus-visible{outline:2px solid #d9ff65;outline-offset:3px}"
+    },
+    {
+      "name": "Header Download",
+      "kind": "button",
+      "refersTo": "header-download",
+      "description": "顶栏纸色下载 pill。",
+      "html": "<a class=\"ds-header-dl\" href=\"#\">下载 v0.5.0</a>",
+      "css": ".ds-header-dl{display:inline-flex;align-items:center;gap:9px;padding:11px 16px;border-radius:99px;background:#f0efe7;color:#0b0d0c;font:720 12px/1 'Noto Sans SC Variable',sans-serif;text-decoration:none;transition:transform 180ms ease,background 180ms ease}.ds-header-dl:hover{background:#d9ff65;transform:translateY(-2px)}"
+    },
+    {
+      "name": "Capability Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Hero 能力速览 chip。",
+      "html": "<span class=\"ds-chip\">本地 SenseVoice 识别</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid rgba(255,255,255,.08);border-radius:99px;background:rgba(255,255,255,.04);color:#c5c6bf;font:560 11px/1 'Noto Sans SC Variable',sans-serif}"
+    },
+    {
+      "name": "Site Header",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "三栏顶栏：品牌 | 锚点 | 下载。",
+      "html": "<header class=\"ds-header\"><span class=\"ds-brand\">视频翻译助手</span><nav class=\"ds-links\"><a href=\"#features\">能力</a><a href=\"#workflow\">工作流</a></nav><a class=\"ds-header-dl\" href=\"#\">下载</a></header>",
+      "css": ".ds-header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:84px;padding:0 32px;border-bottom:1px solid rgba(255,255,255,.14);background:#0b0d0c;font-family:'Noto Sans SC Variable',sans-serif;color:#f4f4ef}.ds-brand{font-weight:720;font-size:15px;letter-spacing:-.03em}.ds-links{display:flex;gap:36px;font-size:13px}.ds-links a{color:#aaa9a2;text-decoration:none}.ds-links a:hover{color:#d9ff65}.ds-header-dl{justify-self:end;display:inline-flex;padding:11px 16px;border-radius:99px;background:#f0efe7;color:#0b0d0c;font:720 12px/1 sans-serif;text-decoration:none}"
+    },
+    {
+      "name": "Studio Shell",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "签名演示壳：假窗口 + 舞台阴影。",
+      "html": "<div class=\"ds-studio\"><div class=\"ds-studio-bar\"><span></span><span></span><span></span><em>interview-final.mp4</em></div><div class=\"ds-studio-canvas\">字幕工作台预览</div></div>",
+      "css": ".ds-studio{padding:12px;background:#161917;border:1px solid rgba(255,255,255,.14);border-radius:24px;box-shadow:0 42px 110px rgba(0,0,0,.45);color:#73756f;font-family:'Noto Sans SC Variable',sans-serif;transform:rotate(1.5deg)}.ds-studio-bar{display:flex;align-items:center;gap:5px;height:42px;padding:0 9px;font-size:9px;letter-spacing:.08em}.ds-studio-bar span{width:7px;height:7px;border-radius:50%;background:#3c3f3b}.ds-studio-bar em{margin-left:auto;font-style:normal}.ds-studio-canvas{display:grid;place-items:center;min-height:160px;padding:10px;background:#0e100f;border-radius:16px;color:#aaa9a2;font-size:13px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Acid Studio",
+    "overview": "官网是酸绿演播室：深色舞台、一句主张打穿、真实工具感演示壳。酸绿是记忆点与主 CTA；纸色与橙色作辅。访客 10 秒记住：创作者的本地字幕工作台。",
+    "keyCharacteristics": [
+      "深底 + 酸绿强调 + 纸色 CTA",
+      "全 pill 按钮与芯片",
+      "Display 超大标题 + 强调色",
+      "舞台式 elevation",
+      "180ms 微交互"
+    ],
+    "rules": [
+      {
+        "name": "The Acid Spotlight Rule",
+        "body": "酸绿是聚光灯；禁止整页刷绿或矩阵终端。",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Fake-Proof Rule",
+        "body": "无证言时不伪造社会证明。",
+        "section": "colors"
+      },
+      {
+        "name": "The One-Kicker Rule",
+        "body": "禁止每节 uppercase kicker 脚手架。",
+        "section": "typography"
+      },
+      {
+        "name": "The Display Ceiling Rule",
+        "body": "标题 clamp 上限约 102px；字距勿更紧到粘连。",
+        "section": "typography"
+      },
+      {
+        "name": "The Stage-Not-Card-Grid Rule",
+        "body": "大阴影只给舞台物件，不给每张能力卡。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 首屏对齐「创作者的本地字幕工作台」。",
+      "Do 主 CTA 免费下载始终可达。",
+      "Do 用真实能力推进信念阶梯。",
+      "Do 酸绿作聚光灯；纸色作反衬。",
+      "Do 与 desktop 同源气质。"
+    ],
+    "donts": [
+      "Don't 通用 SaaS 仪表盘。",
+      "Don't 企业沉重后台感。",
+      "Don't 花哨 AI 演示站。",
+      "Don't 廉价绿色科技感（酸绿 ≠ 终端绿）。",
+      "Don't 伪造证言或虚标数据。",
+      "Don't 每节 kicker + 编号脚手架。",
+      "Don't 渐变文字、侧边彩条、手绘 sketch SVG。"
+    ]
+  }
+}
