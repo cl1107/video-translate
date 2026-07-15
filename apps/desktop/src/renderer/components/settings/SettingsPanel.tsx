@@ -32,6 +32,7 @@ import { DEFAULT_OLLAMA_MODEL } from '../../../shared/constants'
 import {
   DEFAULT_APP_SETTINGS,
   normalizeAppSettings,
+  normalizeHexColor,
   normalizeOllamaModel,
 } from '../../../shared/settings'
 
@@ -721,6 +722,129 @@ export function SettingsPanel() {
               </Select>
             </div>
           )}
+
+          <div className="space-y-3 pt-2">
+            <Label>字幕颜色（ASS / 硬字幕）</Label>
+            <p className="text-xs text-muted-foreground">
+              用于双语 ASS 与烧录硬字幕；原文、译文可分别设置。默认白 / 黄。
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="original-subtitle-color">原文颜色</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="original-subtitle-color"
+                    type="color"
+                    value={normalizeHexColor(
+                      settings.originalSubtitleColor,
+                      DEFAULT_APP_SETTINGS.originalSubtitleColor
+                    )}
+                    onChange={e =>
+                      setSettings(prev => ({
+                        ...prev,
+                        originalSubtitleColor: e.target.value.toUpperCase(),
+                      }))
+                    }
+                    className="h-9 w-12 cursor-pointer rounded border bg-transparent p-0.5"
+                    title="选择原文字幕颜色"
+                  />
+                  <input
+                    type="text"
+                    value={settings.originalSubtitleColor}
+                    onChange={e => {
+                      const value = e.target.value
+                      setSettings(prev => ({
+                        ...prev,
+                        originalSubtitleColor: value.startsWith('#')
+                          ? value
+                          : `#${value}`,
+                      }))
+                    }}
+                    onBlur={() =>
+                      setSettings(prev =>
+                        normalizeAppSettings({
+                          ...prev,
+                          originalSubtitleColor: prev.originalSubtitleColor,
+                        })
+                      )
+                    }
+                    className="h-9 flex-1 rounded-md border bg-background px-2 font-mono text-sm"
+                    spellCheck={false}
+                    maxLength={7}
+                    aria-label="原文颜色十六进制"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="translated-subtitle-color">译文颜色</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="translated-subtitle-color"
+                    type="color"
+                    value={normalizeHexColor(
+                      settings.translatedSubtitleColor,
+                      DEFAULT_APP_SETTINGS.translatedSubtitleColor
+                    )}
+                    onChange={e =>
+                      setSettings(prev => ({
+                        ...prev,
+                        translatedSubtitleColor: e.target.value.toUpperCase(),
+                      }))
+                    }
+                    className="h-9 w-12 cursor-pointer rounded border bg-transparent p-0.5"
+                    title="选择译文字幕颜色"
+                  />
+                  <input
+                    type="text"
+                    value={settings.translatedSubtitleColor}
+                    onChange={e => {
+                      const value = e.target.value
+                      setSettings(prev => ({
+                        ...prev,
+                        translatedSubtitleColor: value.startsWith('#')
+                          ? value
+                          : `#${value}`,
+                      }))
+                    }}
+                    onBlur={() =>
+                      setSettings(prev =>
+                        normalizeAppSettings({
+                          ...prev,
+                          translatedSubtitleColor: prev.translatedSubtitleColor,
+                        })
+                      )
+                    }
+                    className="h-9 flex-1 rounded-md border bg-background px-2 font-mono text-sm"
+                    spellCheck={false}
+                    maxLength={7}
+                    aria-label="译文颜色十六进制"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border bg-black px-4 py-3 text-center text-sm leading-relaxed">
+              <div
+                style={{
+                  color: normalizeHexColor(
+                    settings.originalSubtitleColor,
+                    DEFAULT_APP_SETTINGS.originalSubtitleColor
+                  ),
+                }}
+              >
+                Original subtitle preview
+              </div>
+              <div
+                style={{
+                  color: normalizeHexColor(
+                    settings.translatedSubtitleColor,
+                    DEFAULT_APP_SETTINGS.translatedSubtitleColor
+                  ),
+                }}
+              >
+                译文字幕预览
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

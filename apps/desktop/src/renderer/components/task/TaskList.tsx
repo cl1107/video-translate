@@ -22,7 +22,11 @@ import {
   CardTitle,
 } from 'renderer/components/ui/card'
 import { Progress } from 'renderer/components/ui/progress'
-import type { SubtitleBurnMode } from 'shared/settings'
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+  type SubtitleBurnMode,
+} from 'shared/settings'
 import { TaskStatus, type TranslationTask } from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
 
@@ -116,7 +120,23 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
       setOpenBurnMenuTaskId(undefined)
       setBurningTaskIds(prev => new Set(prev).add(taskId))
       try {
-        const result = await App.burnTaskSubtitles(taskId, mode)
+        // 补烧时使用当前设置中的字幕颜色
+        let colors:
+          | { originalColor?: string; translatedColor?: string }
+          | undefined
+        try {
+          const raw = localStorage.getItem('video-translate-settings')
+          const settings = normalizeAppSettings(
+            raw ? JSON.parse(raw) : DEFAULT_APP_SETTINGS
+          )
+          colors = {
+            originalColor: settings.originalSubtitleColor,
+            translatedColor: settings.translatedSubtitleColor,
+          }
+        } catch {
+          // 使用服务端默认色
+        }
+        const result = await App.burnTaskSubtitles(taskId, mode, colors)
         if (!result.success) {
           throw new Error(result.error || '烧录失败')
         }

@@ -61,6 +61,8 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
           burnSubtitles: settings.burnSubtitles,
           burnSubtitleMode: settings.burnSubtitleMode,
           polishTranscript: settings.polishTranscript,
+          originalSubtitleColor: settings.originalSubtitleColor,
+          translatedSubtitleColor: settings.translatedSubtitleColor,
         })
         if (result.success) {
           console.log('文件上传成功，任务ID:', result.taskIds)

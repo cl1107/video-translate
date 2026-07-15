@@ -21,6 +21,8 @@ declare global {
           burnSubtitles?: boolean
           burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
           polishTranscript?: boolean
+          originalSubtitleColor?: string
+          translatedSubtitleColor?: string
         }
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
 
@@ -33,7 +35,11 @@ declare global {
       retryTask: (taskId: string) => Promise<{ success: boolean }>
       burnTaskSubtitles: (
         taskId: string,
-        mode: 'bilingual' | 'translated' | 'original'
+        mode: 'bilingual' | 'translated' | 'original',
+        colors?: {
+          originalColor?: string
+          translatedColor?: string
+        }
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<any[]>
 
@@ -143,6 +149,10 @@ const api = {
       ollamaModel?: string
       asrEngine?: 'sensevoice' | 'funasr-nano'
       burnSubtitles?: boolean
+      burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
+      polishTranscript?: boolean
+      originalSubtitleColor?: string
+      translatedSubtitleColor?: string
     }
   ) => ipcRenderer.invoke('upload-files', filePaths, settings),
 
@@ -155,8 +165,12 @@ const api = {
   retryTask: (taskId: string) => ipcRenderer.invoke('retry-task', taskId),
   burnTaskSubtitles: (
     taskId: string,
-    mode: 'bilingual' | 'translated' | 'original'
-  ) => ipcRenderer.invoke('burn-task-subtitles', taskId, mode),
+    mode: 'bilingual' | 'translated' | 'original',
+    colors?: {
+      originalColor?: string
+      translatedColor?: string
+    }
+  ) => ipcRenderer.invoke('burn-task-subtitles', taskId, mode, colors),
   getTaskLogs: (taskId: string) => ipcRenderer.invoke('get-task-logs', taskId),
 
   // Ollama 服务

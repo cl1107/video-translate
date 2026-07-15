@@ -9,6 +9,9 @@ import {
   DEFAULT_OLLAMA_MODEL,
 } from '../../shared/constants'
 import {
+  DEFAULT_ORIGINAL_SUBTITLE_COLOR,
+  DEFAULT_TRANSLATED_SUBTITLE_COLOR,
+  normalizeHexColor,
   normalizeOllamaModel,
   type SubtitleBurnMode,
 } from '../../shared/settings'
@@ -26,6 +29,7 @@ import {
 } from '../utils/display-segment-builder'
 import {
   selectBurnSubtitleContent,
+  type SubtitleColors,
   validateSubtitleArtifacts,
   writeSubtitleArtifacts,
 } from '../utils/subtitle-artifacts'
@@ -49,6 +53,8 @@ export interface CreateTaskOptions {
   burnSubtitles?: boolean
   burnSubtitleMode?: SubtitleBurnMode
   polishTranscript?: boolean
+  originalSubtitleColor?: string
+  translatedSubtitleColor?: string
 }
 
 interface ProcessTaskOptions {
@@ -57,6 +63,8 @@ interface ProcessTaskOptions {
   burnSubtitles?: boolean
   burnSubtitleMode?: SubtitleBurnMode
   polishTranscript?: boolean
+  originalSubtitleColor?: string
+  translatedSubtitleColor?: string
 }
 
 interface TaskProcessingContext {
@@ -216,6 +224,14 @@ export class TaskManager {
         burnSubtitles: options.burnSubtitles,
         burnSubtitleMode: options.burnSubtitleMode ?? 'bilingual',
         polishTranscript: options.polishTranscript ?? true,
+        originalSubtitleColor: normalizeHexColor(
+          options.originalSubtitleColor,
+          DEFAULT_ORIGINAL_SUBTITLE_COLOR
+        ),
+        translatedSubtitleColor: normalizeHexColor(
+          options.translatedSubtitleColor,
+          DEFAULT_TRANSLATED_SUBTITLE_COLOR
+        ),
       })
 
       const cachedLogs = this.tempLogs.get(taskId)
@@ -374,7 +390,8 @@ export class TaskManager {
           context.translatedSegments,
           burnMode,
           context.videoSize,
-          context.workDir
+          context.workDir,
+          this.resolveSubtitleColors(runtime)
         )
         context.outputPaths.burnedVideo = await this.burnHardSubtitles(
           taskId,
@@ -627,6 +644,7 @@ export class TaskManager {
     const timestamp = dayjs().format('YYYYMMDD_HHmmss')
     const artifactBase = `${baseName}_${timestamp}`
 
+    const runtime = this.runtimeOptions.get(taskId)
     const paths = await writeSubtitleArtifacts({
       segments,
       outputDir,
@@ -634,6 +652,7 @@ export class TaskManager {
       sourceSuffix: this.getLanguageSuffix(task.sourceLanguage),
       targetSuffix: this.getLanguageSuffix(task.targetLanguage),
       videoSize,
+      colors: this.resolveSubtitleColors(runtime),
     })
 
     const validation = await validateSubtitleArtifacts(paths, segments)
@@ -672,15 +691,36 @@ export class TaskManager {
     }
   }
 
+  private resolveSubtitleColors(
+    options?: ProcessTaskOptions | null
+  ): SubtitleColors {
+    return {
+      originalColor: normalizeHexColor(
+        options?.originalSubtitleColor,
+        DEFAULT_ORIGINAL_SUBTITLE_COLOR
+      ),
+      translatedColor: normalizeHexColor(
+        options?.translatedSubtitleColor,
+        DEFAULT_TRANSLATED_SUBTITLE_COLOR
+      ),
+    }
+  }
+
   private async prepareBurnSubtitleFile(
     taskId: string,
     segments: Array<DisplaySegment | TranscriptionSegment>,
     mode: SubtitleBurnMode,
     videoSize: { width: number; height: number } | undefined,
-    workDir?: string
+    workDir?: string,
+    colors?: SubtitleColors | null
   ): Promise<string> {
     const dir = workDir || (await tempWorkspace.ensureTaskDir(taskId))
-    const selected = selectBurnSubtitleContent(mode, segments, videoSize)
+    const selected = selectBurnSubtitleContent(
+      mode,
+      segments,
+      videoSize,
+      colors
+    )
     const burnPath = path.join(dir, `burn_${mode}.${selected.extension}`)
     await fs.writeFile(burnPath, selected.content, 'utf-8')
     this.addTaskLog(
@@ -748,7 +788,8 @@ export class TaskManager {
    */
   async burnSubtitlesForTask(
     taskId: string,
-    mode: SubtitleBurnMode
+    mode: SubtitleBurnMode,
+    colors?: SubtitleColors | null
   ): Promise<{ success: boolean; burnedVideo?: string; error?: string }> {
     const existing = this.activeTasks.get(taskId)
     if (existing?.status === TaskStatus.BURNING_SUBTITLES) {
@@ -809,7 +850,8 @@ export class TaskManager {
         task.segments,
         mode,
         videoSize,
-        workDir
+        workDir,
+        colors ?? this.resolveSubtitleColors(this.runtimeOptions.get(taskId))
       )
 
       await this.updateTaskStatus(taskId, TaskStatus.BURNING_SUBTITLES, 15)

@@ -30,6 +30,8 @@ function setupIpcHandlers() {
         burnSubtitles?: boolean
         burnSubtitleMode?: 'bilingual' | 'translated' | 'original'
         polishTranscript?: boolean
+        originalSubtitleColor?: string
+        translatedSubtitleColor?: string
       }
     ) => {
       try {
@@ -45,6 +47,8 @@ function setupIpcHandlers() {
             burnSubtitles: settings.burnSubtitles,
             burnSubtitleMode: settings.burnSubtitleMode,
             polishTranscript: settings.polishTranscript,
+            originalSubtitleColor: settings.originalSubtitleColor,
+            translatedSubtitleColor: settings.translatedSubtitleColor,
           })
           taskIds.push(taskId)
         }
@@ -241,10 +245,14 @@ function setupIpcHandlers() {
     async (
       _event,
       taskId: string,
-      mode: 'bilingual' | 'translated' | 'original'
+      mode: 'bilingual' | 'translated' | 'original',
+      colors?: {
+        originalColor?: string
+        translatedColor?: string
+      }
     ) => {
       try {
-        return await taskManager.burnSubtitlesForTask(taskId, mode)
+        return await taskManager.burnSubtitlesForTask(taskId, mode, colors)
       } catch (error) {
         console.error('补烧硬字幕失败:', error)
         const errorMessage =

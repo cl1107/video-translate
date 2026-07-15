@@ -15,6 +15,10 @@ const LEGACY_OLLAMA_MODELS = new Set([
 
 export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 
+/** 硬字幕 / ASS 默认色：原文白、译文黄（与历史 ASS 硬编码一致） */
+export const DEFAULT_ORIGINAL_SUBTITLE_COLOR = '#FFFFFF'
+export const DEFAULT_TRANSLATED_SUBTITLE_COLOR = '#FFFF00'
+
 export interface AppSettings {
   asrEngine: AsrEngineId
   ollamaModel: string
@@ -26,6 +30,10 @@ export interface AppSettings {
   burnSubtitleMode: SubtitleBurnMode
   /** 识别结果先经大模型润色再翻译 */
   polishTranscript: boolean
+  /** 原文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
+  originalSubtitleColor: string
+  /** 译文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
+  translatedSubtitleColor: string
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -37,6 +45,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   burnSubtitles: false,
   burnSubtitleMode: 'bilingual',
   polishTranscript: true,
+  originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
+  translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
 }
 
 function normalizeBurnSubtitleMode(value?: string | null): SubtitleBurnMode {
@@ -44,6 +54,47 @@ function normalizeBurnSubtitleMode(value?: string | null): SubtitleBurnMode {
     return value
   }
   return DEFAULT_APP_SETTINGS.burnSubtitleMode
+}
+
+/**
+ * 规范化为 #RRGGBB（大写）。支持 #RGB / #RRGGBB；非法值回退默认。
+ */
+export function normalizeHexColor(
+  value?: string | null,
+  fallback = DEFAULT_ORIGINAL_SUBTITLE_COLOR
+): string {
+  if (!value || typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  const short = /^#([0-9a-fA-F]{3})$/.exec(trimmed)
+  if (short) {
+    const [r, g, b] = short[1].split('')
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase()
+  }
+  const full = /^#([0-9a-fA-F]{6})$/.exec(trimmed)
+  if (full) return `#${full[1]}`.toUpperCase()
+  return fallback
+}
+
+/**
+ * #RRGGBB → ASS 内联色 `&HBBGGRR&`（用于 \1c 等 override）。
+ */
+export function hexToAssBgr(hex: string): string {
+  const normalized = normalizeHexColor(hex)
+  const rr = normalized.slice(1, 3)
+  const gg = normalized.slice(3, 5)
+  const bb = normalized.slice(5, 7)
+  return `&H${bb}${gg}${rr}&`
+}
+
+/**
+ * #RRGGBB → ASS Style PrimaryColour `&HAABBGGRR`（AA=00 不透明）。
+ */
+export function hexToAssPrimaryColour(hex: string): string {
+  const normalized = normalizeHexColor(hex)
+  const rr = normalized.slice(1, 3)
+  const gg = normalized.slice(3, 5)
+  const bb = normalized.slice(5, 7)
+  return `&H00${bb}${gg}${rr}`
 }
 
 export function normalizeOllamaModel(name?: string | null): string {
@@ -83,6 +134,14 @@ export function normalizeAppSettings(
       raw.polishTranscript === undefined
         ? DEFAULT_APP_SETTINGS.polishTranscript
         : Boolean(raw.polishTranscript),
+    originalSubtitleColor: normalizeHexColor(
+      raw.originalSubtitleColor,
+      DEFAULT_ORIGINAL_SUBTITLE_COLOR
+    ),
+    translatedSubtitleColor: normalizeHexColor(
+      raw.translatedSubtitleColor,
+      DEFAULT_TRANSLATED_SUBTITLE_COLOR
+    ),
   }
 }
 

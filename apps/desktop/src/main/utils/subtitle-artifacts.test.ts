@@ -48,9 +48,24 @@ test('generateBilingualAss stacks source above translation with fixed anchor', (
   assert.match(ass, /PlayResY: 1080/)
   assert.match(ass, /Style: Bilingual,/)
   assert.match(ass, /\\an2\\pos\(960,1030\)\\fs42/)
-  assert.match(ass, /\\N\{\\fs46\\1c&H00FFFF&\}/)
+  // 默认原文白 &HFFFFFF&、译文黄 &H00FFFF&（ASS BGR）
+  assert.match(ass, /\{\\1c&HFFFFFF&\}Hello world/)
+  assert.match(ass, /\\N\{\\fs46\\1c&H00FFFF&\}你好世界/)
   assert.match(ass, /Hello world/)
   assert.match(ass, /你好世界/)
+})
+
+test('generateBilingualAss applies custom original and translated colors', () => {
+  const ass = generateBilingualAss(
+    sampleSegments,
+    { width: 1920, height: 1080 },
+    'Sans',
+    { originalColor: '#00FF00', translatedColor: '#FF0000' }
+  )
+  // #00FF00 → BGR &H00FF00&；#FF0000 → BGR &H0000FF&
+  assert.match(ass, /\{\\1c&H00FF00&\}Hello world/)
+  assert.match(ass, /\\1c&H0000FF&\}你好世界/)
+  assert.match(ass, /Style: Bilingual,Sans,46,&H0000FF00,/)
 })
 
 test('writeSubtitleArtifacts creates bilingual files and validation passes', async () => {
