@@ -20,4 +20,5 @@ test('发布工作流显式固定与根配置一致的 pnpm 版本', () => {
     /- name: Set up pnpm\n\s+run: npm install --global pnpm@11\.12\.0/
   )
   assert.doesNotMatch(releaseWorkflow, /pnpm\/action-setup/)
+  assert.match(releaseWorkflow, /^\s+package-manager-cache: false$/m)
 })
