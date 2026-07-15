@@ -32,6 +32,12 @@ description: Execute a complete release for the video-translate monorepo, includ
 
 4. 检查完整 diff，避免把密钥、`.env` 或明显不属于当前发版的文件提交。当前工作区已有的业务改动按用户的发版指令纳入提交；发现范围不明确时先停下说明。
 
+## GitHub Pages
+
+仓库的 Landing 页面由 `.github/workflows/pages.yml` 构建并部署到 GitHub Pages。首次启用时，在仓库 Settings → Pages 将 Source 设为 GitHub Actions；之后每次推送 `main` 会自动部署 `apps/landing`。
+
+发版后检查 Actions 中的 `Deploy Landing Page` workflow，并访问 `https://cl1107.github.io/video-translate/` 确认页面可打开。项目描述中的 Landing 链接使用该地址。
+
 ## 提交、tag 与推送
 
 使用中文 Conventional Commit：
