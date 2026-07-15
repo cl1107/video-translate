@@ -16,6 +16,8 @@ export const IpcChannels = {
   openFileDialog: 'open-file-dialog',
   openTaskArtifact: 'open-task-artifact',
   uploadFiles: 'upload-files',
+  /** 从在线视频链接创建任务（yt-dlp 下载后走同一翻译流水线） */
+  createTasksFromUrls: 'create-tasks-from-urls',
 
   // 任务
   getAllTasks: 'get-all-tasks',
@@ -84,6 +86,8 @@ export interface UploadFilesResult {
   taskIds?: string[]
   error?: string
 }
+
+export type CreateTasksFromUrlsResult = UploadFilesResult
 
 export interface BurnTaskSubtitlesResult {
   success: boolean

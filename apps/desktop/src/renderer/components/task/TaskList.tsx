@@ -50,6 +50,8 @@ const getStatusText = (status: TaskStatus) => {
   switch (status) {
     case TaskStatus.PENDING:
       return '等待中'
+    case TaskStatus.DOWNLOADING:
+      return '下载中'
     case TaskStatus.EXTRACTING_AUDIO:
       return '提取音频'
     case TaskStatus.TRANSCRIBING:
@@ -267,6 +269,14 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                     <CardTitle className="text-base">
                       {task.videoFile.name}
                     </CardTitle>
+                    {(task.sourceUrl || task.videoFile.sourceUrl) && (
+                      <p
+                        className="text-xs text-muted-foreground mt-0.5 max-w-md truncate"
+                        title={task.sourceUrl || task.videoFile.sourceUrl}
+                      >
+                        {task.sourceUrl || task.videoFile.sourceUrl}
+                      </p>
+                    )}
                     <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                       <span className="flex items-center">
                         <Clock className="h-4 w-4 mr-1" />
@@ -345,6 +355,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
               <div className="flex items-center justify-between pt-2">
                 <div className="flex space-x-2">
                   {task.status === TaskStatus.PENDING ||
+                  task.status === TaskStatus.DOWNLOADING ||
                   task.status === TaskStatus.EXTRACTING_AUDIO ||
                   task.status === TaskStatus.TRANSCRIBING ||
                   task.status === TaskStatus.POLISHING ||

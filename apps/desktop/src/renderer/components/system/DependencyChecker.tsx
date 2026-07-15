@@ -27,6 +27,8 @@ export interface SystemDependency {
   version?: string
   error?: string
   resolvedPath?: string
+  /** 可选依赖：缺失不阻断进入应用 */
+  optional?: boolean
 }
 
 interface DiagnosticPaths {
@@ -75,10 +77,12 @@ export function DependencyChecker({
           setDiagnosticPaths(result.diagnosticPaths)
         }
 
-        const allAvailable = result.results.every(dep => dep.available)
-        setAllReady(allAvailable)
+        const requiredReady = result.results.every(
+          dep => dep.available || dep.optional === true
+        )
+        setAllReady(requiredReady)
 
-        if (allAvailable && onAllDependenciesReady) {
+        if (requiredReady && onAllDependenciesReady) {
           onAllDependenciesReady()
         }
       } else if (result.diagnosticPaths) {
@@ -119,6 +123,13 @@ export function DependencyChecker({
         </Badge>
       )
     }
+    if (dep.optional) {
+      return (
+        <Badge variant="secondary" className="text-xs">
+          可选 · 未安装
+        </Badge>
+      )
+    }
     return (
       <Badge variant="destructive" className="text-xs">
         <AlertCircle className="h-3 w-3 mr-1" />
@@ -139,6 +150,8 @@ export function DependencyChecker({
         return 'Ollama'
       case 'sherpa-onnx-asr':
         return '语音识别 (SenseVoice)'
+      case 'yt-dlp':
+        return 'yt-dlp'
       default:
         return name
     }
@@ -156,6 +169,8 @@ export function DependencyChecker({
         return '本地大语言模型服务'
       case 'sherpa-onnx-asr':
         return 'sherpa-onnx 本地 ASR，缺失时自动下载 SenseVoice'
+      case 'yt-dlp':
+        return '在线视频下载（YouTube / B 站等，可选）'
       default:
         return ''
     }

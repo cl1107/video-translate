@@ -135,6 +135,31 @@ export class DatabaseManager {
         `ALTER TABLE translation_tasks ADD COLUMN artifacts_json TEXT NULL`
       )
     }
+    if (!names.has('source_url')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN source_url TEXT NULL`
+      )
+    }
+    if (!names.has('platform_subtitle_path')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN platform_subtitle_path TEXT NULL`
+      )
+    }
+    if (!names.has('platform_subtitle_language')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN platform_subtitle_language TEXT NULL`
+      )
+    }
+
+    const videoColumns = this.db
+      .prepare(`PRAGMA table_info(video_files)`)
+      .all() as Array<{ name: string }>
+    const videoNames = new Set(videoColumns.map(c => c.name))
+    if (!videoNames.has('source_url')) {
+      this.db.exec(
+        `ALTER TABLE video_files ADD COLUMN source_url TEXT NULL`
+      )
+    }
   }
 
   private parseArtifactsJson(
@@ -154,6 +179,10 @@ export class DatabaseManager {
   private mapTaskRow(row: Record<string, unknown>): TranslationTask {
     const taskId = String(row.id)
     const segments = this.getTranscriptionSegments(taskId)
+    const sourceUrl =
+      (row.source_url as string | null | undefined) ||
+      (row.video_source_url as string | null | undefined) ||
+      undefined
     return {
       id: taskId,
       videoFile: {
@@ -164,6 +193,8 @@ export class DatabaseManager {
         duration: Number(row.video_duration),
         format: String(row.video_format),
         createdAt: String(row.video_created_at),
+        sourceUrl:
+          (row.video_source_url as string | null | undefined) || sourceUrl,
       },
       status: row.status as TaskStatus,
       progress: Number(row.progress ?? 0),
@@ -175,6 +206,12 @@ export class DatabaseManager {
       outputArtifacts: this.parseArtifactsJson(
         row.artifacts_json as string | null | undefined
       ),
+      sourceUrl,
+      platformSubtitlePath:
+        (row.platform_subtitle_path as string | null | undefined) || undefined,
+      platformSubtitleLanguage:
+        (row.platform_subtitle_language as string | null | undefined) ||
+        undefined,
       segments,
       subtitles: [],
       logs: [],
@@ -195,8 +232,8 @@ export class DatabaseManager {
   saveVideoFile(videoFile: VideoFile): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO video_files
-      (id, name, path, size, duration, format, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (id, name, path, size, duration, format, created_at, source_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -206,8 +243,14 @@ export class DatabaseManager {
       videoFile.size,
       videoFile.duration,
       videoFile.format,
-      videoFile.createdAt
+      videoFile.createdAt,
+      videoFile.sourceUrl || null
     )
+  }
+
+  /** 更新已下载视频的元数据（路径/时长等） */
+  updateVideoFile(videoFile: VideoFile): void {
+    this.saveVideoFile(videoFile)
   }
 
   /**
@@ -234,6 +277,7 @@ export class DatabaseManager {
       duration: row.duration,
       format: row.format,
       createdAt: row.created_at,
+      sourceUrl: row.source_url || undefined,
     }
   }
 
@@ -250,8 +294,9 @@ export class DatabaseManager {
     const stmt = this.db.prepare(`
       INSERT INTO translation_tasks
       (id, video_file_id, status, progress, source_language, target_language,
-       created_at, updated_at, completed_at, error_message, options_json, artifacts_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       created_at, updated_at, completed_at, error_message, options_json, artifacts_json,
+       source_url, platform_subtitle_path, platform_subtitle_language)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -266,7 +311,29 @@ export class DatabaseManager {
       task.completedAt || null,
       task.errorMessage || null,
       task.options ? serializeTaskRuntimeOptions(task.options) : null,
-      task.outputArtifacts ? JSON.stringify(task.outputArtifacts) : null
+      task.outputArtifacts ? JSON.stringify(task.outputArtifacts) : null,
+      task.sourceUrl || task.videoFile.sourceUrl || null,
+      task.platformSubtitlePath || null,
+      task.platformSubtitleLanguage || null
+    )
+  }
+
+  /** 更新平台字幕路径（下载后写入；可清空） */
+  savePlatformSubtitle(
+    taskId: string,
+    pathValue: string | null | undefined,
+    language?: string | null
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE translation_tasks
+      SET platform_subtitle_path = ?, platform_subtitle_language = ?, updated_at = ?
+      WHERE id = ?
+    `)
+    stmt.run(
+      pathValue || null,
+      language || null,
+      dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      taskId
     )
   }
 
@@ -377,7 +444,8 @@ export class DatabaseManager {
   getTranslationTask(taskId: string): TranslationTask | null {
     const stmt = this.db.prepare(`
       SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
-             v.duration as video_duration, v.format as video_format, v.created_at as video_created_at
+             v.duration as video_duration, v.format as video_format, v.created_at as video_created_at,
+             v.source_url as video_source_url
       FROM translation_tasks t
       JOIN video_files v ON t.video_file_id = v.id
       WHERE t.id = ?
@@ -394,7 +462,8 @@ export class DatabaseManager {
   getAllTranslationTasks(): TranslationTask[] {
     const stmt = this.db.prepare(`
       SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
-             v.duration as video_duration, v.format as video_format, v.created_at as video_created_at
+             v.duration as video_duration, v.format as video_format, v.created_at as video_created_at,
+             v.source_url as video_source_url
       FROM translation_tasks t
       JOIN video_files v ON t.video_file_id = v.id
       ORDER BY t.created_at DESC

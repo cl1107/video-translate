@@ -5,7 +5,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import type { BrowserWindow } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { IpcChannels } from '../../shared/ipc'
 import type { AppSettings, SubtitleBurnMode } from '../../shared/settings'
@@ -25,6 +25,13 @@ import {
 import type { SubtitleColors } from '../utils/subtitle-artifacts'
 import { ensureSenseVoiceModel } from './asr/model-downloader'
 import { databaseManager } from './database/manager'
+import { findBestPlatformSubtitle } from './download/platform-subtitles'
+import {
+  derivePlaceholderName,
+  displayUrl,
+  downloadVideo,
+  validateVideoUrl,
+} from './download/yt-dlp-downloader'
 import { ffmpegProcessor } from './ffmpeg/processor'
 import { ollamaClient } from './ollama/client'
 import { getByokApiKey } from './secure-store'
@@ -42,6 +49,25 @@ export interface CreateTaskOptions extends Partial<AppSettings> {
   filePath: string
   sourceLanguage: string
   targetLanguage: string
+}
+
+export interface CreateUrlTaskOptions extends Partial<AppSettings> {
+  url: string
+  sourceLanguage: string
+  targetLanguage: string
+}
+
+function getDownloadsRoot(): string {
+  return path.join(app.getPath('userData'), 'downloads')
+}
+
+async function fileLooksReady(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.isFile() && stat.size > 0
+  } catch {
+    return false
+  }
 }
 
 export class TaskManager {
@@ -191,19 +217,7 @@ export class TaskManager {
       databaseManager.createTranslationTask(task)
       this.activeTasks.set(taskId, task)
 
-      const cachedLogs = this.tempLogs.get(taskId)
-      if (cachedLogs) {
-        for (const log of cachedLogs) {
-          databaseManager.addTaskLog(taskId, {
-            timestamp: log.timestamp,
-            level: log.level,
-            message: log.message,
-            details: log.details,
-          })
-        }
-        task.logs = cachedLogs
-        this.tempLogs.delete(taskId)
-      }
+      this.flushTempLogs(taskId, task)
 
       this.addTaskLog(
         taskId,
@@ -223,6 +237,95 @@ export class TaskManager {
       databaseManager.deleteTranslationTask(taskId)
       throw error
     }
+  }
+
+  /**
+   * 从在线视频链接创建任务：先 yt-dlp 下载，再走同一套 ASR → 翻译 → 字幕流水线。
+   */
+  async createTaskFromUrl(options: CreateUrlTaskOptions): Promise<string> {
+    const taskId = uuidv4()
+    const runtime = taskOptionsFromAppSettings(options)
+    const url = validateVideoUrl(options.url)
+
+    try {
+      this.addTaskLog(
+        taskId,
+        'info',
+        '开始创建在线下载翻译任务',
+        displayUrl(url)
+      )
+
+      const downloadDir = path.join(getDownloadsRoot(), taskId)
+      await fs.mkdir(downloadDir, { recursive: true })
+
+      // 占位路径：下载完成后会更新为真实文件
+      const placeholderPath = path.join(downloadDir, '.pending')
+      const videoFile: VideoFile = {
+        id: uuidv4(),
+        name: derivePlaceholderName(url),
+        path: placeholderPath,
+        size: 0,
+        duration: 0,
+        format: 'pending',
+        createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        sourceUrl: url,
+      }
+
+      databaseManager.saveVideoFile(videoFile)
+
+      const task: TranslationTask = {
+        id: taskId,
+        videoFile,
+        status: TaskStatus.PENDING,
+        progress: 0,
+        sourceLanguage: options.sourceLanguage,
+        targetLanguage: options.targetLanguage,
+        options: runtime,
+        sourceUrl: url,
+        segments: [],
+        subtitles: [],
+        logs: [],
+        createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        updatedAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      }
+
+      databaseManager.createTranslationTask(task)
+      this.activeTasks.set(taskId, task)
+      this.flushTempLogs(taskId, task)
+
+      this.addTaskLog(
+        taskId,
+        'success',
+        '在线任务创建成功，等待下载',
+        `源语言: ${options.sourceLanguage}, 目标语言: ${options.targetLanguage}`
+      )
+
+      this.notifyTaskUpdate(task)
+      this.enqueueRun(taskId)
+
+      return taskId
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.addTaskLog(taskId, 'error', '创建在线任务失败', message)
+      this.activeTasks.delete(taskId)
+      databaseManager.deleteTranslationTask(taskId)
+      throw error
+    }
+  }
+
+  private flushTempLogs(taskId: string, task: TranslationTask): void {
+    const cachedLogs = this.tempLogs.get(taskId)
+    if (!cachedLogs) return
+    for (const log of cachedLogs) {
+      databaseManager.addTaskLog(taskId, {
+        timestamp: log.timestamp,
+        level: log.level,
+        message: log.message,
+        details: log.details,
+      })
+    }
+    task.logs = cachedLogs
+    this.tempLogs.delete(taskId)
   }
 
   private enqueueRun(taskId: string): void {
@@ -269,6 +372,9 @@ export class TaskManager {
     this.abortControllers.set(taskId, controller)
 
     try {
+      // 在线任务：先下载到本地，再进入翻译流水线
+      await this.ensureLocalVideoReady(task, controller.signal)
+
       const context = await runTranslationPipeline(
         task,
         options,
@@ -310,6 +416,188 @@ export class TaskManager {
     } finally {
       this.abortControllers.delete(taskId)
     }
+  }
+
+  /**
+   * 若任务带 sourceUrl 且本地文件未就绪，则用 yt-dlp 下载。
+   * 重试时若文件仍在则跳过下载。
+   */
+  private async ensureLocalVideoReady(
+    task: TranslationTask,
+    signal: AbortSignal
+  ): Promise<void> {
+    const sourceUrl = task.sourceUrl || task.videoFile.sourceUrl
+    if (!sourceUrl) return
+
+    const downloadDir = path.join(getDownloadsRoot(), task.id)
+
+    if (
+      task.videoFile.format !== 'pending' &&
+      (await fileLooksReady(task.videoFile.path))
+    ) {
+      this.addTaskLog(
+        task.id,
+        'info',
+        '已存在本地下载文件，跳过重新下载',
+        path.basename(task.videoFile.path)
+      )
+      // 仍尝试恢复/发现平台字幕（可能上次未写入 path 字段）
+      await this.attachPlatformSubtitleIfPresent(task, downloadDir)
+      return
+    }
+
+    await this.updateTaskStatus(task.id, TaskStatus.DOWNLOADING, 0)
+    this.addTaskLog(
+      task.id,
+      'info',
+      '开始下载在线视频（优先抓取平台字幕）',
+      displayUrl(sourceUrl)
+    )
+
+    await fs.mkdir(downloadDir, { recursive: true })
+
+    let lastLoggedPercent = -10
+    const result = await downloadVideo({
+      url: sourceUrl,
+      outputDir: downloadDir,
+      signal,
+      sourceLanguage: task.sourceLanguage,
+      targetLanguage: task.targetLanguage,
+      writeSubtitles: true,
+      onProgress: progress => {
+        const percent =
+          progress.percent !== undefined
+            ? Math.min(95, Math.max(0, progress.percent))
+            : undefined
+        if (percent !== undefined) {
+          void this.updateTaskStatus(
+            task.id,
+            TaskStatus.DOWNLOADING,
+            Math.round(percent * 0.15) // 下载占整体约 0–15%
+          )
+          // 每跨约 10% 记一条日志，避免刷屏
+          if (percent - lastLoggedPercent >= 10) {
+            lastLoggedPercent = percent
+            this.addTaskLog(
+              task.id,
+              'info',
+              `下载进度 ${percent.toFixed(0)}%`,
+              progress.message
+            )
+          }
+        }
+      },
+    })
+
+    let duration = 0
+    let format = result.format
+    try {
+      const info = await ffmpegProcessor.getVideoInfo(result.videoPath)
+      duration = info.duration
+      format = info.format || result.format
+    } catch (error) {
+      this.addTaskLog(
+        task.id,
+        'warn',
+        '下载完成但读取视频信息失败，将使用默认元数据',
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+
+    const safeName = sanitizeDownloadedName(result.title, result.format)
+    const videoFile: VideoFile = {
+      ...task.videoFile,
+      name: safeName,
+      path: result.videoPath,
+      size: result.size,
+      duration,
+      format,
+      sourceUrl,
+    }
+
+    databaseManager.updateVideoFile(videoFile)
+    task.videoFile = videoFile
+    task.sourceUrl = sourceUrl
+
+    if (result.platformSubtitle) {
+      task.platformSubtitlePath = result.platformSubtitle.path
+      task.platformSubtitleLanguage = result.platformSubtitle.language
+      databaseManager.savePlatformSubtitle(
+        task.id,
+        result.platformSubtitle.path,
+        result.platformSubtitle.language
+      )
+      this.addTaskLog(
+        task.id,
+        'success',
+        '已获取平台字幕，将跳过语音识别',
+        `${result.platformSubtitle.language}` +
+          (result.platformSubtitle.likelyAuto ? '（自动字幕）' : '（人工字幕）') +
+          ` · ${path.basename(result.platformSubtitle.path)}`
+      )
+    } else {
+      task.platformSubtitlePath = undefined
+      task.platformSubtitleLanguage = undefined
+      databaseManager.savePlatformSubtitle(task.id, null, null)
+      this.addTaskLog(
+        task.id,
+        'info',
+        '未找到可用平台字幕，将使用本地 ASR 识别'
+      )
+    }
+
+    this.activeTasks.set(task.id, task)
+    this.notifyTaskUpdate(task)
+
+    this.addTaskLog(
+      task.id,
+      'success',
+      '视频下载完成',
+      `${safeName}（${formatFileSize(result.size)}）`
+    )
+    await this.updateTaskStatus(task.id, TaskStatus.DOWNLOADING, 15)
+  }
+
+  /** 从下载目录恢复平台字幕路径（跳过重下时） */
+  private async attachPlatformSubtitleIfPresent(
+    task: TranslationTask,
+    downloadDir: string
+  ): Promise<void> {
+    if (
+      task.platformSubtitlePath &&
+      (await fileLooksReady(task.platformSubtitlePath))
+    ) {
+      this.addTaskLog(
+        task.id,
+        'info',
+        '使用已缓存的平台字幕',
+        path.basename(task.platformSubtitlePath)
+      )
+      return
+    }
+
+    const selected = await findBestPlatformSubtitle(downloadDir, {
+      sourceLanguage: task.sourceLanguage,
+      targetLanguage: task.targetLanguage,
+    })
+    if (!selected) {
+      task.platformSubtitlePath = undefined
+      task.platformSubtitleLanguage = undefined
+      databaseManager.savePlatformSubtitle(task.id, null, null)
+      return
+    }
+
+    task.platformSubtitlePath = selected.path
+    task.platformSubtitleLanguage = selected.language
+    databaseManager.savePlatformSubtitle(task.id, selected.path, selected.language)
+    this.activeTasks.set(task.id, task)
+    this.notifyTaskUpdate(task)
+    this.addTaskLog(
+      task.id,
+      'success',
+      '发现平台字幕，将跳过语音识别',
+      `${selected.language} · ${path.basename(selected.path)}`
+    )
   }
 
   private async finalizeTask(
@@ -456,6 +744,13 @@ export class TaskManager {
     this.tempLogs.delete(taskId)
     databaseManager.deleteTranslationTask(taskId)
     void tempWorkspace.removeTaskDir(taskId)
+    // 清理在线任务下载缓存（本地上传源文件不删）
+    void fs
+      .rm(path.join(getDownloadsRoot(), taskId), {
+        recursive: true,
+        force: true,
+      })
+      .catch(() => {})
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(IpcChannels.taskDeleted, taskId)
@@ -652,3 +947,28 @@ export class TaskManager {
 }
 
 export const taskManager = new TaskManager()
+
+function sanitizeDownloadedName(title: string, format: string): string {
+  const cleaned = title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160)
+  const base = cleaned || 'downloaded-video'
+  const ext = format ? `.${format.replace(/^\./, '')}` : ''
+  // 若标题已含扩展名则不再追加
+  if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) {
+    return base
+  }
+  return `${base}${ext}`
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(1024))
+  )
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}

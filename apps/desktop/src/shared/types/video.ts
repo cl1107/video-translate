@@ -11,6 +11,8 @@ export interface VideoFile {
   duration: number
   format: string
   createdAt: string
+  /** 在线下载来源 URL（本地上传任务无此字段） */
+  sourceUrl?: string
 }
 
 export interface TaskLog {
@@ -58,6 +60,18 @@ export interface TranslationTask {
   targetLanguage: string
   /** 创建/重试时的运行配置；旧任务可能缺失 */
   options?: TaskRuntimeOptions
+  /**
+   * 在线任务的来源链接（与 videoFile.sourceUrl 同步）。
+   * 重试时若本地文件缺失，可据此重新下载。
+   */
+  sourceUrl?: string
+  /**
+   * 平台原生/自动字幕文件路径（yt-dlp 下载）。
+   * 有值且可读时流水线跳过 ASR，以该字幕为原文源。
+   */
+  platformSubtitlePath?: string
+  /** 平台字幕语言码（如 en、zh-Hans），仅诊断用 */
+  platformSubtitleLanguage?: string
   segments: TranscriptionSegment[]
   subtitles: SubtitleEntry[]
   logs: TaskLog[]
@@ -70,6 +84,8 @@ export interface TranslationTask {
 
 export enum TaskStatus {
   PENDING = 'pending',
+  /** 从在线链接下载视频（yt-dlp） */
+  DOWNLOADING = 'downloading',
   EXTRACTING_AUDIO = 'extracting_audio',
   TRANSCRIBING = 'transcribing',
   /** 识别文本润色（与翻译阶段分离） */

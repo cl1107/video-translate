@@ -33,11 +33,16 @@ export function App() {
     try {
       const result = await ElectronApp.checkSystemDependencies()
       if (result.success) {
-        const allAvailable = result.results.every(dep => dep.available)
-        if (allAvailable) {
+        // optional 依赖（如 yt-dlp）缺失不阻断进入主界面
+        const requiredReady = result.results.every(
+          dep =>
+            dep.available ||
+            (dep as { optional?: boolean }).optional === true
+        )
+        if (requiredReady) {
           setIsSetupComplete(true)
         } else {
-          // 有依赖缺失，需要重新设置
+          // 有必需依赖缺失，需要重新设置
           setIsSetupComplete(false)
         }
       } else {

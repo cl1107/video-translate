@@ -36,7 +36,24 @@ sudo apt install ffmpeg
 
 可选的 Fun-ASR-Nano 模型需手动准备，详见 [`../apps/desktop/models/asr/README.md`](../apps/desktop/models/asr/README.md)。
 
-### 3. 安装 Ollama
+### 3. 安装 yt-dlp（在线视频下载，可选）
+
+仅在使用「在线视频链接」功能时需要。本地文件翻译可不安装。
+
+#### macOS
+
+```bash
+brew install yt-dlp
+```
+
+#### 其他平台
+
+```bash
+pip install -U yt-dlp
+# 或从 https://github.com/yt-dlp/yt-dlp/releases 下载二进制并加入 PATH
+```
+
+### 4. 安装 Ollama
 
 #### macOS
 

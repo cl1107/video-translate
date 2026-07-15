@@ -50,6 +50,39 @@ function setupIpcHandlers() {
     }
   )
 
+  ipcMain.handle(
+    IpcChannels.createTasksFromUrls,
+    async (_event, urlsRaw: unknown, settingsRaw: unknown) => {
+      try {
+        const settings = normalizeAppSettings(
+          settingsRaw as Parameters<typeof normalizeAppSettings>[0]
+        )
+        const urls = Array.isArray(urlsRaw)
+          ? urlsRaw.filter((u): u is string => typeof u === 'string')
+          : []
+        if (urls.length === 0) {
+          return { success: false, error: '请提供至少一个视频链接' }
+        }
+
+        const taskIds: string[] = []
+        for (const url of urls) {
+          const taskId = await taskManager.createTaskFromUrl({
+            url,
+            ...settings,
+          })
+          taskIds.push(taskId)
+        }
+
+        return { success: true, taskIds }
+      } catch (error) {
+        console.error('创建在线任务失败:', error)
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
+      }
+    }
+  )
+
   ipcMain.handle(IpcChannels.byokApiKeyStatus, () => {
     return { success: true, configured: hasByokApiKey() }
   })

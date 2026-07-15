@@ -115,11 +115,96 @@ async function saveSubtitle(
  */
 function parseTime(timeStr: string): number {
   const parts = timeStr.replace(',', '.').split(':')
-  const hours = Number.parseInt(parts[0])
-  const minutes = Number.parseInt(parts[1])
+  const hours = Number.parseInt(parts[0], 10)
+  const minutes = Number.parseInt(parts[1], 10)
   const seconds = Number.parseFloat(parts[2])
 
   return hours * 3600 + minutes * 60 + seconds
+}
+
+/**
+ * 解析 SRT 文本为字幕条目。
+ * 兼容常见变体：空行、多行文本、BOM、可选序号。
+ */
+function parseSRT(content: string): SubtitleEntry[] {
+  const text = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').trim()
+  if (!text) return []
+
+  const blocks = text.split(/\n\s*\n/)
+  const entries: SubtitleEntry[] = []
+
+  for (const block of blocks) {
+    const lines = block.split('\n').map(l => l.trimEnd()).filter(l => l.length > 0)
+    if (lines.length < 2) continue
+
+    let timeLineIdx = 0
+    // 可选序号行
+    if (/^\d+$/.test(lines[0].trim()) && lines.length >= 3) {
+      timeLineIdx = 1
+    }
+
+    const timeLine = lines[timeLineIdx]
+    const timeMatch = timeLine.match(
+      /(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})/
+    )
+    if (!timeMatch) continue
+
+    const start = normalizeSrtTimestamp(timeMatch[1])
+    const end = normalizeSrtTimestamp(timeMatch[2])
+    const body = lines
+      .slice(timeLineIdx + 1)
+      .join('\n')
+      // 去掉简单 HTML / ASS 标签
+      .replace(/<[^>]+>/g, '')
+      .replace(/\{[^}]*\}/g, '')
+      .trim()
+
+    if (!body) continue
+    if (!(parseTime(start) < parseTime(end))) continue
+
+    entries.push({
+      index: entries.length + 1,
+      start,
+      end,
+      text: body,
+    })
+  }
+
+  return entries
+}
+
+/** 解析 VTT（忽略 STYLE/NOTE/头信息） */
+function parseVTT(content: string): SubtitleEntry[] {
+  const text = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  // 去掉 WEBVTT 头
+  const body = text.replace(/^WEBVTT[^\n]*\n+/i, '')
+  // 复用 SRT 块逻辑，时间戳用点或逗号
+  return parseSRT(body)
+}
+
+/**
+ * 按扩展名解析字幕文件内容为条目。
+ */
+function parseSubtitleContent(
+  content: string,
+  formatHint?: 'srt' | 'vtt' | string
+): SubtitleEntry[] {
+  const hint = (formatHint || '').toLowerCase()
+  if (hint === 'vtt' || content.trimStart().startsWith('WEBVTT')) {
+    return parseVTT(content)
+  }
+  return parseSRT(content)
+}
+
+function normalizeSrtTimestamp(raw: string): string {
+  const normalized = raw.trim().replace('.', ',')
+  const match = normalized.match(/^(\d{1,2}):(\d{2}):(\d{2}),(\d{1,3})$/)
+  if (!match) return normalized
+  const hh = match[1].padStart(2, '0')
+  const mm = match[2]
+  const ss = match[3]
+  const ms = match[4].padEnd(3, '0').slice(0, 3)
+  return `${hh}:${mm}:${ss},${ms}`
 }
 
 /**
@@ -320,6 +405,9 @@ export const SubtitleGenerator = {
   generateVTT,
   generateTXT,
   saveSubtitle,
+  parseSRT,
+  parseVTT,
+  parseSubtitleContent,
   mergeShortSubtitles,
   splitLongSubtitles,
   optimizeTimeline,

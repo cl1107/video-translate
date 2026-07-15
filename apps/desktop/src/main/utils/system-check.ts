@@ -14,6 +14,18 @@ export interface SystemCheckResult {
   error?: string
   /** 实际解析到的可执行文件路径（诊断用） */
   resolvedPath?: string
+  /**
+   * 可选依赖：缺失不阻断本地文件翻译 / 初始 setup。
+   * 例如 yt-dlp 仅在线下载需要。
+   */
+  optional?: boolean
+}
+
+/** 判断是否所有「必需」依赖已就绪（忽略 optional） */
+export function areRequiredDependenciesReady(
+  results: SystemCheckResult[]
+): boolean {
+  return results.every(dep => dep.optional || dep.available)
 }
 
 /**
@@ -236,11 +248,13 @@ export async function checkSystemDependencies(options?: {
     percent: 10,
     message: '正在检查 FFmpeg、Node.js 和 Ollama...',
   })
-  const [ffmpeg, ffprobe, ollama] = await Promise.all([
+  const [ffmpeg, ffprobe, ollama, ytdlpRaw] = await Promise.all([
     checkCommand('ffmpeg'),
     checkCommand('ffprobe'),
     checkOllama(),
+    checkCommand('yt-dlp', ['--version']),
   ])
+  const ytdlp: SystemCheckResult = { ...ytdlpRaw, optional: true }
   const node = checkElectronNode()
 
   onProgress?.({
@@ -249,7 +263,8 @@ export async function checkSystemDependencies(options?: {
     message: '正在检查 SenseVoice 模型...',
   })
   const asr = await checkSherpaAsr(autoDownloadAsr, onProgress)
-  const results = [ffmpeg, ffprobe, node, ollama, asr]
+  // yt-dlp 为在线下载可选依赖：缺失不阻断本地文件翻译，但会出现在检查结果中
+  const results = [ffmpeg, ffprobe, node, ollama, ytdlp, asr]
 
   if (writeLog) {
     writeSystemCheckDiagnostic({
@@ -312,6 +327,15 @@ export function getInstallationSuggestions(
             'Node.js 运行时异常：\n' +
               '- 应用内置 Electron Node，通常无需单独安装系统 Node\n' +
               '- 若仍报错，请重新安装应用或反馈诊断日志'
+          )
+          break
+        case 'yt-dlp':
+          suggestions.push(
+            '安装 yt-dlp（在线视频下载，可选）：\n' +
+              '- macOS: brew install yt-dlp\n' +
+              '- pip: pip install -U yt-dlp\n' +
+              '- 或从 https://github.com/yt-dlp/yt-dlp/releases 下载并加入 PATH\n' +
+              '仅本地文件翻译时可不安装。'
           )
           break
       }

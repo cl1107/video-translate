@@ -24,6 +24,10 @@ declare global {
         filePaths: string[],
         settings: AppSettings | Partial<AppSettings>
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
+      createTasksFromUrls: (
+        urls: string[],
+        settings: AppSettings | Partial<AppSettings>
+      ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
 
       getAllTasks: () => Promise<TranslationTask[]>
       getTask: (taskId: string) => Promise<TranslationTask | null>
@@ -79,6 +83,7 @@ declare global {
           version?: string
           error?: string
           resolvedPath?: string
+          optional?: boolean
         }>
         suggestions: string[]
         diagnosticPaths?: {
@@ -142,6 +147,10 @@ const api = {
     filePaths: string[],
     settings: AppSettings | Partial<AppSettings>
   ) => ipcRenderer.invoke(IpcChannels.uploadFiles, filePaths, settings),
+  createTasksFromUrls: (
+    urls: string[],
+    settings: AppSettings | Partial<AppSettings>
+  ) => ipcRenderer.invoke(IpcChannels.createTasksFromUrls, urls, settings),
 
   getAllTasks: () => ipcRenderer.invoke(IpcChannels.getAllTasks),
   getTask: (taskId: string) => ipcRenderer.invoke(IpcChannels.getTask, taskId),

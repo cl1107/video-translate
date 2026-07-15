@@ -106,7 +106,15 @@ export async function runTranslationPipeline(
     await tempWorkspace.removeTaskDir(task.id)
     context.workDir = await tempWorkspace.ensureTaskDir(task.id)
 
-    await ensurePipelineDependencies(task.id, hooks, signal)
+    // 平台原生字幕优先：有可读字幕则跳过 ASR（仍可能烧录硬字幕，需 FFmpeg）
+    const platformSegments = await tryLoadPlatformSubtitleSegments(task, hooks)
+    const usePlatformSubtitles = Boolean(
+      platformSegments && platformSegments.length > 0
+    )
+
+    await ensurePipelineDependencies(task.id, hooks, signal, {
+      requireAsr: !usePlatformSubtitles,
+    })
 
     const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
     context.videoSize = {
@@ -114,22 +122,43 @@ export async function runTranslationPipeline(
       height: videoInfo.height,
     }
 
-    context.audioPath = await extractAudioStage(
-      task,
-      context.workDir,
-      hooks,
-      signal
-    )
+    if (usePlatformSubtitles && platformSegments) {
+      context.transcription = {
+        segments: platformSegments,
+        engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+        language:
+          task.platformSubtitleLanguage || toLanguageCode(task.sourceLanguage),
+        rawText: platformSegments.map(s => s.originalText).join('\n'),
+      }
+      await hooks.onStatus(TaskStatus.TRANSCRIBING, 55)
+      databaseManager.saveTranscriptionSegments(task.id, platformSegments)
+      hooks.onSegments(platformSegments)
+      hooks.onLog(
+        'success',
+        '已采用平台字幕作为原文，跳过音频提取与语音识别',
+        `${platformSegments.length} 段` +
+          (task.platformSubtitleLanguage
+            ? ` · 语言 ${task.platformSubtitleLanguage}`
+            : '')
+      )
+    } else {
+      context.audioPath = await extractAudioStage(
+        task,
+        context.workDir,
+        hooks,
+        signal
+      )
 
-    const asrEngine = options.asrEngine ?? DEFAULT_ASR_ENGINE
-    context.transcription = await transcribeStage(
-      task,
-      context.audioPath,
-      asrEngine,
-      context.workDir,
-      hooks,
-      signal
-    )
+      const asrEngine = options.asrEngine ?? DEFAULT_ASR_ENGINE
+      context.transcription = await transcribeStage(
+        task,
+        context.audioPath,
+        asrEngine,
+        context.workDir,
+        hooks,
+        signal
+      )
+    }
 
     context.displaySegments = buildDisplaySegments(
       context.transcription.segments,
@@ -141,7 +170,7 @@ export async function runTranslationPipeline(
     hooks.onLog(
       'info',
       '显示段整理完成',
-      `识别 ${context.transcription.segments.length} 段 → 显示 ${context.displaySegments.length} 段`
+      `${usePlatformSubtitles ? '平台字幕' : '识别'} ${context.transcription.segments.length} 段 → 显示 ${context.displaySegments.length} 段`
     )
 
     context.displaySegments = await polishStage(
@@ -214,7 +243,8 @@ export async function runTranslationPipeline(
 async function ensurePipelineDependencies(
   taskId: string,
   hooks: PipelineHooks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { requireAsr?: boolean }
 ): Promise<void> {
   throwIfAborted(signal)
   hooks.onLog('info', '检查 FFmpeg 可用性...')
@@ -223,29 +253,83 @@ async function ensurePipelineDependencies(
   }
   hooks.onLog('success', 'FFmpeg 可用性检查通过')
 
-  hooks.onLog('info', '检查 sherpa-onnx ASR 可用性...')
-  let asrOk =
-    (await sherpaTranscriber.isAvailable('sensevoice')) ||
-    (await sherpaTranscriber.isAvailable('funasr-nano'))
-  if (!asrOk) {
-    hooks.onLog('info', 'SenseVoice 模型缺失，开始自动下载...')
-    const ensured = await ensureSenseVoiceModel(p => {
-      if (p.message) hooks.onLog('info', p.message)
-    })
-    asrOk = ensured.available
+  const requireAsr = opts?.requireAsr !== false
+  if (requireAsr) {
+    hooks.onLog('info', '检查 sherpa-onnx ASR 可用性...')
+    let asrOk =
+      (await sherpaTranscriber.isAvailable('sensevoice')) ||
+      (await sherpaTranscriber.isAvailable('funasr-nano'))
     if (!asrOk) {
-      throw new Error(
-        `ASR 模型不可用：${ensured.error || '自动下载失败，请检查网络后重试'}`
-      )
+      hooks.onLog('info', 'SenseVoice 模型缺失，开始自动下载...')
+      const ensured = await ensureSenseVoiceModel(p => {
+        if (p.message) hooks.onLog('info', p.message)
+      })
+      asrOk = ensured.available
+      if (!asrOk) {
+        throw new Error(
+          `ASR 模型不可用：${ensured.error || '自动下载失败，请检查网络后重试'}`
+        )
+      }
     }
+    hooks.onLog('success', 'ASR 可用性检查通过')
+  } else {
+    hooks.onLog('info', '已有平台字幕，跳过 ASR 依赖检查')
   }
-  hooks.onLog('success', 'ASR 可用性检查通过')
 
   hooks.onLog('info', '检查 Ollama 服务状态...')
   if (!(await ollamaClient.isAvailable())) {
     throw new Error('Ollama 服务不可用，请先启动 Ollama')
   }
   hooks.onLog('success', 'Ollama 可用性检查通过')
+  void taskId
+}
+
+/**
+ * 尝试读取任务上的平台字幕并转为 TranscriptionSegment。
+ * 文件缺失或解析失败时返回 null，由调用方回退 ASR。
+ */
+async function tryLoadPlatformSubtitleSegments(
+  task: TranslationTask,
+  hooks: PipelineHooks
+): Promise<TranscriptionSegment[] | null> {
+  const subtitlePath = task.platformSubtitlePath
+  if (!subtitlePath) return null
+
+  try {
+    await fs.access(subtitlePath)
+  } catch {
+    hooks.onLog(
+      'warn',
+      '平台字幕文件不存在，将回退到 ASR',
+      subtitlePath
+    )
+    return null
+  }
+
+  try {
+    const content = await fs.readFile(subtitlePath, 'utf-8')
+    const ext = path.extname(subtitlePath).replace(/^\./, '').toLowerCase()
+    const entries = SubtitleGenerator.parseSubtitleContent(content, ext)
+    if (entries.length === 0) {
+      hooks.onLog('warn', '平台字幕为空或无法解析，将回退到 ASR', subtitlePath)
+      return null
+    }
+
+    return entries.map((entry, index) => ({
+      id: `platform-${index + 1}`,
+      start: SubtitleGenerator.parseTime(entry.start),
+      end: SubtitleGenerator.parseTime(entry.end),
+      originalText: entry.text,
+      confidence: 1,
+    }))
+  } catch (error) {
+    hooks.onLog(
+      'warn',
+      '读取平台字幕失败，将回退到 ASR',
+      error instanceof Error ? error.message : String(error)
+    )
+    return null
+  }
 }
 
 async function extractAudioStage(
