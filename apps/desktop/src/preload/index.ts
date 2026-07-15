@@ -31,6 +31,10 @@ declare global {
       resumeTask: (taskId: string) => Promise<{ success: boolean }>
       deleteTask: (taskId: string) => Promise<{ success: boolean }>
       retryTask: (taskId: string) => Promise<{ success: boolean }>
+      burnTaskSubtitles: (
+        taskId: string,
+        mode: 'bilingual' | 'translated' | 'original'
+      ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<any[]>
 
       // Ollama 服务
@@ -149,6 +153,10 @@ const api = {
   resumeTask: (taskId: string) => ipcRenderer.invoke('resume-task', taskId),
   deleteTask: (taskId: string) => ipcRenderer.invoke('delete-task', taskId),
   retryTask: (taskId: string) => ipcRenderer.invoke('retry-task', taskId),
+  burnTaskSubtitles: (
+    taskId: string,
+    mode: 'bilingual' | 'translated' | 'original'
+  ) => ipcRenderer.invoke('burn-task-subtitles', taskId, mode),
   getTaskLogs: (taskId: string) => ipcRenderer.invoke('get-task-logs', taskId),
 
   // Ollama 服务

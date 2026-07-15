@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Clock,
   FileVideo,
+  Flame,
   FolderOpen,
   Pause,
   Play,
@@ -21,6 +22,7 @@ import {
   CardTitle,
 } from 'renderer/components/ui/card'
 import { Progress } from 'renderer/components/ui/progress'
+import type { SubtitleBurnMode } from 'shared/settings'
 import { TaskStatus, type TranslationTask } from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
 
@@ -30,6 +32,15 @@ interface TaskListProps {
   tasks: TranslationTask[]
   onTasksChange: () => void
 }
+
+const BURN_MODE_OPTIONS: Array<{
+  value: SubtitleBurnMode
+  label: string
+}> = [
+  { value: 'bilingual', label: '双语堆叠（原文上 / 译文下）' },
+  { value: 'translated', label: '仅译文' },
+  { value: 'original', label: '仅原文' },
+]
 
 const getStatusText = (status: TaskStatus) => {
   switch (status) {
@@ -43,6 +54,8 @@ const getStatusText = (status: TaskStatus) => {
       return '翻译中'
     case TaskStatus.GENERATING_SUBTITLES:
       return '生成字幕'
+    case TaskStatus.BURNING_SUBTITLES:
+      return '烧录字幕'
     case TaskStatus.COMPLETED:
       return '已完成'
     case TaskStatus.FAILED:
@@ -95,6 +108,40 @@ const formatDate = (date: string): string => {
 export function TaskList({ tasks, onTasksChange }: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>()
+  const [openBurnMenuTaskId, setOpenBurnMenuTaskId] = useState<string>()
+  const [burningTaskIds, setBurningTaskIds] = useState<Set<string>>(new Set())
+
+  const handleBurnSubtitles = useCallback(
+    async (taskId: string, mode: SubtitleBurnMode) => {
+      setOpenBurnMenuTaskId(undefined)
+      setBurningTaskIds(prev => new Set(prev).add(taskId))
+      try {
+        const result = await App.burnTaskSubtitles(taskId, mode)
+        if (!result.success) {
+          throw new Error(result.error || '烧录失败')
+        }
+        onTasksChange()
+        // 烧录完成后直接打开视频
+        const openResult = await App.openTaskArtifact(taskId, 'video')
+        if (!openResult.success) {
+          // 产物已生成但打开失败时仍提示，不阻断列表刷新
+          alert(`烧录完成，但打开视频失败: ${openResult.error}`)
+        }
+      } catch (error) {
+        console.error('补烧硬字幕失败:', error)
+        const message = error instanceof Error ? error.message : String(error)
+        alert(`烧录失败: ${message}`)
+        onTasksChange()
+      } finally {
+        setBurningTaskIds(prev => {
+          const next = new Set(prev)
+          next.delete(taskId)
+          return next
+        })
+      }
+    },
+    [onTasksChange]
+  )
 
   const handleTaskAction = useCallback(
     async (action: string, taskId: string) => {
@@ -178,6 +225,13 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
 
       {tasks.map(task => {
         const isExpanded = expandedTasks.has(task.id)
+        const isBurning =
+          task.status === TaskStatus.BURNING_SUBTITLES ||
+          burningTaskIds.has(task.id)
+        const canBurnSubtitles =
+          (task.status === TaskStatus.COMPLETED || isBurning) &&
+          !task.outputArtifacts?.burnedVideo
+
         return (
           <Card key={task.id}>
             <CardHeader className="pb-3">
@@ -227,7 +281,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                 task.status !== TaskStatus.FAILED && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>进度</span>
+                      <span>{isBurning ? '烧录进度' : '进度'}</span>
                       <span>{Math.round(task.progress)}%</span>
                     </div>
                     <Progress value={task.progress} className="h-2" />
@@ -304,12 +358,52 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {task.status === TaskStatus.COMPLETED && (
+                  {/* 未在任务创建时烧录：完成后可补烧硬字幕 */}
+                  {canBurnSubtitles && (
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isBurning}
+                        onClick={() =>
+                          setOpenBurnMenuTaskId(current =>
+                            current === task.id ? undefined : task.id
+                          )
+                        }
+                      >
+                        <Flame className="h-4 w-4 mr-1" />
+                        {isBurning ? '烧录中…' : '烧录'}
+                      </Button>
+                      {openBurnMenuTaskId === task.id && !isBurning && (
+                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-52 rounded-md border bg-background p-1 shadow-lg">
+                          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                            选择要烧录的字幕
+                          </p>
+                          {BURN_MODE_OPTIONS.map(option => (
+                            <Button
+                              key={option.value}
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() =>
+                                void handleBurnSubtitles(task.id, option.value)
+                              }
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(task.status === TaskStatus.COMPLETED || isBurning) && (
                     <div className="relative flex">
                       <Button
                         variant="outline"
                         size="sm"
                         className="rounded-r-none border-r-0"
+                        disabled={isBurning}
                         onClick={() =>
                           handleTaskAction(
                             task.outputArtifacts?.burnedVideo
@@ -333,6 +427,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                         size="sm"
                         className="rounded-l-none px-2"
                         aria-label="展开查看选项"
+                        disabled={isBurning}
                         onClick={() =>
                           setOpenOutputMenuTaskId(current =>
                             current === task.id ? undefined : task.id
@@ -374,6 +469,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
                   <Button
                     variant="outline"
                     size="sm"
+                    disabled={isBurning}
                     onClick={() => handleTaskAction('delete', task.id)}
                   >
                     <Trash2 className="h-4 w-4 mr-1" />

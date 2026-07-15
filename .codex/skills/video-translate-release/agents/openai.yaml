@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Translate Release"
+  short_description: "执行版本同步、校验、提交、打 tag 和推送发布"
+  default_prompt: "使用 $video-translate-release 执行当前仓库的版本发布流程。"

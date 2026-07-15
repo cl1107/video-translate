@@ -20,6 +20,12 @@ test('发布工作流使用 Node 24 运行时的 GitHub Actions', () => {
   assert.match(workflow, /uses: actions\/download-artifact@v6/)
 })
 
+test('发布工作流按 Conventional Commit 类型整理 release notes', () => {
+  assert.match(workflow, /--generate-notes/)
+  assert.match(workflow, /scripts\/organize-release-notes\.mjs/)
+  assert.match(workflow, /gh release edit "\$RELEASE_TAG" --notes-file/)
+})
+
 test('桌面包明确禁用 electron-builder 隐式发布', async () => {
   const desktopPackage = JSON.parse(
     await readFile('apps/desktop/package.json', 'utf8')

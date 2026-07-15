@@ -235,6 +235,25 @@ function setupIpcHandlers() {
     }
   )
 
+  // 任务完成后补烧硬字幕
+  ipcMain.handle(
+    'burn-task-subtitles',
+    async (
+      _event,
+      taskId: string,
+      mode: 'bilingual' | 'translated' | 'original'
+    ) => {
+      try {
+        return await taskManager.burnSubtitlesForTask(taskId, mode)
+      } catch (error) {
+        console.error('补烧硬字幕失败:', error)
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
+      }
+    }
+  )
+
   // 获取统计信息
   ipcMain.handle('get-statistics', () => {
     return taskManager.getStatistics()

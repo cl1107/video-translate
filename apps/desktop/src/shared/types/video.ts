@@ -48,6 +48,8 @@ export enum TaskStatus {
   TRANSCRIBING = 'transcribing',
   TRANSLATING = 'translating',
   GENERATING_SUBTITLES = 'generating_subtitles',
+  /** 任务完成后补烧硬字幕 */
+  BURNING_SUBTITLES = 'burning_subtitles',
   COMPLETED = 'completed',
   FAILED = 'failed',
   PAUSED = 'paused',

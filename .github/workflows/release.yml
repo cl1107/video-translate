@@ -50,7 +50,6 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11.7.0
           run_install: false
 
       - name: Set up Node.js
@@ -134,5 +133,14 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
           else
+            # GitHub auto notes (PR list), then re-group by Conventional Commit type
+            # (feat:/fix:/docs: …) — same approach as web-infra-dev/rsbuild.
             gh release create "$RELEASE_TAG" "${files[@]}" --generate-notes --title "$RELEASE_TAG"
+            tmp_dir="$(mktemp -d)"
+            gh release view "$RELEASE_TAG" --json body --jq '.body' > "$tmp_dir/generated.md"
+            if node scripts/organize-release-notes.mjs "$tmp_dir/generated.md" > "$tmp_dir/organized.md"; then
+              gh release edit "$RELEASE_TAG" --notes-file "$tmp_dir/organized.md"
+            else
+              echo "Warning: could not organize release notes; keeping GitHub-generated body" >&2
+            fi
           fi

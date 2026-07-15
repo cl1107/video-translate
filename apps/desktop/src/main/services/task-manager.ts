@@ -674,7 +674,7 @@ export class TaskManager {
 
   private async prepareBurnSubtitleFile(
     taskId: string,
-    segments: DisplaySegment[],
+    segments: Array<DisplaySegment | TranscriptionSegment>,
     mode: SubtitleBurnMode,
     videoSize: { width: number; height: number } | undefined,
     workDir?: string
@@ -696,7 +696,12 @@ export class TaskManager {
     taskId: string,
     videoPath: string,
     subtitlePath: string,
-    workDir?: string
+    workDir?: string,
+    options?: {
+      progressStatus?: TaskStatus
+      progressBase?: number
+      progressSpan?: number
+    }
   ): Promise<string> {
     const outputDir = path.join(path.dirname(videoPath), 'output')
     await fs.mkdir(outputDir, { recursive: true })
@@ -710,17 +715,18 @@ export class TaskManager {
 
     this.addTaskLog(taskId, 'info', '开始烧录硬字幕', `输出: ${outputVideo}`)
 
+    const progressStatus =
+      options?.progressStatus ?? TaskStatus.GENERATING_SUBTITLES
+    const progressBase = options?.progressBase ?? 90
+    const progressSpan = options?.progressSpan ?? 9
+
     const result = await ffmpegProcessor.burnSubtitles(
       videoPath,
       subtitlePath,
       outputVideo,
       progress => {
-        const normalized = 90 + (progress / 100) * 9
-        void this.updateTaskStatus(
-          taskId,
-          TaskStatus.GENERATING_SUBTITLES,
-          normalized
-        )
+        const normalized = progressBase + (progress / 100) * progressSpan
+        void this.updateTaskStatus(taskId, progressStatus, normalized)
       },
       workDir
     )
@@ -734,6 +740,123 @@ export class TaskManager {
     this.addTaskLog(taskId, 'success', '烧录硬字幕完成', `输出视频: ${result}`)
 
     return result
+  }
+
+  /**
+   * 任务已完成后，按指定字幕模式补烧硬字幕。
+   * 适用于创建任务时未开启「烧录硬字幕到视频」的场景。
+   */
+  async burnSubtitlesForTask(
+    taskId: string,
+    mode: SubtitleBurnMode
+  ): Promise<{ success: boolean; burnedVideo?: string; error?: string }> {
+    const existing = this.activeTasks.get(taskId)
+    if (existing?.status === TaskStatus.BURNING_SUBTITLES) {
+      return { success: false, error: '该任务正在烧录中' }
+    }
+
+    const task =
+      existing ?? databaseManager.getTranslationTask(taskId)
+    if (!task) {
+      return { success: false, error: '任务不存在' }
+    }
+
+    if (
+      task.status !== TaskStatus.COMPLETED &&
+      task.status !== TaskStatus.BURNING_SUBTITLES
+    ) {
+      return { success: false, error: '仅已完成的任务可以补烧硬字幕' }
+    }
+
+    if (!task.segments || task.segments.length === 0) {
+      return { success: false, error: '任务没有可用的字幕段落' }
+    }
+
+    // 校验源视频仍在
+    try {
+      await fs.access(task.videoFile.path)
+    } catch {
+      return { success: false, error: '源视频文件不存在，无法烧录' }
+    }
+
+    this.activeTasks.set(taskId, task)
+    let workDir: string | undefined
+
+    try {
+      await this.updateTaskStatus(taskId, TaskStatus.BURNING_SUBTITLES, 5)
+      this.addTaskLog(
+        taskId,
+        'info',
+        '开始补烧硬字幕',
+        `模式: ${mode}`
+      )
+
+      workDir = await tempWorkspace.ensureTaskDir(taskId)
+
+      if (!(await ffmpegProcessor.isAvailable())) {
+        throw new Error('FFmpeg 不可用，请先安装 FFmpeg')
+      }
+
+      const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
+      const videoSize = {
+        width: videoInfo.width,
+        height: videoInfo.height,
+      }
+
+      // 数据库中的段落已含润色与译文，直接用于烧录
+      const burnSubtitlePath = await this.prepareBurnSubtitleFile(
+        taskId,
+        task.segments,
+        mode,
+        videoSize,
+        workDir
+      )
+
+      await this.updateTaskStatus(taskId, TaskStatus.BURNING_SUBTITLES, 15)
+
+      const burnedVideo = await this.burnHardSubtitles(
+        taskId,
+        task.videoFile.path,
+        burnSubtitlePath,
+        workDir,
+        {
+          progressStatus: TaskStatus.BURNING_SUBTITLES,
+          progressBase: 15,
+          progressSpan: 80,
+        }
+      )
+
+      // 清空此前错误信息并恢复完成状态
+      await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, '')
+      this.addTaskLog(taskId, 'success', '补烧硬字幕完成', `模式: ${mode}`)
+
+      // 完成后推送带产物路径的最新任务
+      const updated = this.getTask(taskId)
+      if (updated) {
+        this.notifyTaskUpdate(updated)
+      }
+
+      return { success: true, burnedVideo }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.addTaskLog(taskId, 'error', '补烧硬字幕失败', message)
+      // 烧录失败不把整个翻译任务标为失败，回到已完成
+      try {
+        await this.updateTaskStatus(taskId, TaskStatus.COMPLETED, 100)
+      } catch {
+        // ignore
+      }
+      const updated = this.getTask(taskId)
+      if (updated) {
+        this.notifyTaskUpdate(updated)
+      }
+      return { success: false, error: message }
+    } finally {
+      if (workDir) {
+        await tempWorkspace.removeTaskDir(taskId)
+      }
+      this.activeTasks.delete(taskId)
+    }
   }
 
   private async finalizeTask(
@@ -824,7 +947,12 @@ export class TaskManager {
 
   private notifyTaskUpdate(task: TranslationTask): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('task-updated', task)
+      // 始终从日志解析产物路径，避免内存态过期（如补烧完成后）
+      const payload: TranslationTask = {
+        ...task,
+        outputArtifacts: this.getTaskOutputArtifacts(task),
+      }
+      this.mainWindow.webContents.send('task-updated', payload)
     }
   }
 
