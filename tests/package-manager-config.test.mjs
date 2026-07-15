@@ -16,5 +16,5 @@ test('发布工作流显式固定与根配置一致的 pnpm 版本', () => {
 
   assert.ok(setupStep, '缺少 Set up pnpm 步骤')
   assert.match(setupStep[0], /^\s+version: 11\.12\.0$/m)
-  assert.match(setupStep[0], /^\s+standalone: true$/m)
+  assert.doesNotMatch(setupStep[0], /^\s+standalone:/m)
 })

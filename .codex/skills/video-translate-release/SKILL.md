@@ -34,7 +34,7 @@ description: Execute a complete release for the video-translate monorepo, includ
 
 ## GitHub Pages
 
-仓库的 Landing 页面由 `.github/workflows/pages.yml` 构建并部署到 GitHub Pages。workflow 使用显式的 `pnpm@11.12.0` standalone 安装，避免 Windows runner 依据根配置切换 pnpm 时触发自托管安装错误。首次启用时，在仓库 Settings → Pages 将 Source 设为 GitHub Actions；之后每次推送 `main` 会自动部署 `apps/landing`。
+仓库的 Landing 页面由 `.github/workflows/pages.yml` 构建并部署到 GitHub Pages。workflow 使用显式的 `pnpm@11.12.0` 普通 npm 包安装，避免 standalone 自更新路径产生无效的 `@pnpm/exe` 文件。首次启用时，在仓库 Settings → Pages 将 Source 设为 GitHub Actions；之后每次推送 `main` 会自动部署 `apps/landing`。
 
 发版后检查 Actions 中的 `Deploy Landing Page` workflow，并访问 `https://cl1107.github.io/video-translate/` 确认页面可打开。项目描述中的 Landing 链接使用该地址。
 
