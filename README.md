@@ -4,7 +4,7 @@
 
 **产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
 
-![视频翻译助手](https://img.shields.io/badge/version-0.6.0-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.6.1-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Pages](https://img.shields.io/badge/GitHub%20Pages-live-success.svg)
@@ -168,7 +168,7 @@ ollama pull kaelri/hy-mt2:1.8b
 2. **源文获取**（二选一）
    - **平台字幕优先**：解析站内人工/自动字幕，跳过音频提取与 ASR
    - **否则 ASR**：FFmpeg 抽音轨 → sherpa-onnx 转录
-3. **文本润色 / 翻译** → Ollama（或 BYOK）
+3. **文本润色（可选）** → 本地 Ollama 或在线 BYOK；**翻译** → 本地 Ollama
 4. **字幕生成** → 输出 SRT / ASS 等
 5. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）
 6. **清理** → 删除临时文件并完成任务
@@ -259,27 +259,68 @@ pnpm --filter video-translate rebuild:native
 - ✅ **沙盒隔离** - 遵循 Electron 安全实践
 - ✅ **无云端上传** - 视频文件不上传到第三方云服务（除本地 Ollama / 首次下载 ASR 模型外）
 
-## 📦 发布包说明（macOS CI）
+## 📦 发布包说明
 
-GitHub Actions 等 CI 打出的 **macOS 包为未签名、未公证** 构建（`UNSIGNED_BUILD=1`），从浏览器下载后会被 Gatekeeper 隔离（quarantine）。
+GitHub Releases 为每个平台提供 **两种** 安装包（文件名中带标记）：
 
-首次打开前请在终端对 `.app` 或解压后的应用目录执行：
+| 类型               | 文件名标记         | 说明                                                                                       | 何时选用                                        |
+| ------------------ | ------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| **bundled-ffmpeg** | `-bundled-ffmpeg.` | 安装包**内置** FFmpeg / FFprobe（含硬字幕所需 libass）                                     | **推荐大多数用户**：开箱可用，不必单独装 FFmpeg |
+| **slim**           | `-slim.`           | **不内置** FFmpeg，使用系统 PATH（及 macOS 上 Homebrew 常见路径）中的 `ffmpeg` / `ffprobe` | 本机已装完整 FFmpeg，或希望安装包更小           |
+
+示例：
+
+```text
+video-translate-vX.Y.Z-mac-arm64-bundled-ffmpeg.dmg
+video-translate-vX.Y.Z-mac-arm64-slim.dmg
+video-translate-vX.Y.Z-win-x64-bundled-ffmpeg.exe
+video-translate-vX.Y.Z-linux-x64-bundled-ffmpeg.AppImage
+```
+
+说明：
+
+- **slim** 仍需自行安装 FFmpeg；硬字幕烧录需要带 `subtitles` 滤镜（libass）的完整构建。
+- **Ollama**（默认翻译）与 **yt-dlp**（仅在线链接，可选）与 bundled / slim 无关，按应用内依赖检查提示安装即可。
+- 每个 Release 附带 `SHA256SUMS.txt`，下载后请校验完整性。
+- 官网文档：https://cl1107.github.io/video-translate/docs
+  固定说明也会写在每个 Release 正文顶部（由 `scripts/release-notes-preamble.md` 生成）。
+
+### 非签名构建注意事项
+
+CI 产物均为 **未代码签名** 构建（`UNSIGNED_BUILD=1`），适合自用 / 内测。正式对外分发应使用平台开发者证书签名后再发布。
+
+#### macOS（Gatekeeper / quarantine）
+
+从浏览器下载后可能被隔离。若提示「已损坏」「无法打开」或无法验证开发者，对 `.app` 执行：
 
 ```bash
-# 推荐：清除隔离属性与扩展属性（对 .app 目录递归）
-xattr -cr "/path/to/视频翻译助手.app"
+# 推荐：清除隔离与扩展属性（路径按实际修改）
+xattr -cr "/Applications/视频翻译助手.app"
 
 # 若只想去掉 quarantine：
 # xattr -dr com.apple.quarantine "/path/to/视频翻译助手.app"
 ```
 
-然后即可从 Finder 正常打开。若仍提示「已损坏」或无法打开，可再试：
+仍失败时可试 `sudo xattr -cr "…"`，或在「系统设置 → 隐私与安全性」中选择仍要打开。
+
+#### Windows（SmartScreen）
+
+未签名安装包 / 便携版可能被 SmartScreen 拦截：
+
+1. 点击 **更多信息**
+2. 再点 **仍要运行**
+
+请仅从本仓库 [Releases](https://github.com/cl1107/video-translate/releases) 下载。
+
+#### Linux
 
 ```bash
-sudo xattr -cr "/path/to/视频翻译助手.app"
+# AppImage：先赋予执行权限
+chmod +x video-translate-vX.Y.Z-linux-x64-*.AppImage
+./video-translate-vX.Y.Z-linux-x64-*.AppImage
 ```
 
-> 正式对外分发应使用 Apple Developer 证书签名并公证；当前 CI 产物仅适合自用 / 内测。
+deb / rpm / pacman 包未做发行版仓库签名；请用本地包管理器安装，并与 `SHA256SUMS.txt` 核对。部分环境运行 AppImage 可能需要 FUSE。
 
 ### 在线下载（yt-dlp，可选）
 
@@ -297,11 +338,20 @@ pip install -U yt-dlp
 
 ### macOS 上 CI / 网盘下载的应用打不开
 
-见上文 [发布包说明（macOS CI）](#-发布包说明macos-ci)：对 `.app` 执行 `xattr -cr`。
+见上文 [非签名构建注意事项](#非签名构建注意事项)：对 `.app` 执行 `xattr -cr`。
+
+### Windows 提示「已保护你的电脑」
+
+见上文 [非签名构建注意事项](#非签名构建注意事项)：SmartScreen → 更多信息 → 仍要运行。
+
+### 该下 bundled 还是 slim？
+
+见上文 [发布包说明](#-发布包说明)。多数用户选 **bundled-ffmpeg**；已自备 FFmpeg 可选 **slim**。
 
 ### macOS 上提示找不到 FFmpeg
 
-从 Finder / 启动台打开的 Electron 应用不会加载 shell 的 PATH。应用会尝试解析 Homebrew 中的 `ffmpeg` / `ffmpeg-full`。若仍失败，请确认已安装 FFmpeg，或在终端中用 `pnpm dev` 启动。
+- 若使用 **slim** 包：从 Finder / 启动台打开的应用不会加载 shell 的 PATH。应用会尝试解析 Homebrew 中的 `ffmpeg` / `ffmpeg-full`。若仍失败，请确认已安装 FFmpeg。
+- 若使用 **bundled-ffmpeg** 包仍报错：请反馈版本与诊断日志（理论上应优先使用内置二进制）。
 
 ### 硬字幕烧录失败
 

@@ -61,10 +61,19 @@ function run(command, args) {
   })
 }
 
-async function download(url, destination) {
-  console.log(`Downloading bundled FFmpeg from ${url}`)
+const DOWNLOAD_MAX_ATTEMPTS = 3
+const DOWNLOAD_RETRY_BASE_MS = 2000
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function downloadOnce(url, destination) {
   const response = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36' }
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+      Accept: '*/*',
+    },
   })
   if (!response.ok || !response.body) {
     throw new Error(`Failed to download ${url}: HTTP ${response.status}`)
@@ -74,6 +83,31 @@ async function download(url, destination) {
     Readable.fromWeb(response.body),
     createWriteStream(destination)
   )
+}
+
+async function download(url, destination) {
+  let lastError
+  for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+    console.log(
+      `Downloading bundled FFmpeg from ${url} (attempt ${attempt}/${DOWNLOAD_MAX_ATTEMPTS})`
+    )
+    try {
+      await downloadOnce(url, destination)
+      return
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`Download attempt ${attempt} failed: ${message}`)
+      // 清理可能写了一半的文件，避免下次解压读到残缺包
+      await rm(destination, { force: true }).catch(() => {})
+      if (attempt < DOWNLOAD_MAX_ATTEMPTS) {
+        const delayMs = DOWNLOAD_RETRY_BASE_MS * attempt
+        console.warn(`Retrying in ${delayMs}ms...`)
+        await sleep(delayMs)
+      }
+    }
+  }
+  throw lastError
 }
 
 async function extract(archive, directory, format) {

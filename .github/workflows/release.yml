@@ -135,16 +135,16 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
           else
-            # GitHub auto notes (PR list), then re-group by Conventional Commit type
-            # (feat:/fix:/docs: …) — same approach as web-infra-dev/rsbuild.
-            # When there are no merged PRs, --generate-notes is only a Full Changelog
-            # link; the script falls back to git log subjects for that range.
+            # GitHub auto notes (PR list); when there are no merged PRs,
+            # --generate-notes is often only a Full Changelog link.
             gh release create "$RELEASE_TAG" "${files[@]}" --generate-notes --title "$RELEASE_TAG"
-            tmp_dir="$(mktemp -d)"
-            gh release view "$RELEASE_TAG" --json body --jq '.body' > "$tmp_dir/generated.md"
-            if node scripts/organize-release-notes.mjs --tag "$RELEASE_TAG" "$tmp_dir/generated.md" > "$tmp_dir/organized.md"; then
-              gh release edit "$RELEASE_TAG" --notes-file "$tmp_dir/organized.md"
-            else
-              echo "Warning: could not organize release notes; keeping GitHub-generated body" >&2
-            fi
+          fi
+          # 每次发布都整理 notes，并固定写入 bundled/slim 说明与非签名注意事项
+          #（feat/fix/docs 分组 + scripts/release-notes-preamble.md）
+          tmp_dir="$(mktemp -d)"
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > "$tmp_dir/generated.md"
+          if node scripts/organize-release-notes.mjs --tag "$RELEASE_TAG" "$tmp_dir/generated.md" > "$tmp_dir/organized.md"; then
+            gh release edit "$RELEASE_TAG" --notes-file "$tmp_dir/organized.md"
+          else
+            echo "Warning: could not organize release notes; keeping existing body" >&2
           fi

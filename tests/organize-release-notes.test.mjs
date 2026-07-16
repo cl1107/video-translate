@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { test } from 'vitest'
 import {
+  applyReleasePreamble,
   classify,
   commitsToBullets,
   filterCommitSubjects,
@@ -14,7 +15,11 @@ import {
   organize,
   parseCliArgs,
   parseCompareTags,
+  PREAMBLE_END,
+  PREAMBLE_START,
   prepareAndOrganize,
+  RELEASE_NOTES_PREAMBLE,
+  stripReleasePreamble,
 } from '../scripts/organize-release-notes.mjs'
 
 const execFileAsync = promisify(execFile)
@@ -228,6 +233,46 @@ test('prepareAndOrganize uses gitExec when notes empty and tag given', () => {
   assert.match(output, /\* feat: from git/)
   assert.match(output, /### Bug Fixes 🐞/)
   assert.doesNotMatch(output, /chore\(release\)/)
+  // 固定前言：包类型 + 非签名说明
+  assert.match(output, /bundled-ffmpeg/)
+  assert.match(output, /slim/)
+  assert.match(output, /非签名/)
+  assert.ok(output.indexOf(PREAMBLE_START) < output.indexOf("## What's Changed"))
+})
+
+test('release preamble is applied idempotently', () => {
+  const body = `## What's Changed
+* feat: x
+
+**Full Changelog**: a...b
+`
+  const once = applyReleasePreamble(body)
+  const twice = applyReleasePreamble(once)
+  assert.equal(
+    once.split(PREAMBLE_START).length - 1,
+    1,
+    'preamble appears once'
+  )
+  assert.equal(twice, once)
+  assert.match(RELEASE_NOTES_PREAMBLE, /bundled-ffmpeg/)
+  assert.match(RELEASE_NOTES_PREAMBLE, /xattr -cr/)
+  assert.match(RELEASE_NOTES_PREAMBLE, /SmartScreen|仍要运行/)
+  assert.match(RELEASE_NOTES_PREAMBLE, /chmod \+x/)
+  const stripped = stripReleasePreamble(once)
+  assert.doesNotMatch(stripped, new RegExp(PREAMBLE_START))
+  assert.match(stripped, /## What's Changed/)
+  assert.ok(once.includes(PREAMBLE_END))
+})
+
+test('prepareAndOrganize can skip preamble when requested', () => {
+  const input = `## What's Changed
+* fix: a by @u in #1
+
+**Full Changelog**: a...b
+`
+  const output = prepareAndOrganize(input, { skipPreamble: true })
+  assert.doesNotMatch(output, new RegExp(PREAMBLE_START))
+  assert.match(output, /### Bug Fixes/)
 })
 
 test('parseCliArgs accepts --tag and file', () => {
@@ -263,6 +308,8 @@ test('CLI reads a file and prints organized markdown', async () => {
     assert.match(stdout, /### New Features 🎉/)
     assert.match(stdout, /### Bug Fixes 🐞/)
     assert.match(stdout, /\*\*Full Changelog\*\*: a\.\.\.b/)
+    assert.match(stdout, /bundled-ffmpeg/)
+    assert.match(stdout, /非签名/)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

@@ -28,6 +28,21 @@ test('发布工作流按 Conventional Commit 类型整理 release notes', () => 
   assert.match(workflow, /gh release edit "\$RELEASE_TAG" --notes-file/)
   // publish job needs full history for git-log fallback when no PRs
   assert.match(workflow, /fetch-depth:\s*0/)
+  // 创建或仅上传资产后，都会重新整理 notes（固定前言 + 变更分组）
+  assert.match(workflow, /每次发布都整理 notes/)
+})
+
+test('固定 Release 前言说明 bundled/slim 与非签名注意事项', async () => {
+  const preamble = await readFile(
+    'scripts/release-notes-preamble.md',
+    'utf8'
+  )
+  assert.match(preamble, /bundled-ffmpeg/)
+  assert.match(preamble, /slim/)
+  assert.match(preamble, /xattr -cr/)
+  assert.match(preamble, /SmartScreen|仍要运行/)
+  assert.match(preamble, /chmod \+x/)
+  assert.match(preamble, /SHA256SUMS/)
 })
 
 test('桌面包明确禁用 electron-builder 隐式发布', async () => {

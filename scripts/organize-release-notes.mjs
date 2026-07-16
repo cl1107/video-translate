@@ -19,9 +19,63 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { argv, stdin, stdout, stderr } from 'node:process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const scriptsDir = dirname(fileURLToPath(import.meta.url))
+
+/** 每个 Release 固定前置说明（包类型 + 非签名注意事项） */
+export const RELEASE_NOTES_PREAMBLE = readFileSync(
+  join(scriptsDir, 'release-notes-preamble.md'),
+  'utf8'
+).trim()
+
+export const PREAMBLE_START = '<!-- release-preamble:start -->'
+export const PREAMBLE_END = '<!-- release-preamble:end -->'
+
+/**
+ * 去掉已有固定前言（便于重复跑 organize 时幂等更新）。
+ *
+ * @param {string} markdown
+ * @returns {string}
+ */
+export function stripReleasePreamble(markdown) {
+  const block = new RegExp(
+    `${escapeRegExp(PREAMBLE_START)}[\\s\\S]*?${escapeRegExp(PREAMBLE_END)}\\s*`,
+    'g'
+  )
+  return markdown.replace(block, '').replace(/^\s+/, '')
+}
+
+/**
+ * 在变更日志前插入固定前言。
+ *
+ * @param {string} markdown
+ * @param {string} [preamble=RELEASE_NOTES_PREAMBLE]
+ * @returns {string}
+ */
+export function applyReleasePreamble(
+  markdown,
+  preamble = RELEASE_NOTES_PREAMBLE
+) {
+  const body = stripReleasePreamble(markdown)
+  const block = `${PREAMBLE_START}\n${preamble.trim()}\n${PREAMBLE_END}`
+  if (!body) {
+    return `${block}\n`
+  }
+  return `${block}\n\n${body}`
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 const categories = [
   ['breaking', '### Breaking Changes 🍭'],
@@ -284,7 +338,8 @@ function defaultDescribePrevious(tag) {
  * @returns {string}
  */
 export function prepareAndOrganize(markdown, options = {}) {
-  let notes = markdown
+  // 先去掉旧前言，再整理变更，最后重新挂上固定说明（保证每次 Release 内容一致）
+  let notes = stripReleasePreamble(markdown)
 
   if (!hasChangeItems(notes)) {
     let subjects = options.commits
@@ -311,7 +366,11 @@ export function prepareAndOrganize(markdown, options = {}) {
     }
   }
 
-  return organize(notes)
+  const organized = organize(notes)
+  if (options.skipPreamble) {
+    return organized
+  }
+  return applyReleasePreamble(organized)
 }
 
 /**
