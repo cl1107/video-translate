@@ -81,14 +81,38 @@ a {
   letter-spacing: -0.03em;
 }
 
+.brand-mark-wrap {
+  position: relative;
+  display: block;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
 .brand-mark {
   display: block;
   width: 34px;
   height: 34px;
   border-radius: 9px;
   object-fit: cover;
-  flex-shrink: 0;
   user-select: none;
+}
+
+/*
+ * 与 desktop 同源点缀。
+ * desktop 是 32px 方角图 + right/bottom -2px；landing logo 34px 且有 9px 圆角，
+ * 若同样 -2px 会显得挂在盒子外沿偏下，故略内收并上移，贴在圆角右下角。
+ */
+.brand-mark-dot {
+  position: absolute;
+  right: -1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--acid);
+  box-shadow: 0 0 0 2px #0b0d0c;
+  pointer-events: none;
 }
 
 nav {

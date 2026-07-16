@@ -1,7 +1,7 @@
 {
   "name": "video-translate",
   "displayName": "视频翻译助手",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "基于 sherpa-onnx（SenseVoice/Fun-ASR-Nano）+ Ollama 的本地视频翻译软件",
   "homepage": "https://github.com/cl1107/video-translate",

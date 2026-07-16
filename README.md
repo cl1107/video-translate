@@ -4,7 +4,7 @@
 
 **产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
 
-![视频翻译助手](https://img.shields.io/badge/version-0.5.0-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.6.0-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Pages](https://img.shields.io/badge/GitHub%20Pages-live-success.svg)

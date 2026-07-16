@@ -19,7 +19,7 @@ import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import appLogo from './assets/logo-transparent.png'
 
-const APP_VERSION = '0.5.0'
+const APP_VERSION = '0.6.0'
 const releaseUrl = 'https://github.com/cl1107/video-translate/releases/latest'
 const repositoryUrl = 'https://github.com/cl1107/video-translate'
 const siteUrl = 'https://cl1107.github.io/video-translate/'
@@ -94,8 +94,7 @@ const features = [
     icon: Flame,
     eyebrow: 'HARD SUBS',
     title: '双语硬字幕烧录',
-    description:
-      '生成双语 ASS，可选仅原文 / 仅译文 / 堆叠双语，颜色可自定义。',
+    description: '生成双语 ASS，可选仅原文 / 仅译文 / 堆叠双语，颜色可自定义。',
   },
   {
     icon: LockKeyhole,
@@ -122,14 +121,18 @@ export function App() {
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="视频翻译助手首页">
-          <img
-            className="brand-mark"
-            src={appLogo}
-            alt=""
-            width={34}
-            height={34}
-            draggable={false}
-          />
+          <span className="brand-mark-wrap">
+            <img
+              className="brand-mark"
+              src={appLogo}
+              alt=""
+              width={34}
+              height={34}
+              draggable={false}
+            />
+            {/* 与 desktop 首页 logo 同源的 brand 点缀 */}
+            <span className="brand-mark-dot" aria-hidden />
+          </span>
           <span>视频翻译助手</span>
         </a>
         <nav aria-label="主导航">
@@ -289,10 +292,12 @@ export function App() {
 
       <div className="marquee" aria-hidden="true">
         <div>
-          在线链接下载 <Sparkles size={16} /> 平台字幕优先 <Sparkles size={16} />
+          在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
+          <Sparkles size={16} />
           本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
           双语硬字幕 <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
-          在线链接下载 <Sparkles size={16} /> 平台字幕优先 <Sparkles size={16} />
+          在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
+          <Sparkles size={16} />
           本地语音识别
         </div>
       </div>
