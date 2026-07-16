@@ -21,8 +21,13 @@ test('发布工作流使用固定版本的 GitHub Actions', () => {
 
 test('发布工作流按 Conventional Commit 类型整理 release notes', () => {
   assert.match(workflow, /--generate-notes/)
-  assert.match(workflow, /scripts\/organize-release-notes\.mjs/)
+  assert.match(
+    workflow,
+    /scripts\/organize-release-notes\.mjs --tag "\$RELEASE_TAG"/
+  )
   assert.match(workflow, /gh release edit "\$RELEASE_TAG" --notes-file/)
+  // publish job needs full history for git-log fallback when no PRs
+  assert.match(workflow, /fetch-depth:\s*0/)
 })
 
 test('桌面包明确禁用 electron-builder 隐式发布', async () => {

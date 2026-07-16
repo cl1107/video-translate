@@ -106,6 +106,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Need full history + tags so commit-based notes fallback can git log
+          # previous_tag..RELEASE_TAG when GitHub --generate-notes has no PRs.
+          fetch-depth: 0
 
       - name: Download release packages
         uses: actions/download-artifact@v6
@@ -133,10 +137,12 @@ jobs:
           else
             # GitHub auto notes (PR list), then re-group by Conventional Commit type
             # (feat:/fix:/docs: …) — same approach as web-infra-dev/rsbuild.
+            # When there are no merged PRs, --generate-notes is only a Full Changelog
+            # link; the script falls back to git log subjects for that range.
             gh release create "$RELEASE_TAG" "${files[@]}" --generate-notes --title "$RELEASE_TAG"
             tmp_dir="$(mktemp -d)"
             gh release view "$RELEASE_TAG" --json body --jq '.body' > "$tmp_dir/generated.md"
-            if node scripts/organize-release-notes.mjs "$tmp_dir/generated.md" > "$tmp_dir/organized.md"; then
+            if node scripts/organize-release-notes.mjs --tag "$RELEASE_TAG" "$tmp_dir/generated.md" > "$tmp_dir/organized.md"; then
               gh release edit "$RELEASE_TAG" --notes-file "$tmp_dir/organized.md"
             else
               echo "Warning: could not organize release notes; keeping GitHub-generated body" >&2
