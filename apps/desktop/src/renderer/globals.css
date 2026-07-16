@@ -50,6 +50,12 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.72 0.09 122);
+  /* 动效：状态反馈用，非装饰编排 */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
 }
 
 .dark {
@@ -164,5 +170,109 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/*
+ * 工作台动效工具：仅状态反馈。
+ * 默认可见；动画只在 motion 允许时增强，避免无动画时空白。
+ */
+@layer utilities {
+  .motion-chevron {
+    transition: transform var(--duration-fast) var(--ease-out-quart);
+  }
+
+  .motion-chevron[data-open='true'] {
+    transform: rotate(180deg);
+  }
+
+  .motion-drop-zone {
+    transition:
+      border-color var(--duration-normal) var(--ease-out-quart),
+      background-color var(--duration-normal) var(--ease-out-quart),
+      box-shadow var(--duration-normal) var(--ease-out-quart),
+      transform var(--duration-normal) var(--ease-out-quart);
+  }
+
+  .motion-drop-zone[data-active='true'] {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--brand) 45%, transparent);
+  }
+
+  /* 进度填充：用 scaleX，避免 width 布局动画 */
+  .motion-progress-fill {
+    width: 100%;
+    transform: scaleX(var(--progress, 0));
+    transform-origin: left center;
+    transition: transform var(--duration-normal) var(--ease-out-quart);
+  }
+
+  /* 进行中状态：极轻呼吸，传达「还在跑」 */
+  .motion-status-live {
+    animation: status-live-pulse 1.6s var(--ease-out-quart) infinite;
+  }
+
+  @keyframes status-live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.72;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .motion-panel-in {
+      animation: panel-in var(--duration-normal) var(--ease-out-quart);
+    }
+
+    .motion-banner-in {
+      animation: banner-in var(--duration-normal) var(--ease-out-quart);
+    }
+
+    @keyframes panel-in {
+      from {
+        opacity: 0.55;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes banner-in {
+      from {
+        opacity: 0.4;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-status-live {
+      animation: none;
+    }
+
+    .motion-drop-zone[data-active='true'] {
+      transform: none;
+    }
+
+    .motion-progress-fill {
+      transition: none;
+    }
+  }
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 }

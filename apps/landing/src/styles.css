@@ -9,6 +9,12 @@
   --acid: #d9ff65;
   --orange: #ff6b3d;
   --line: rgba(255, 255, 255, 0.14);
+  /* 动效曲线：签名入场用 expo，微交互用 quart */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 320ms;
 }
 
 * {
@@ -95,7 +101,7 @@ nav {
 
 nav a,
 footer > a:last-child {
-  transition: color 180ms ease;
+  transition: color var(--duration-fast) var(--ease-out-quart);
 }
 
 nav a:hover,
@@ -115,13 +121,29 @@ footer > a:last-child:hover {
   font-size: 12px;
   font-weight: 720;
   transition:
-    transform 180ms ease,
-    background 180ms ease;
+    transform var(--duration-fast) var(--ease-out-quart),
+    background var(--duration-fast) var(--ease-out-quart);
 }
 
 .header-download:hover {
   background: var(--acid);
   transform: translateY(-2px);
+}
+
+.header-download:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.header-download:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
+}
+
+nav a:focus-visible,
+footer a:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .hero {
@@ -145,6 +167,7 @@ footer > a:last-child:hover {
   background: rgba(217, 255, 101, 0.08);
   filter: blur(120px);
   border-radius: 50%;
+  pointer-events: none;
 }
 
 .kicker,
@@ -175,10 +198,12 @@ p {
 
 h1 {
   margin-bottom: 30px;
-  font-size: clamp(57px, 6.2vw, 102px);
+  font-size: clamp(52px, 5.8vw, 96px);
   font-weight: 820;
   line-height: 0.98;
-  letter-spacing: -0.075em;
+  /* 字距底线 ≥ -0.04em，避免中文/拉丁挤在一起 */
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 h1 em {
@@ -192,6 +217,7 @@ h1 em {
   color: #aaa9a2;
   font-size: 17px;
   line-height: 1.85;
+  text-wrap: pretty;
 }
 
 .hero-actions {
@@ -212,13 +238,23 @@ h1 em {
   font-size: 13px;
   font-weight: 740;
   transition:
-    transform 180ms ease,
-    background 180ms ease,
-    border-color 180ms ease;
+    transform var(--duration-fast) var(--ease-out-quart),
+    background var(--duration-fast) var(--ease-out-quart),
+    border-color var(--duration-fast) var(--ease-out-quart),
+    box-shadow var(--duration-fast) var(--ease-out-quart);
 }
 
 .button:hover {
   transform: translateY(-3px);
+}
+
+.button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
 }
 
 .button-primary {
@@ -307,6 +343,7 @@ h1 em {
 }
 
 .url-card {
+  --card-rot: 2.5deg;
   top: 42px;
   left: -24px;
   gap: 8px;
@@ -315,7 +352,7 @@ h1 em {
   border-radius: 99px;
   font-size: 9px;
   font-weight: 600;
-  transform: rotate(2.5deg);
+  transform: rotate(var(--card-rot));
 }
 
 .url-card svg {
@@ -433,13 +470,22 @@ h1 em {
   cursor: pointer;
   box-shadow: 0 8px 35px rgba(0, 0, 0, 0.26);
   transition:
-    transform 180ms ease,
-    background 180ms ease;
+    transform var(--duration-fast) var(--ease-out-quart),
+    background var(--duration-fast) var(--ease-out-quart);
 }
 
 .play-button:hover {
   background: var(--acid);
   transform: scale(1.08);
+}
+
+.play-button:active {
+  transform: scale(0.96);
+}
+
+.play-button:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 3px;
 }
 
 .subtitle-preview {
@@ -456,6 +502,10 @@ h1 em {
   font-weight: 620;
   text-align: center;
   backdrop-filter: blur(5px);
+}
+
+.subtitle-preview-text {
+  display: block;
 }
 
 .timecode {
@@ -499,6 +549,24 @@ h1 em {
   font: inherit;
   font-size: 9px;
   cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out-quart),
+    background var(--duration-fast) var(--ease-out-quart),
+    border-color var(--duration-fast) var(--ease-out-quart),
+    transform var(--duration-fast) var(--ease-out-quart);
+}
+
+.language-switcher button:hover {
+  color: #c5c6bf;
+}
+
+.language-switcher button:active {
+  transform: scale(0.96);
+}
+
+.language-switcher button:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
 }
 
 .language-switcher button.active {
@@ -538,6 +606,7 @@ h1 em {
   background: #a8c84e;
   border-radius: 2px;
   opacity: 0.72;
+  transform-origin: center bottom;
 }
 
 .waveform i {
@@ -573,9 +642,9 @@ h1 em {
 .caption-track strong {
   padding: 6px 8px;
   color: #b6baad;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid var(--orange);
-  border-radius: 3px;
+  background: rgba(255, 107, 61, 0.1);
+  border: 1px solid rgba(255, 107, 61, 0.28);
+  border-radius: 4px;
   font-weight: 520;
 }
 
@@ -591,6 +660,7 @@ h1 em {
 }
 
 .status-card {
+  --card-rot: -2deg;
   right: -32px;
   bottom: 88px;
   gap: 11px;
@@ -598,7 +668,7 @@ h1 em {
   padding: 13px 14px;
   color: var(--acid);
   border-radius: 12px;
-  transform: rotate(-2deg);
+  transform: rotate(var(--card-rot));
 }
 
 .status-card div {
@@ -629,9 +699,11 @@ h1 em {
   width: 87%;
   height: 100%;
   background: var(--acid);
+  transform-origin: left center;
 }
 
 .privacy-card {
+  --card-rot: -2deg;
   bottom: -16px;
   left: -28px;
   gap: 8px;
@@ -639,26 +711,63 @@ h1 em {
   color: #c7cac1;
   border-radius: 99px;
   font-size: 9px;
-  transform: rotate(-2deg);
+  transform: rotate(var(--card-rot));
 }
 
 .privacy-card svg {
   color: var(--acid);
 }
 
+/*
+ * 签名入场：内容默认可见。
+ * 仅在允许 motion 时叠加 reveal，避免无动画/后台标签时整块空白。
+ */
 .reveal {
-  opacity: 0;
-  animation: reveal-up 760ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-.reveal-two {
-  animation-delay: 160ms;
+  opacity: 1;
 }
 
 @keyframes reveal-up {
   from {
     opacity: 0;
-    transform: translateY(24px);
+    transform: translateY(20px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes reveal-studio {
+  from {
+    opacity: 0;
+    transform: translateY(28px) rotate(4deg);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(1.5deg);
+    filter: blur(0);
+  }
+}
+
+/* --card-rot 由各 floating-card 设定，入场不冲掉微旋转 */
+@keyframes float-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96) rotate(var(--card-rot, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(var(--card-rot, 0deg));
+  }
+}
+
+@keyframes subtitle-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -666,18 +775,52 @@ h1 em {
   }
 }
 
-.studio-shell.reveal-two {
-  animation-name: reveal-studio;
+@keyframes wave-live {
+  0%,
+  100% {
+    transform: scaleY(1);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scaleY(1.18);
+    opacity: 0.95;
+  }
 }
 
-@keyframes reveal-studio {
+@keyframes status-fill {
   from {
-    opacity: 0;
-    transform: translateY(28px) rotate(4deg);
+    transform: scaleX(0.18);
   }
   to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
     opacity: 1;
-    transform: translateY(0) rotate(1.5deg);
+    transform: scale(1.06);
+  }
+}
+
+@keyframes orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes card-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
   }
 }
 
@@ -697,13 +840,6 @@ h1 em {
   font-size: 12px;
   font-weight: 790;
   letter-spacing: 0.06em;
-  animation: marquee 24s linear infinite;
-}
-
-@keyframes marquee {
-  to {
-    transform: translateX(-50%);
-  }
 }
 
 .section {
@@ -714,8 +850,9 @@ h1 em {
 
 .section-heading {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 1fr;
   align-items: end;
+  max-width: 48rem;
   margin-bottom: 70px;
 }
 
@@ -723,10 +860,11 @@ h1 em {
 .workflow-intro h2,
 .privacy-copy h2 {
   margin: 0;
-  font-size: clamp(42px, 5.2vw, 76px);
+  font-size: clamp(40px, 5vw, 72px);
   font-weight: 790;
   line-height: 1.1;
-  letter-spacing: -0.065em;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 .section-heading h2 span {
@@ -751,28 +889,19 @@ h1 em {
   padding: 38px;
   background: var(--ink);
   transition:
-    background 240ms ease,
-    transform 240ms ease;
+    background var(--duration-slow) var(--ease-out-quart),
+    transform var(--duration-slow) var(--ease-out-quart);
 }
 
 .feature-card:hover {
   z-index: 2;
   background: #151815;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 
 .feature-card > svg {
-  margin: 52px 0 56px;
+  margin: 0 0 28px;
   color: var(--acid);
-}
-
-.feature-number {
-  position: absolute;
-  top: 31px;
-  right: 34px;
-  color: #4f514c;
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
 }
 
 .feature-card > p {
@@ -780,7 +909,7 @@ h1 em {
   color: #676963;
   font-size: 9px;
   font-weight: 750;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
 }
 
 .feature-card h3 {
@@ -824,14 +953,17 @@ h1 em {
   align-items: center;
   min-height: 128px;
   border-bottom: 1px solid var(--line);
+  /* 用 transform，避免动画 padding 触发布局 */
   transition:
-    padding 180ms ease,
-    color 180ms ease;
+    color var(--duration-fast) var(--ease-out-quart),
+    transform var(--duration-fast) var(--ease-out-quart),
+    background-color var(--duration-fast) var(--ease-out-quart);
 }
 
 .workflow-list article:hover {
-  padding: 0 14px;
   color: var(--acid);
+  transform: translateX(10px);
+  background-color: rgba(255, 255, 255, 0.02);
 }
 
 .workflow-list article > span {
@@ -896,7 +1028,7 @@ h1 em {
   margin-top: 7px;
   font-size: 37px;
   font-weight: 850;
-  letter-spacing: -0.08em;
+  letter-spacing: -0.04em;
 }
 
 .privacy-core small {
@@ -1024,10 +1156,11 @@ h1 em {
 .cta-section h2 {
   max-width: 900px;
   margin: 0 auto 40px;
-  font-size: clamp(46px, 7vw, 98px);
+  font-size: clamp(44px, 6.5vw, 96px);
   font-weight: 860;
   line-height: 1.04;
-  letter-spacing: -0.075em;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 .cta-section .hero-actions {
@@ -1244,16 +1377,112 @@ footer > a:last-child {
   }
 }
 
+/* 仅允许 motion 时跑签名编排与持续生命力动效 */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal.reveal-one {
+    animation: reveal-up 720ms var(--ease-out-expo) both;
+  }
+
+  .reveal.reveal-two {
+    animation: reveal-studio 820ms var(--ease-out-expo) 140ms both;
+  }
+
+  .hero-glow {
+    animation: glow-breathe 7s var(--ease-out-quart) infinite;
+  }
+
+  .marquee div {
+    animation: marquee 24s linear infinite;
+  }
+
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* 入场 + 轻浮：translate 与 transform 分层，保留 --card-rot */
+  .studio-shell .status-card.is-live,
+  .studio-shell .privacy-card.is-live,
+  .studio-shell .url-card.is-live {
+    animation:
+      float-card-in 560ms var(--ease-out-expo) both,
+      card-float 5.5s var(--ease-out-quart) infinite;
+  }
+
+  .studio-shell .status-card.is-live {
+    animation-delay: 520ms, 1.15s;
+  }
+
+  .studio-shell .privacy-card.is-live {
+    animation-delay: 620ms, 1.3s;
+  }
+
+  .studio-shell .url-card.is-live {
+    animation-delay: 700ms, 1.45s;
+  }
+
+  .subtitle-preview-text {
+    animation: subtitle-swap 280ms var(--ease-out-quart);
+  }
+
+  .waveform > span {
+    animation: wave-live 1.8s var(--ease-out-quart) infinite;
+    animation-delay: calc(var(--i, 0) * 42ms);
+  }
+
+  .status-card > i span {
+    animation: status-fill 1.1s var(--ease-out-expo) 0.7s both;
+  }
+
+  .orbit-one {
+    animation: orbit-spin 28s linear infinite;
+  }
+
+  .orbit-two {
+    animation: orbit-spin 42s linear infinite reverse;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
+
   *,
   *::before,
   *::after {
     scroll-behavior: auto;
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .reveal,
+  .reveal.reveal-one,
+  .reveal.reveal-two,
+  .studio-shell .floating-card,
+  .subtitle-preview-text {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+  }
+
+  .studio-shell.reveal-two {
+    transform: rotate(1.5deg) !important;
+  }
+
+  .marquee div,
+  .hero-glow,
+  .waveform > span,
+  .orbit-one,
+  .orbit-two,
+  .status-card > i span {
+    animation: none !important;
+  }
+
+  .workflow-list article:hover {
+    transform: none;
   }
 }

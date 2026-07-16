@@ -2,7 +2,6 @@ import {
   Calendar,
   Captions,
   ChevronDown,
-  ChevronUp,
   Clock,
   FileVideo,
   Flame,
@@ -12,7 +11,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Badge } from 'renderer/components/ui/badge'
 import { Button } from 'renderer/components/ui/button'
 import {
@@ -154,6 +153,19 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
     () => tasks.filter(t => t.status === TaskStatus.FAILED).length,
     [tasks]
   )
+
+  // 自定义菜单：Esc 关闭（无 portal 菜单库时的可达性补齐）
+  useEffect(() => {
+    if (!openOutputMenuTaskId && !openBurnMenuTaskId) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenOutputMenuTaskId(undefined)
+        setOpenBurnMenuTaskId(undefined)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [openOutputMenuTaskId, openBurnMenuTaskId])
 
   const showError = useCallback((text: string) => {
     setBanner({ type: 'error', text })
@@ -309,8 +321,8 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
           role="alert"
           className={
             banner.type === 'error'
-              ? 'rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive'
-              : 'rounded-md border border-brand/25 bg-brand/10 px-3 py-2 text-sm text-brand-ink'
+              ? 'motion-banner-in rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive'
+              : 'motion-banner-in rounded-md border border-brand/25 bg-brand/10 px-3 py-2 text-sm text-brand-ink'
           }
         >
           <div className="flex items-start justify-between gap-3">
@@ -382,7 +394,14 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <Badge variant={getStatusVariant(task.status)}>
+                  <Badge
+                    variant={getStatusVariant(task.status)}
+                    className={
+                      getStatusVariant(task.status) === 'brand-soft'
+                        ? 'motion-status-live'
+                        : undefined
+                    }
+                  >
                     {getStatusText(task.status)}
                   </Badge>
                   <Button
@@ -390,13 +409,13 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                     size="sm"
                     className="size-8 p-0"
                     aria-label={isExpanded ? '收起详情' : '展开详情'}
+                    aria-expanded={isExpanded}
                     onClick={() => toggleTaskExpanded(task.id)}
                   >
-                    {isExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
+                    <ChevronDown
+                      className="motion-chevron h-4 w-4"
+                      data-open={isExpanded ? 'true' : undefined}
+                    />
                   </Button>
                 </div>
               </div>
@@ -417,7 +436,8 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
 
               {task.status === TaskStatus.COMPLETED && (
                 <p className="text-xs text-brand-ink">
-                  可用字幕已生成（本机）。用下方按钮打开字幕文件或结果文件夹。
+                  字幕已就绪（本机）。可打开字幕，或在结果文件夹查看全部产物
+                  {labels.length > 0 ? `：${labels.join(' · ')}。` : '。'}
                 </p>
               )}
 
@@ -431,7 +451,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
               )}
 
               {isExpanded && (
-                <div className="flex flex-col gap-3 border-t pt-3">
+                <div className="motion-panel-in flex flex-col gap-3 border-t pt-3">
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <span className="font-medium">源语言:</span>{' '}
@@ -506,7 +526,10 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                         {isBurning ? '烧录中…' : '烧录'}
                       </Button>
                       {openBurnMenuTaskId === task.id && !isBurning && (
-                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-52 rounded-md border bg-background p-1 shadow-md">
+                        <div
+                          role="menu"
+                          className="absolute bottom-full right-0 z-20 mb-2 min-w-52 rounded-md border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                        >
                           <p className="px-2 py-1.5 text-xs text-muted-foreground">
                             选择要烧录的字幕
                           </p>
@@ -551,7 +574,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                         )}
                         {task.outputArtifacts?.burnedVideo
                           ? '打开视频'
-                          : '打开字幕文件'}
+                          : '打开字幕'}
                       </Button>
                       <Button
                         variant="outline"
@@ -568,7 +591,10 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                         <ChevronDown className="h-4 w-4" />
                       </Button>
                       {openOutputMenuTaskId === task.id && (
-                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-40 rounded-md border bg-background p-1 shadow-md">
+                        <div
+                          role="menu"
+                          className="absolute bottom-full right-0 z-20 mb-2 min-w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                        >
                           {task.outputArtifacts?.burnedVideo && (
                             <Button
                               variant="ghost"
@@ -579,7 +605,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                               }
                             >
                               <Captions className="h-4 w-4" />
-                              打开字幕文件
+                              打开字幕
                             </Button>
                           )}
                           <Button

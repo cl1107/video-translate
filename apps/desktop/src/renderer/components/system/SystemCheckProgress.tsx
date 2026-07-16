@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { SystemCheckProgress } from '../../../shared/system-check'
 
 export function SystemCheckProgressView({
@@ -5,8 +6,10 @@ export function SystemCheckProgressView({
 }: {
   progress: SystemCheckProgress
 }) {
+  const ratio = Math.min(1, Math.max(0, progress.percent / 100))
+
   return (
-    <div className="space-y-2 rounded-lg border p-3 bg-muted/40">
+    <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="text-muted-foreground">{progress.message}</span>
         <span className="font-medium tabular-nums">{progress.percent}%</span>
@@ -20,8 +23,8 @@ export function SystemCheckProgressView({
         className="h-2 w-full overflow-hidden rounded-full bg-brand/20"
       >
         <div
-          className="h-full bg-brand transition-[width] duration-200"
-          style={{ width: `${progress.percent}%` }}
+          className="motion-progress-fill h-full bg-brand"
+          style={{ '--progress': ratio } as CSSProperties}
         />
       </div>
     </div>

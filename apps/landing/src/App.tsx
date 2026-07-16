@@ -214,7 +214,11 @@ export function App() {
               >
                 <Play size={18} fill="currentColor" />
               </button>
-              <div className="subtitle-preview">{translations[language]}</div>
+              <div className="subtitle-preview">
+                <span key={language} className="subtitle-preview-text">
+                  {translations[language]}
+                </span>
+              </div>
               <span className="timecode">00:01:24:18</span>
               <span className="source-pill">
                 <Link2 size={11} />
@@ -242,10 +246,15 @@ export function App() {
                 <span>01:42</span>
               </div>
               <div className="waveform" aria-hidden="true">
-                {waveformBars.map(bar => (
+                {waveformBars.map((bar, index) => (
                   <span
                     key={bar.id}
-                    style={{ '--wave': bar.height } as CSSProperties}
+                    style={
+                      {
+                        '--wave': bar.height,
+                        '--i': index % 12,
+                      } as CSSProperties
+                    }
                   />
                 ))}
                 <i />
@@ -257,7 +266,7 @@ export function App() {
               </div>
             </div>
           </div>
-          <div className="floating-card status-card">
+          <div className="floating-card status-card is-live">
             <ScanLine size={17} />
             <div>
               <span>平台字幕</span>
@@ -267,11 +276,11 @@ export function App() {
               <span />
             </i>
           </div>
-          <div className="floating-card privacy-card">
+          <div className="floating-card privacy-card is-live">
             <Check size={16} />
             视频未上传云端
           </div>
-          <div className="floating-card url-card">
+          <div className="floating-card url-card is-live">
             <WandSparkles size={15} />
             链接 → 下载 → 字幕
           </div>
@@ -290,7 +299,6 @@ export function App() {
 
       <section className="section features-section" id="features">
         <div className="section-heading">
-          <p className="section-index">01 / 核心能力</p>
           <h2>
             从链接到成片字幕，
             <br />
@@ -298,11 +306,8 @@ export function App() {
           </h2>
         </div>
         <div className="feature-grid feature-grid-six">
-          {features.map(({ icon: Icon, eyebrow, title, description }, index) => (
+          {features.map(({ icon: Icon, eyebrow, title, description }) => (
             <article className="feature-card" key={title}>
-              <div className="feature-number">
-                {String(index + 1).padStart(2, '0')}
-              </div>
               <Icon size={27} strokeWidth={1.7} />
               <p>{eyebrow}</p>
               <h3>{title}</h3>
@@ -314,7 +319,6 @@ export function App() {
 
       <section className="section workflow-section" id="workflow">
         <div className="workflow-intro">
-          <p className="section-index">02 / 工作流</p>
           <h2>从素材到字幕，四步完成。</h2>
           <p>
             本地文件或在线链接；有平台字幕就跳过识别，没有再走
@@ -352,7 +356,6 @@ export function App() {
           <span className="orbit-label label-three">翻译结果</span>
         </div>
         <div className="privacy-copy">
-          <p className="section-index">03 / 隐私</p>
           <h2>你的素材，只属于你的设备。</h2>
           <p>
             视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本和字幕产物都保存在本机路径中。

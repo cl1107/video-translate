@@ -101,7 +101,7 @@ export function MainScreen() {
                 onClick={() => setActiveTab('upload')}
                 aria-current={activeTab === 'upload' ? 'page' : undefined}
                 className={cn(
-                  'gap-1.5',
+                  'gap-1.5 transition-[background-color,box-shadow,color] duration-150',
                   activeTab === 'upload' &&
                     'bg-background text-foreground shadow-xs hover:bg-background hover:text-foreground'
                 )}
@@ -115,7 +115,7 @@ export function MainScreen() {
                 onClick={() => setActiveTab('tasks')}
                 aria-current={activeTab === 'tasks' ? 'page' : undefined}
                 className={cn(
-                  'gap-1.5',
+                  'gap-1.5 transition-[background-color,box-shadow,color] duration-150',
                   activeTab === 'tasks' &&
                     'bg-background text-foreground shadow-xs hover:bg-background hover:text-foreground'
                 )}
@@ -125,7 +125,7 @@ export function MainScreen() {
                 {tasks.length > 0 && (
                   <span
                     className={cn(
-                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium leading-none',
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium leading-none transition-colors duration-150',
                       tasks.some(t => t.status === 'failed')
                         ? 'bg-destructive/15 text-destructive'
                         : activeTab === 'tasks'
@@ -154,12 +154,15 @@ export function MainScreen() {
         </div>
       </header>
 
-      {/* 主要内容区域 */}
+      {/* 主要内容区域：切换时轻微 panel-in，内容默认可见 */}
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-6">
         {activeTab === 'upload' && (
-          <div className="mx-auto flex max-w-2xl flex-col gap-5">
+          <div
+            key="upload"
+            className="motion-panel-in mx-auto flex max-w-2xl flex-col gap-5"
+          >
             <div className="flex flex-col gap-1">
-              <h1 className="text-lg font-semibold text-foreground">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground text-balance">
                 添加要翻译的视频
               </h1>
               <p className="text-sm text-muted-foreground">
@@ -172,11 +175,13 @@ export function MainScreen() {
         )}
 
         {activeTab === 'tasks' && (
-          <TaskList
-            tasks={tasks}
-            onTasksChange={loadTasks}
-            onGoUpload={() => setActiveTab('upload')}
-          />
+          <div key="tasks" className="motion-panel-in">
+            <TaskList
+              tasks={tasks}
+              onTasksChange={loadTasks}
+              onGoUpload={() => setActiveTab('upload')}
+            />
+          </div>
         )}
       </main>
     </div>

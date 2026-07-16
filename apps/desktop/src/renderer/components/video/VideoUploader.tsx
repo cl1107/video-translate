@@ -241,7 +241,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
   return (
     <div className="flex flex-col gap-4">
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="motion-banner-in">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span>{error}</span>
@@ -260,7 +260,8 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       )}
 
       <Card
-        className={`gap-0 py-0 transition-colors duration-200 ${
+        data-active={dragActive ? 'true' : undefined}
+        className={`motion-drop-zone gap-0 py-0 ${
           dragActive
             ? 'border-brand bg-brand/10'
             : 'border-2 border-dashed hover:border-brand/40'
@@ -272,9 +273,13 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       >
         <CardContent className="pointer-events-none flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
           {dragActive || uploading ? (
-            <FileVideo className="h-10 w-10 text-brand-ink" />
+            <FileVideo
+              className={`h-10 w-10 text-brand-ink transition-transform duration-150 ${
+                dragActive ? 'scale-110' : ''
+              }`}
+            />
           ) : (
-            <Upload className="h-10 w-10 text-muted-foreground" />
+            <Upload className="h-10 w-10 text-muted-foreground transition-colors duration-150" />
           )}
 
           <div className="flex flex-col gap-1">

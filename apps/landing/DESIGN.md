@@ -17,13 +17,13 @@ colors:
 typography:
   display:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "clamp(57px, 6.2vw, 102px)"
+    fontSize: "clamp(52px, 5.8vw, 96px)"
     fontWeight: 820
     lineHeight: 0.98
-    letterSpacing: "-0.075em"
+    letterSpacing: "-0.04em"
   headline:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "clamp(42px, 5.2vw, 76px)"
+    fontSize: "clamp(40px, 5vw, 72px)"
     fontWeight: 800
     lineHeight: 1.05
     letterSpacing: "-0.04em"
@@ -135,17 +135,17 @@ components:
 
 ### Hierarchy
 
-- **Display** (820, `clamp(57px, 6.2vw, 102px)`, lh 0.98, ls ~-0.075em): Hero 主标题。注意：字距已偏紧，新增时不要再压到更负；优先改 copy 或缩小 clamp。
-- **Headline** (800, `clamp(42px, 5.2vw, 76px)`): 区块大标题。
+- **Display** (820, `clamp(52px, 5.8vw, 96px)`, lh 0.98, ls -0.04em): Hero 主标题。字距底线 -0.04em；clamp 上限约 96px。
+- **Headline** (800, `clamp(40px, 5vw, 72px)`): 区块大标题。
 - **Body** (400, 17px, lh 1.85): Hero 说明与长文。
-- **Label / Kicker** (670, 11px, ls 0.15em, uppercase): 少量 kicker — 禁止每个 section 都贴一条。
+- **Label / Kicker** (670, 11px, ls 0.15em, uppercase): 仅 Hero 一处 kicker — 禁止每个 section 都贴一条。
 - **Button** (740, 13px): CTA 标签。
 
 ### Named Rules
 
-**The One-Kicker Rule.** 全页最多审慎使用 uppercase kicker；禁止每节 `01 / 02 / 03` 式脚手架（工作流若本身是序列可保留一处编号）。
+**The One-Kicker Rule.** 全页最多审慎使用 uppercase kicker；禁止每节 `01 / 02 / 03` 式脚手架（工作流步骤编号可保留，因顺序本身承载信息）。
 
-**The Display Ceiling Rule.** 标题 clamp 上限不超过约 102px；字距不要比现网更紧到字母粘连。
+**The Display Ceiling Rule.** 标题 clamp 上限不超过约 96px（6rem）；letter-spacing ≥ -0.04em。
 
 ## 4. Elevation
 
