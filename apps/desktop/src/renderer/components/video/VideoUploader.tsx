@@ -1,5 +1,6 @@
 import { AlertCircle, FileVideo, Link2, Upload, Video } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
 import { Button } from 'renderer/components/ui/button'
 import { Card, CardContent } from 'renderer/components/ui/card'
@@ -29,7 +30,6 @@ function extractUrls(text: string): string[] {
     .filter(Boolean)
   const urls: string[] = []
   for (const line of lines) {
-    // 支持行内夹杂说明时仍提取 URL
     const match = line.match(/https?:\/\/[^\s<>"']+/i)
     if (match) {
       urls.push(match[0].replace(/[),.;]+$/, ''))
@@ -40,57 +40,175 @@ function extractUrls(text: string): string[] {
   return [...new Set(urls)]
 }
 
+const VIDEO_EXT = /\.(mp4|avi|mov|mkv|webm|wmv|flv)$/i
+
+/** 解析拖入 File 的本地路径（Electron 必须走 webUtils，File.path 已失效） */
+function resolveDroppedFilePath(file: File): string {
+  // 1) preload 暴露的 webUtils.getPathForFile（Electron 32+ 正确路径）
+  try {
+    const viaApi = window.App.getPathForFile?.(file)
+    if (viaApi && viaApi.trim()) return viaApi.trim()
+  } catch {
+    // 忽略，走兼容回退
+  }
+
+  // 2) 旧版 Electron 可能仍挂 path（兼容）
+  const legacy = (file as File & { path?: string }).path
+  if (legacy && legacy.trim()) return legacy.trim()
+
+  return ''
+}
+
+function isVideoPathOrName(pathOrName: string): boolean {
+  return VIDEO_EXT.test(pathOrName)
+}
+
 export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
+  const navigate = useNavigate()
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorHint, setErrorHint] = useState<'settings' | null>(null)
   const [urlText, setUrlText] = useState('')
   const [urlSubmitting, setUrlSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  /** 用计数避免子元素 dragenter/leave 抖动导致 drop 状态错乱 */
+  const dragDepthRef = useRef(0)
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
+  const uploadPaths = useCallback(
+    async (filePaths: string[]) => {
+      if (filePaths.length === 0) return
+      setUploading(true)
+      try {
+        const settings = loadSettings()
+        const result = await window.App.uploadFiles(filePaths, settings)
+        if (result.success) {
+          setError(null)
+          setErrorHint(null)
+          onUploadSuccess?.()
+        } else {
+          const msg = result.error || '未知错误'
+          setError(`上传失败：${msg}`)
+          setErrorHint(/ollama|模型|翻译/i.test(msg) ? 'settings' : null)
+        }
+      } finally {
+        setUploading(false)
+      }
+    },
+    [onUploadSuccess]
+  )
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
+    dragDepthRef.current += 1
+    setDragActive(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) {
       setDragActive(false)
     }
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragActive(false)
-    setError(null)
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      openFileDialog()
+    // 必须 preventDefault，否则浏览器不会触发 drop
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy'
     }
   }, [])
 
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      dragDepthRef.current = 0
+      setDragActive(false)
+      setError(null)
+      setErrorHint(null)
+
+      const files = Array.from(e.dataTransfer.files ?? [])
+      if (files.length === 0) {
+        // 有些环境 items 有值但 files 为空，尝试从 items 再读
+        const fromItems: File[] = []
+        if (e.dataTransfer.items) {
+          for (const item of Array.from(e.dataTransfer.items)) {
+            if (item.kind === 'file') {
+              const f = item.getAsFile()
+              if (f) fromItems.push(f)
+            }
+          }
+        }
+        if (fromItems.length === 0) {
+          setError('未识别到拖入的文件，请改用「选择文件」')
+          return
+        }
+        files.push(...fromItems)
+      }
+
+      const paths: string[] = []
+      const rejectedNames: string[] = []
+
+      for (const file of files) {
+        const filePath = resolveDroppedFilePath(file)
+        const nameForCheck = filePath || file.name
+        if (!isVideoPathOrName(nameForCheck)) {
+          rejectedNames.push(file.name || nameForCheck)
+          continue
+        }
+        if (!filePath) {
+          // 有视频扩展名但拿不到绝对路径
+          rejectedNames.push(file.name)
+          continue
+        }
+        paths.push(filePath)
+      }
+
+      if (paths.length === 0) {
+        if (rejectedNames.length > 0) {
+          setError(
+            `无法添加：${rejectedNames.slice(0, 3).join('、')}${
+              rejectedNames.length > 3 ? ' 等' : ''
+            }。请拖入支持的视频格式，或使用「选择文件」。`
+          )
+        } else {
+          setError('无法获取文件路径。请使用「选择文件」按钮添加。')
+        }
+        return
+      }
+
+      try {
+        await uploadPaths(paths)
+      } catch (err) {
+        setError(
+          `上传失败：${err instanceof Error ? err.message : String(err)}`
+        )
+      }
+    },
+    [uploadPaths]
+  )
+
   const openFileDialog = async () => {
+    setError(null)
+    setErrorHint(null)
     try {
       const filePaths = await window.App.openFileDialog()
-      if (filePaths.length > 0) {
-        const settings = loadSettings()
-        const result = await window.App.uploadFiles(filePaths, settings)
-        if (result.success) {
-          console.log('文件上传成功，任务ID:', result.taskIds)
-          onUploadSuccess?.()
-        } else {
-          console.error('文件上传失败:', result.error)
-          setError(`文件上传失败: ${result.error}`)
-        }
-      }
+      if (filePaths.length === 0) return
+      await uploadPaths(filePaths)
     } catch (err) {
-      console.error('文件选择失败:', err)
       setError(
-        `文件选择失败: ${err instanceof Error ? err.message : String(err)}`
+        `文件选择失败：${err instanceof Error ? err.message : String(err)}`
       )
     }
   }
 
   const submitUrls = async () => {
     setError(null)
+    setErrorHint(null)
     const urls = extractUrls(urlText)
     if (urls.length === 0) {
       setError('请粘贴至少一个有效的视频链接（http/https）')
@@ -102,15 +220,16 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       const settings = loadSettings()
       const result = await window.App.createTasksFromUrls(urls, settings)
       if (result.success) {
-        console.log('在线任务创建成功，任务ID:', result.taskIds)
         setUrlText('')
         onUploadSuccess?.()
       } else {
-        setError(`创建在线任务失败: ${result.error}`)
+        const msg = result.error || '未知错误'
+        setError(`创建在线任务失败：${msg}`)
+        setErrorHint(/yt-dlp|下载/i.test(msg) ? 'settings' : null)
       }
     } catch (err) {
       setError(
-        `创建在线任务失败: ${
+        `创建在线任务失败：${
           err instanceof Error ? err.message : String(err)
         }`
       )
@@ -124,39 +243,59 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            {errorHint === 'settings' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => navigate('/settings')}
+              >
+                打开设置
+              </Button>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
-      {/* 主路径：本地文件 */}
       <Card
         className={`gap-0 py-0 transition-colors duration-200 ${
           dragActive
-            ? 'border-primary bg-primary/5'
-            : 'border-2 border-dashed hover:border-primary/50'
+            ? 'border-brand bg-brand/10'
+            : 'border-2 border-dashed hover:border-brand/40'
         }`}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={e => void handleDrop(e)}
       >
-        <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
-          {dragActive ? (
-            <FileVideo className="h-10 w-10 text-primary" />
+        <CardContent className="pointer-events-none flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
+          {dragActive || uploading ? (
+            <FileVideo className="h-10 w-10 text-brand-ink" />
           ) : (
             <Upload className="h-10 w-10 text-muted-foreground" />
           )}
 
           <div className="flex flex-col gap-1">
             <h2 className="text-base font-semibold">
-              {dragActive ? '释放文件开始上传' : '拖拽视频到此处'}
+              {uploading
+                ? '正在添加…'
+                : dragActive
+                  ? '释放以添加视频'
+                  : '拖拽视频到此处'}
             </h2>
             <p className="text-sm text-muted-foreground">
               MP4 / AVI / MOV / MKV / WebM / WMV / FLV · 最大 2GB
             </p>
           </div>
 
-          <Button onClick={openFileDialog} className="mt-1">
+          {/* 按钮需可点：单独恢复 pointer-events */}
+          <Button
+            onClick={() => void openFileDialog()}
+            className="pointer-events-auto mt-1"
+            disabled={uploading}
+          >
             <Video className="h-4 w-4" />
             选择文件
           </Button>
@@ -169,7 +308,6 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      {/* 次路径：在线链接，紧凑表单 */}
       <Card className="gap-0 py-0">
         <CardContent className="flex flex-col gap-3 px-5 py-4">
           <div className="flex items-start gap-2.5">
@@ -177,14 +315,14 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
             <div className="flex min-w-0 flex-col gap-0.5">
               <h2 className="text-sm font-semibold">在线视频链接</h2>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                YouTube、B 站等 yt-dlp 支持的地址；优先用平台字幕，否则本地识别。
-                需本机已安装 <code className="text-[11px]">yt-dlp</code>。
+                YouTube、B 站等地址；优先用平台字幕，否则本地识别。需本机已安装{' '}
+                <code className="text-[11px]">yt-dlp</code>。
               </p>
             </div>
           </div>
 
           <textarea
-            className="w-full min-h-20 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            className="min-h-20 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             placeholder={
               'https://www.youtube.com/watch?v=...\nhttps://www.bilibili.com/video/BV...'
             }
@@ -201,7 +339,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
             <Button
               variant="secondary"
               size="sm"
-              onClick={submitUrls}
+              onClick={() => void submitUrls()}
               disabled={urlSubmitting || !urlText.trim()}
             >
               <Link2 className="h-4 w-4" />

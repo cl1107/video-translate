@@ -212,6 +212,23 @@ function setupIpcHandlers() {
     }
   })
 
+  ipcMain.handle(
+    IpcChannels.openExternalUrl,
+    async (_event, url: string) => {
+      try {
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+          return { success: false, error: '仅支持 http(s) 链接' }
+        }
+        await shell.openExternal(url)
+        return { success: true }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        return { success: false, error: errorMessage }
+      }
+    }
+  )
+
   ipcMain.handle(IpcChannels.getAsrStatus, async () => {
     try {
       const models = sherpaTranscriber.getStatus()

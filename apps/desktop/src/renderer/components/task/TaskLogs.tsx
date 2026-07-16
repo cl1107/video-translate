@@ -37,26 +37,28 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
   const getLogIcon = (level: TaskLog['level']) => {
     switch (level) {
       case 'success':
-        return <CheckCircle className="h-4 w-4 text-green-500" />
+        return <CheckCircle className="h-4 w-4 text-brand-ink" />
       case 'error':
-        return <XCircle className="h-4 w-4 text-red-500" />
+        return <XCircle className="h-4 w-4 text-destructive" />
       case 'warn':
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />
+        return (
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        )
       default:
-        return <Info className="h-4 w-4 text-blue-500" />
+        return <Info className="h-4 w-4 text-muted-foreground" />
     }
   }
 
   const getLogBgColor = (level: TaskLog['level']) => {
     switch (level) {
       case 'success':
-        return 'bg-green-50 border-green-200'
+        return 'border-brand/25 bg-brand/10 dark:bg-brand/8'
       case 'error':
-        return 'bg-red-50 border-red-200'
+        return 'border-destructive/25 bg-destructive/10'
       case 'warn':
-        return 'bg-yellow-50 border-yellow-200'
+        return 'border-amber-500/25 bg-amber-500/10'
       default:
-        return 'bg-blue-50 border-blue-200'
+        return 'border-border bg-muted/50'
     }
   }
 
@@ -116,13 +118,13 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <div
-                        className="text-sm font-medium text-gray-900"
+                        className="text-sm font-medium text-foreground"
                         style={{ userSelect: 'text' }}
                       >
                         {log.message}
                       </div>
                       <div
-                        className="text-xs text-gray-500 ml-2"
+                        className="ml-2 text-xs text-muted-foreground tabular-nums"
                         style={{ userSelect: 'text' }}
                       >
                         {formatTime(log.timestamp)}
@@ -130,7 +132,7 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
                     </div>
                     {log.details && (
                       <div
-                        className="mt-1 text-xs text-gray-600 break-all"
+                        className="mt-1 break-all text-xs text-muted-foreground"
                         style={{ userSelect: 'text' }}
                       >
                         {log.details}

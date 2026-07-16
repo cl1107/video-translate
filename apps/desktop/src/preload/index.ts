@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
   IpcChannels,
   type ArtifactKind,
@@ -16,6 +16,11 @@ declare global {
   interface Window {
     App: {
       openFileDialog: () => Promise<string[]>
+      /**
+       * Electron 32+ 起 File.path 在渲染进程不可用，
+       * 拖放/文件输入必须经 preload 用 webUtils 解析本地路径。
+       */
+      getPathForFile: (file: File) => string
       openTaskArtifact: (
         taskId: string,
         kind: ArtifactKind
@@ -104,6 +109,9 @@ declare global {
         path?: string
         error?: string
       }>
+      openExternalUrl: (
+        url: string
+      ) => Promise<{ success: boolean; error?: string }>
 
       getStatistics: () => Promise<unknown>
 
@@ -141,6 +149,14 @@ declare global {
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke(IpcChannels.openFileDialog),
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch (error) {
+      console.error('getPathForFile 失败:', error)
+      return ''
+    }
+  },
   openTaskArtifact: (taskId: string, kind: ArtifactKind) =>
     ipcRenderer.invoke(IpcChannels.openTaskArtifact, taskId, kind),
   uploadFiles: (
@@ -187,6 +203,8 @@ const api = {
     ipcRenderer.invoke(IpcChannels.checkSystemDependencies),
   getDiagnosticPaths: () => ipcRenderer.invoke(IpcChannels.getDiagnosticPaths),
   openLogsDir: () => ipcRenderer.invoke(IpcChannels.openLogsDir),
+  openExternalUrl: (url: string) =>
+    ipcRenderer.invoke(IpcChannels.openExternalUrl, url),
 
   getStatistics: () => ipcRenderer.invoke(IpcChannels.getStatistics),
 

@@ -11,13 +11,19 @@ colors:
   muted: "oklch(0.97 0 0)"
   muted-foreground: "oklch(0.556 0 0)"
   accent: "oklch(0.97 0 0)"
+  brand: "oklch(0.88 0.17 122)"
+  brand-foreground: "oklch(0.28 0.06 125)"
+  brand-ink: "oklch(0.48 0.12 128)"
   border: "oklch(0.922 0 0)"
-  ring: "oklch(0.708 0 0)"
+  ring: "oklch(0.72 0.09 122)"
   destructive: "oklch(0.577 0.245 27.325)"
   dark-background: "oklch(0.145 0 0)"
   dark-foreground: "oklch(0.985 0 0)"
   dark-primary: "oklch(0.985 0 0)"
   dark-muted: "oklch(0.269 0 0)"
+  dark-brand: "oklch(0.92 0.18 122)"
+  dark-brand-ink: "oklch(0.88 0.16 122)"
+  dark-ring: "oklch(0.82 0.14 122)"
 typography:
   title:
     fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
@@ -86,19 +92,28 @@ components:
 
 **Key Characteristics:**
 
-- 中性 OKLCH 斜坡；主色即近黑墨色，而非品牌饱和色
+- 中性 OKLCH 斜坡；主色即近黑墨色；酸绿仅作同源 brand 点缀
 - 任务优先：上传 / 任务 / 设置路径永远清楚
 - 扁平分层：边框 + 轻阴影，无戏剧 elevation
 - 系统字体栈；字号以 `text-sm` / `text-base` 为主
-- 支持 `.dark` 反转，同一套语义 token
+- 支持 light / dark / system 主题；`.dark` 反转同一套语义 token
 
 ## 2. Colors
 
-单一中性主色 + 语义 destructive；无独立品牌色主轴（品牌酸绿留给 landing）。
+中性工作台 + 酸绿点缀：`primary` 仍为近黑；`brand` 与官网酸绿同源，只用于少量角色。
 
 ### Primary
 
-- **Near-black Ink** (`oklch(0.205 0 0)`): 主按钮、关键强调、导航选中态。在暗色主题反转为 `oklch(0.985 0 0)`。
+- **Near-black Ink** (`oklch(0.205 0 0)`): 主按钮与关键 CTA。在暗色主题反转为 `oklch(0.985 0 0)`。
+
+### Brand accent（同源点缀，非整套换皮）
+
+- **Brand Acid** (`oklch(0.88 0.17 122)` · 暗色 `oklch(0.92 0.18 122)`): 进度条、完成态、任务计数、拖放激活、Logo 角点。
+- **Brand Foreground** (`oklch(0.28 0.06 125)`): 铺在 brand 实心底上的文字/图标。
+- **Brand Ink** (`oklch(0.48 0.12 128)` · 暗色抬高为 `oklch(0.88 0.16 122)`): 浅色底上的成功勾选、进行中文案。
+
+**只用在这些角色：** 进行中状态、完成/成功反馈、进度、顶栏极轻品牌提示、focus ring 色相、选中计数。  
+**不要用在：** 全部主按钮、大面积卡片底、营销式深色舞台阴影。
 
 ### Neutral
 
@@ -107,7 +122,7 @@ components:
 - **Muted Fill** (`oklch(0.97 0 0)`): 次级按钮、分段控件底、弱强调。
 - **Muted Text** (`oklch(0.556 0 0)`): 说明文案、次要元信息。须保持可读；勿再洗成更浅灰。
 - **Hairline Border** (`oklch(0.922 0 0)`): 分割线、卡片描边、输入框边。
-- **Focus Ring** (`oklch(0.708 0 0)`): `focus-visible` 环。
+- **Focus Ring** (`oklch(0.72 0.09 122)`): `focus-visible` 环，带 brand 色相，与 destructive 红区分。
 
 ### Semantic
 
@@ -115,7 +130,9 @@ components:
 
 ### Named Rules
 
-**The Ink-Not-Brand Rule.** 桌面主色是墨色中性，不是 landing 的酸绿。应用内偶尔可引用品牌色，但不得把工具主 CTA 染成营销霓虹。
+**The Ink-Not-Brand Rule.** 桌面主 CTA 是墨色中性，不是 landing 的酸绿。Brand 只作点缀与状态语义，不得把工具主按钮染成营销霓虹。
+
+**The Quiet Brand Rule.** 酸绿出现占比应远低于中性表面；看见的是任务状态与进度，不是品牌秀场。
 
 **The Readable Muted Rule.** `muted-foreground` 已是对比下限附近；说明文案禁止再叠透明灰或更浅色阶。
 

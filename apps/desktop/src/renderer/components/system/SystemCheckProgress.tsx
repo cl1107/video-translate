@@ -17,10 +17,10 @@ export function SystemCheckProgressView({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progress.percent}
-        className="h-2 w-full overflow-hidden rounded-full bg-primary/20"
+        className="h-2 w-full overflow-hidden rounded-full bg-brand/20"
       >
         <div
-          className="h-full bg-primary transition-[width] duration-200"
+          className="h-full bg-brand transition-[width] duration-200"
           style={{ width: `${progress.percent}%` }}
         />
       </div>

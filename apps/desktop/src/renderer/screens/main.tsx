@@ -3,8 +3,10 @@ import { FileText, Settings, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TaskList } from 'renderer/components/task/TaskList'
+import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 import { Button } from 'renderer/components/ui/button'
 import { VideoUploader } from 'renderer/components/video/VideoUploader'
+import { cn } from 'renderer/lib/utils'
 import type { TranslationTask } from 'shared/types/video'
 
 // The "App" comes from the context bridge in preload/index.ts
@@ -66,50 +68,78 @@ export function MainScreen() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* 顶部导航栏 */}
-      <header className="sticky top-0 z-10 border-b bg-card">
+      <header className="sticky top-0 z-10 border-b bg-card/95 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <img
-              src={appLogo}
-              alt="视频翻译助手"
-              className="h-8 w-8 shrink-0 select-none"
-              draggable={false}
-            />
+          <div className="flex min-w-0 items-center gap-2.5">
+            {/* Logo + 极轻 brand 点缀，与官网同源识别 */}
+            <div className="relative shrink-0">
+              <img
+                src={appLogo}
+                alt="视频翻译助手"
+                className="h-8 w-8 select-none"
+                draggable={false}
+              />
+              <span
+                aria-hidden
+                className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-brand ring-2 ring-card"
+              />
+            </div>
             <span className="truncate text-base font-semibold tracking-tight text-foreground">
               视频翻译助手
             </span>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
-            {/* 标签页导航 */}
+          <div className="flex shrink-0 items-center gap-2">
+            {/* 标签页导航：选中态用表面抬升，计数用 brand */}
             <nav
               className="flex items-center gap-0.5 rounded-lg bg-muted p-1"
               aria-label="主功能"
             >
               <Button
-                variant={activeTab === 'upload' ? 'default' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 onClick={() => setActiveTab('upload')}
-                className="gap-1.5"
+                aria-current={activeTab === 'upload' ? 'page' : undefined}
+                className={cn(
+                  'gap-1.5',
+                  activeTab === 'upload' &&
+                    'bg-background text-foreground shadow-xs hover:bg-background hover:text-foreground'
+                )}
               >
                 <Upload className="h-4 w-4" />
                 <span>添加视频</span>
               </Button>
               <Button
-                variant={activeTab === 'tasks' ? 'default' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 onClick={() => setActiveTab('tasks')}
-                className="gap-1.5"
+                aria-current={activeTab === 'tasks' ? 'page' : undefined}
+                className={cn(
+                  'gap-1.5',
+                  activeTab === 'tasks' &&
+                    'bg-background text-foreground shadow-xs hover:bg-background hover:text-foreground'
+                )}
               >
                 <FileText className="h-4 w-4" />
                 <span>任务</span>
                 {tasks.length > 0 && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium leading-none text-primary-foreground">
+                  <span
+                    className={cn(
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium leading-none',
+                      tasks.some(t => t.status === 'failed')
+                        ? 'bg-destructive/15 text-destructive'
+                        : activeTab === 'tasks'
+                          ? 'bg-brand text-brand-foreground'
+                          : 'bg-primary/10 text-foreground'
+                    )}
+                  >
                     {tasks.length}
                   </span>
                 )}
               </Button>
             </nav>
+
+            <ThemeToggle />
 
             <Button
               variant="outline"

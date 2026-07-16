@@ -16,6 +16,21 @@
   </head>
 
   <body>
+    <!-- 在 React 挂载前应用主题，避免明暗闪烁 -->
+    <script>
+      ;(function () {
+        try {
+          var key = 'video-translate-theme'
+          var pref = localStorage.getItem(key) || 'system'
+          var dark =
+            pref === 'dark' ||
+            (pref === 'system' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (e) {}
+      })()
+    </script>
     <app></app>
     <script type="module" src="index.tsx"></script>
   </body>

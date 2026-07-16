@@ -12,7 +12,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Badge } from 'renderer/components/ui/badge'
 import { Button } from 'renderer/components/ui/button'
 import {
@@ -27,7 +27,11 @@ import {
   normalizeAppSettings,
   type SubtitleBurnMode,
 } from 'shared/settings'
-import { TaskStatus, type TranslationTask } from 'shared/types/video'
+import {
+  TaskStatus,
+  type TaskOutputArtifacts,
+  type TranslationTask,
+} from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
 
 const { App } = window
@@ -67,7 +71,7 @@ const getStatusText = (status: TaskStatus) => {
     case TaskStatus.BURNING_SUBTITLES:
       return '烧录字幕'
     case TaskStatus.COMPLETED:
-      return '已完成'
+      return '字幕已就绪'
     case TaskStatus.FAILED:
       return '失败'
     case TaskStatus.PAUSED:
@@ -82,14 +86,16 @@ const getStatusText = (status: TaskStatus) => {
 const getStatusVariant = (status: TaskStatus) => {
   switch (status) {
     case TaskStatus.COMPLETED:
-      return 'default' as const
+      return 'brand' as const
     case TaskStatus.FAILED:
     case TaskStatus.CANCELLED:
       return 'destructive' as const
     case TaskStatus.PAUSED:
       return 'secondary' as const
-    default:
+    case TaskStatus.PENDING:
       return 'outline' as const
+    default:
+      return 'brand-soft' as const
   }
 }
 
@@ -115,25 +121,50 @@ const formatDuration = (seconds: number): string => {
 }
 
 const formatDate = (date: string): string => {
-  return date.split(' ')[0] // 只返回日期部分，去掉时间
+  return date.split(' ')[0]
 }
 
-export function TaskList({
-  tasks,
-  onTasksChange,
-  onGoUpload,
-}: TaskListProps) {
+/** 完成态产物摘要标签 */
+function artifactLabels(artifacts?: TaskOutputArtifacts): string[] {
+  if (!artifacts) return []
+  const labels: string[] = []
+  if (artifacts.bilingualSubtitle || artifacts.bilingualAss) {
+    labels.push('双语字幕')
+  } else if (artifacts.translatedSubtitle) {
+    labels.push('译文字幕')
+  } else if (artifacts.originalSubtitle) {
+    labels.push('原文字幕')
+  }
+  if (artifacts.bilingualAss) labels.push('ASS')
+  if (artifacts.burnedVideo) labels.push('硬字幕视频')
+  return labels
+}
+
+export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>()
   const [openBurnMenuTaskId, setOpenBurnMenuTaskId] = useState<string>()
   const [burningTaskIds, setBurningTaskIds] = useState<Set<string>>(new Set())
+  const [banner, setBanner] = useState<{
+    type: 'error' | 'info'
+    text: string
+  } | null>(null)
+
+  const failedCount = useMemo(
+    () => tasks.filter(t => t.status === TaskStatus.FAILED).length,
+    [tasks]
+  )
+
+  const showError = useCallback((text: string) => {
+    setBanner({ type: 'error', text })
+  }, [])
 
   const handleBurnSubtitles = useCallback(
     async (taskId: string, mode: SubtitleBurnMode) => {
       setOpenBurnMenuTaskId(undefined)
       setBurningTaskIds(prev => new Set(prev).add(taskId))
+      setBanner(null)
       try {
-        // 补烧时使用当前设置中的字幕颜色
         let colors:
           | { originalColor?: string; translatedColor?: string }
           | undefined
@@ -154,16 +185,16 @@ export function TaskList({
           throw new Error(result.error || '烧录失败')
         }
         onTasksChange()
-        // 烧录完成后直接打开视频
         const openResult = await App.openTaskArtifact(taskId, 'video')
         if (!openResult.success) {
-          // 产物已生成但打开失败时仍提示，不阻断列表刷新
-          alert(`烧录完成，但打开视频失败: ${openResult.error}`)
+          showError(
+            `硬字幕已生成，但无法打开视频：${openResult.error || '未知错误'}`
+          )
         }
       } catch (error) {
         console.error('补烧硬字幕失败:', error)
         const message = error instanceof Error ? error.message : String(error)
-        alert(`烧录失败: ${message}`)
+        showError(`烧录失败：${message}`)
         onTasksChange()
       } finally {
         setBurningTaskIds(prev => {
@@ -173,11 +204,12 @@ export function TaskList({
         })
       }
     },
-    [onTasksChange]
+    [onTasksChange, showError]
   )
 
   const handleTaskAction = useCallback(
     async (action: string, taskId: string) => {
+      setBanner(null)
       try {
         switch (action) {
           case 'pause':
@@ -187,7 +219,7 @@ export function TaskList({
             await App.resumeTask(taskId)
             break
           case 'delete':
-            if (confirm('确定要删除这个任务吗？')) {
+            if (window.confirm('确定删除这个任务？此操作不可撤销。')) {
               await App.deleteTask(taskId)
             }
             break
@@ -214,15 +246,14 @@ export function TaskList({
             console.warn('未知的任务操作:', action)
         }
 
-        // 刷新任务列表
         onTasksChange()
       } catch (error) {
         console.error('任务操作失败:', error)
         const message = error instanceof Error ? error.message : String(error)
-        alert(`操作失败: ${message}`)
+        showError(`操作失败：${message}`)
       }
     },
-    [onTasksChange]
+    [onTasksChange, showError]
   )
 
   const toggleTaskExpanded = (taskId: string) => {
@@ -265,8 +296,35 @@ export function TaskList({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">翻译任务</h1>
-        <Badge variant="outline">{tasks.length} 个任务</Badge>
+        <div className="flex items-center gap-2">
+          {failedCount > 0 && (
+            <Badge variant="destructive">{failedCount} 个失败</Badge>
+          )}
+          <Badge variant="outline">{tasks.length} 个任务</Badge>
+        </div>
       </div>
+
+      {banner && (
+        <div
+          role="alert"
+          className={
+            banner.type === 'error'
+              ? 'rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive'
+              : 'rounded-md border border-brand/25 bg-brand/10 px-3 py-2 text-sm text-brand-ink'
+          }
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p>{banner.text}</p>
+            <button
+              type="button"
+              className="shrink-0 text-xs underline-offset-2 hover:underline"
+              onClick={() => setBanner(null)}
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      )}
 
       {tasks.map(task => {
         const isExpanded = expandedTasks.has(task.id)
@@ -276,6 +334,8 @@ export function TaskList({
         const canBurnSubtitles =
           (task.status === TaskStatus.COMPLETED || isBurning) &&
           !task.outputArtifacts?.burnedVideo
+        const labels = artifactLabels(task.outputArtifacts)
+        const isComplete = task.status === TaskStatus.COMPLETED || isBurning
 
         return (
           <Card key={task.id} className="gap-0 py-0">
@@ -306,6 +366,18 @@ export function TaskList({
                         {formatDate(task.createdAt)}
                       </span>
                     </div>
+                    {isComplete && labels.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {labels.map(label => (
+                          <span
+                            key={label}
+                            className="inline-flex items-center rounded-full border border-brand/25 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand-ink"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -331,28 +403,33 @@ export function TaskList({
             </CardHeader>
 
             <CardContent className="flex flex-col gap-3 px-5 pb-3.5 pt-0">
-              {/* 进度条 */}
               {task.status !== TaskStatus.PENDING &&
-                task.status !== TaskStatus.FAILED && (
+                task.status !== TaskStatus.FAILED &&
+                task.status !== TaskStatus.COMPLETED && (
                   <div className="flex flex-col gap-1.5">
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>{isBurning ? '烧录进度' : '进度'}</span>
                       <span>{Math.round(task.progress)}%</span>
                     </div>
-                    <Progress value={task.progress} className="h-1.5" />
+                    <Progress value={task.progress} className="w-full" />
                   </div>
                 )}
 
-              {/* 错误信息 */}
+              {task.status === TaskStatus.COMPLETED && (
+                <p className="text-xs text-brand-ink">
+                  可用字幕已生成（本机）。用下方按钮打开字幕文件或结果文件夹。
+                </p>
+              )}
+
               {task.errorMessage && (
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                  <p className="text-sm text-destructive">
-                    {task.errorMessage}
+                  <p className="text-sm text-destructive">{task.errorMessage}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    可点「重试」；若与翻译服务相关，请到设置检查 Ollama。
                   </p>
                 </div>
               )}
 
-              {/* 展开的详细信息 */}
               {isExpanded && (
                 <div className="flex flex-col gap-3 border-t pt-3">
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -365,13 +442,10 @@ export function TaskList({
                       {task.targetLanguage}
                     </div>
                   </div>
-
-                  {/* 任务日志 */}
                   <TaskLogs taskId={task.id} />
                 </div>
               )}
 
-              {/* 操作按钮 */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                 <div className="flex flex-wrap gap-2">
                   {task.status === TaskStatus.PENDING ||
@@ -416,7 +490,6 @@ export function TaskList({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* 未在任务创建时烧录：完成后可补烧硬字幕 */}
                   {canBurnSubtitles && (
                     <div className="relative">
                       <Button
@@ -455,10 +528,10 @@ export function TaskList({
                     </div>
                   )}
 
-                  {(task.status === TaskStatus.COMPLETED || isBurning) && (
+                  {isComplete && (
                     <div className="relative flex">
                       <Button
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         className="rounded-r-none border-r-0"
                         disabled={isBurning}
@@ -477,14 +550,14 @@ export function TaskList({
                           <Captions className="h-4 w-4" />
                         )}
                         {task.outputArtifacts?.burnedVideo
-                          ? '查看视频'
-                          : '查看字幕'}
+                          ? '打开视频'
+                          : '打开字幕文件'}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         className="rounded-l-none px-2"
-                        aria-label="展开查看选项"
+                        aria-label="更多打开方式"
                         disabled={isBurning}
                         onClick={() =>
                           setOpenOutputMenuTaskId(current =>
@@ -495,7 +568,7 @@ export function TaskList({
                         <ChevronDown className="h-4 w-4" />
                       </Button>
                       {openOutputMenuTaskId === task.id && (
-                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-36 rounded-md border bg-background p-1 shadow-md">
+                        <div className="absolute bottom-full right-0 z-20 mb-2 min-w-40 rounded-md border bg-background p-1 shadow-md">
                           {task.outputArtifacts?.burnedVideo && (
                             <Button
                               variant="ghost"
@@ -506,7 +579,7 @@ export function TaskList({
                               }
                             >
                               <Captions className="h-4 w-4" />
-                              查看字幕
+                              打开字幕文件
                             </Button>
                           )}
                           <Button
@@ -518,15 +591,16 @@ export function TaskList({
                             }
                           >
                             <FolderOpen className="h-4 w-4" />
-                            查看结果
+                            打开结果文件夹
                           </Button>
                         </div>
                       )}
                     </div>
                   )}
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={isBurning}
                     onClick={() => handleTaskAction('delete', task.id)}
                   >

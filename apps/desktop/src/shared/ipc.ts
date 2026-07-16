@@ -44,6 +44,8 @@ export const IpcChannels = {
   checkSystemDependencies: 'check-system-dependencies',
   getDiagnosticPaths: 'get-diagnostic-paths',
   openLogsDir: 'open-logs-dir',
+  /** 在系统默认浏览器打开外链（安装文档等） */
+  openExternalUrl: 'open-external-url',
 
   // 统计 / 临时缓存
   getStatistics: 'get-statistics',

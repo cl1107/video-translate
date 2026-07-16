@@ -64,13 +64,13 @@ export function App() {
   // 加载状态
   if (isSetupComplete === null) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="w-full max-w-md text-center space-y-4 px-6">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="w-full max-w-md space-y-4 px-6 text-center">
+          <div className="mx-auto size-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           {checkProgress ? (
             <SystemCheckProgressView progress={checkProgress} />
           ) : (
-            <p className="text-gray-600">正在启动应用...</p>
+            <p className="text-sm text-muted-foreground">正在启动应用...</p>
           )}
         </div>
       </div>
