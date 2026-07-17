@@ -34,10 +34,25 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
+          # 仍关闭 setup-node 自动缓存：此时 pnpm 尚未安装，自动 cache 会踩坑
           package-manager-cache: false
 
       - name: Set up pnpm
         run: npm install --global pnpm@11.12.0
+
+      # 显式缓存 pnpm store（不是 node_modules）：锁文件未变时可大幅缩短 install
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
