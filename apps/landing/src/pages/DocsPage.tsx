@@ -1,5 +1,4 @@
 import {
-  ArrowDownToLine,
   BookOpen,
   Check,
   Download,
@@ -15,6 +14,7 @@ import { useEffect, useState } from "react";
 
 import { SiteFooter } from "../components/SiteFooter";
 import { SiteHeader } from "../components/SiteHeader";
+import { DownloadCta } from "../components/DownloadCta";
 import { APP_VERSION, releaseUrl, repositoryUrl } from "../site";
 
 const toc = [
@@ -145,15 +145,15 @@ export function DocsPage() {
           从系统工具到应用内流程：FFmpeg、Ollama、yt-dlp 怎么装，以及本地文件 /
           在线链接如何翻译导出。依赖缺失时应用启动会自检并给出安装提示。
         </p>
-        <div className="docs-hero-actions">
-          <a className="button button-primary" href={releaseUrl}>
-            <ArrowDownToLine size={18} />
-            下载应用
-          </a>
-          <a className="button button-ghost" href="#usage">
-            直接看使用教程
-          </a>
-        </div>
+        <DownloadCta
+          appearance="primary"
+          className="docs-download"
+          secondary={
+            <a className="button button-ghost" href="#usage">
+              直接看使用教程
+            </a>
+          }
+        />
       </div>
 
       <div className="docs-layout">
@@ -235,15 +235,15 @@ export function DocsPage() {
             </h2>
             <ol className="docs-steps">
               <li>
-                打开{" "}
+                使用上方下载按钮（自动匹配本机平台），或打开{" "}
                 <a href={releaseUrl} target="_blank" rel="noreferrer">
                   GitHub Releases
-                </a>
-                ，按平台下载安装包（macOS arm64 / Windows x64 / Linux x64）。
+                </a>{" "}
+                自选安装包（macOS arm64 / Windows x64 / Linux x64）。
               </li>
               <li>
-                每个平台有 <strong>bundled-ffmpeg</strong> 与{" "}
-                <strong>slim</strong> 两种（见下节）；不确定时选 bundled。
+                每个平台有 <strong>bundled-ffmpeg</strong>（完整版）与{" "}
+                <strong>slim</strong>（精简版）两种（见下节）；不确定时选完整版。
               </li>
               <li>
                 安装并启动。首次启动会跑<strong>系统依赖检查</strong>
@@ -319,9 +319,10 @@ video-translate-vX.Y.Z-linux-x64-bundled-ffmpeg.AppImage`}
             </CodeBlock>
             <p className="docs-note">
               选了 <strong>slim</strong> 就必须自行安装 FFmpeg（见下节）。硬字幕烧录需要带{" "}
-              <code>subtitles</code> 滤镜的完整构建。每个 GitHub Release
-              正文顶部也会固定展示上述区别。
+              <code>subtitles</code> 滤镜的完整构建。GitHub Release
+              正文顶部会附带精简对照表，完整说明以本页为准。
             </p>
+
           </section>
 
           <section id="unsigned" className="docs-section">
@@ -704,10 +705,11 @@ pip install -U yt-dlp
 
           <section className="docs-footer-cta">
             <p>准备好了？</p>
-            <a className="button button-primary" href={releaseUrl}>
-              <ArrowDownToLine size={18} />
-              下载 v{APP_VERSION}
-            </a>
+            <DownloadCta
+              appearance="dark"
+              className="docs-footer-download"
+              showHint={false}
+            />
           </section>
         </article>
       </div>

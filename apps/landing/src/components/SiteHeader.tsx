@@ -1,8 +1,7 @@
-import { ArrowDownToLine } from 'lucide-react'
-
 import { AppLink } from '../router'
-import { APP_VERSION, releaseUrl, repositoryUrl } from '../site'
+import { repositoryUrl } from '../site'
 import appLogo from '../assets/logo-transparent.png'
+import { DownloadCta } from './DownloadCta'
 
 type SiteHeaderProps = {
   /** 首页用锚点导航；文档页仅保留跨页链接 */
@@ -52,10 +51,14 @@ export function SiteHeader({ variant = 'home' }: SiteHeaderProps) {
           GitHub
         </a>
       </nav>
-      <a className="header-download" href={releaseUrl}>
-        下载 v{APP_VERSION}
-        <ArrowDownToLine size={16} />
-      </a>
+      <DownloadCta
+        appearance="header"
+        compact
+        showVariantToggle={false}
+        showOtherLink={false}
+        showHint={false}
+        className="header-download-slot"
+      />
     </header>
   )
 }

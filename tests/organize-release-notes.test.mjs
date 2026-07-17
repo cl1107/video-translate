@@ -233,10 +233,11 @@ test('prepareAndOrganize uses gitExec when notes empty and tag given', () => {
   assert.match(output, /\* feat: from git/)
   assert.match(output, /### Bug Fixes 🐞/)
   assert.doesNotMatch(output, /chore\(release\)/)
-  // 固定前言：包类型 + 非签名说明
+  // 固定前言：精简包类型 + 未签名要点 + 文档链接
   assert.match(output, /bundled-ffmpeg/)
   assert.match(output, /slim/)
-  assert.match(output, /非签名/)
+  assert.match(output, /未签名/)
+  assert.match(output, /cl1107\.github\.io\/video-translate\/docs/)
   assert.ok(output.indexOf(PREAMBLE_START) < output.indexOf("## What's Changed"))
 })
 
@@ -255,14 +256,23 @@ test('release preamble is applied idempotently', () => {
   )
   assert.equal(twice, once)
   assert.match(RELEASE_NOTES_PREAMBLE, /bundled-ffmpeg/)
+  assert.match(RELEASE_NOTES_PREAMBLE, /slim/)
   assert.match(RELEASE_NOTES_PREAMBLE, /xattr -cr/)
   assert.match(RELEASE_NOTES_PREAMBLE, /SmartScreen|仍要运行/)
-  assert.match(RELEASE_NOTES_PREAMBLE, /chmod \+x/)
+  assert.match(RELEASE_NOTES_PREAMBLE, /SHA256SUMS/)
+  // 精简前言：详情指向官网文档，不再塞完整安装步骤
+  assert.match(
+    RELEASE_NOTES_PREAMBLE,
+    /cl1107\.github\.io\/video-translate\/docs/
+  )
+  assert.doesNotMatch(RELEASE_NOTES_PREAMBLE, /chmod \+x/)
+  assert.doesNotMatch(RELEASE_NOTES_PREAMBLE, /Gatekeeper/)
   const stripped = stripReleasePreamble(once)
   assert.doesNotMatch(stripped, new RegExp(PREAMBLE_START))
   assert.match(stripped, /## What's Changed/)
   assert.ok(once.includes(PREAMBLE_END))
 })
+
 
 test('prepareAndOrganize can skip preamble when requested', () => {
   const input = `## What's Changed
@@ -309,7 +319,8 @@ test('CLI reads a file and prints organized markdown', async () => {
     assert.match(stdout, /### Bug Fixes 🐞/)
     assert.match(stdout, /\*\*Full Changelog\*\*: a\.\.\.b/)
     assert.match(stdout, /bundled-ffmpeg/)
-    assert.match(stdout, /非签名/)
+    assert.match(stdout, /未签名/)
+    assert.match(stdout, /## What's Changed/)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

@@ -60,7 +60,7 @@ sed -n '1,220p' .github/workflows/pages.yml
 - Electron 构建从桌面包上下文执行：`pnpm --filter video-translate run build:ci`。
 - Linux target 只保留项目要求的格式；不要让额外平台或 `.blockmap` 混入发布资产。
 - Pages workflow 与 release workflow 使用同一套可验证的 pnpm 安装策略。
-- Publish 步骤每次都会跑 `scripts/organize-release-notes.mjs`，把 `scripts/release-notes-preamble.md`（bundled/slim 区别 + 各平台非签名注意事项）固定写到 Release 正文顶部；修改包说明时改该 md 即可。
+- Publish 步骤每次都会跑 `scripts/organize-release-notes.mjs`，把 `scripts/release-notes-preamble.md`（精简的 bundled/slim 对照 + 非签名要点 + 官网文档链接）固定写到 Release 正文顶部，并与 `## What's Changed` 变更分组共存；完整安装说明在 landing `/docs`，修改包说明时改该 md 即可。
 
 轻量验证优先于完整原生构建：
 

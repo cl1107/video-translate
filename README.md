@@ -283,7 +283,8 @@ video-translate-vX.Y.Z-linux-x64-bundled-ffmpeg.AppImage
 - **Ollama**（默认翻译）与 **yt-dlp**（仅在线链接，可选）与 bundled / slim 无关，按应用内依赖检查提示安装即可。
 - 每个 Release 附带 `SHA256SUMS.txt`，下载后请校验完整性。
 - 官网文档：https://cl1107.github.io/video-translate/docs
-  固定说明也会写在每个 Release 正文顶部（由 `scripts/release-notes-preamble.md` 生成）。
+  每个 Release 正文顶部会附带精简的包类型说明（由 `scripts/release-notes-preamble.md` 生成），完整安装与依赖说明见官网文档。
+
 
 ### 非签名构建注意事项
 

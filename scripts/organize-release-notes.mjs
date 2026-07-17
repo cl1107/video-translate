@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url))
 
-/** 每个 Release 固定前置说明（包类型 + 非签名注意事项） */
+/** 每个 Release 固定前置说明（精简包类型 + 非签名要点，详情链到官网文档） */
 export const RELEASE_NOTES_PREAMBLE = readFileSync(
   join(scriptsDir, 'release-notes-preamble.md'),
   'utf8'

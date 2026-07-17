@@ -1,5 +1,4 @@
 import {
-  ArrowDownToLine,
   ArrowRight,
   Check,
   FileText,
@@ -18,15 +17,11 @@ import {
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 
+import { DownloadCta } from '../components/DownloadCta'
 import { SiteFooter } from '../components/SiteFooter'
 import { SiteHeader } from '../components/SiteHeader'
 import { AppLink } from '../router'
-import {
-  APP_VERSION,
-  releaseUrl,
-  repositoryUrl,
-  siteUrl,
-} from '../site'
+import { APP_VERSION, repositoryUrl, siteUrl } from '../site'
 
 const translations = {
   中文: '你的素材，始终留在自己的电脑里。',
@@ -140,16 +135,15 @@ export function HomePage() {
             本地文件或在线链接，平台字幕优先、没有再 ASR。
             翻译、润色与双语字幕一条流水线完成——素材默认留在你的电脑里。
           </p>
-          <div className="hero-actions">
-            <a className="button button-primary" href={releaseUrl}>
-              <ArrowDownToLine size={19} />
-              免费下载
-            </a>
-            <a className="button button-ghost" href="#workflow">
-              看它如何工作
-              <ArrowRight size={18} />
-            </a>
-          </div>
+          <DownloadCta
+            appearance="primary"
+            secondary={
+              <a className="button button-ghost" href="#workflow">
+                看它如何工作
+                <ArrowRight size={18} />
+              </a>
+            }
+          />
           <div className="platform-row">
             <span>macOS</span>
             <i />
@@ -360,19 +354,21 @@ export function HomePage() {
         <div className="cta-lines" aria-hidden="true" />
         <p>READY WHEN YOU ARE</p>
         <h2>下一条字幕，从本地开始。</h2>
-        <div className="hero-actions">
-          <a className="button button-dark" href={releaseUrl}>
-            <ArrowDownToLine size={19} />
-            下载视频翻译助手
-          </a>
-          <AppLink className="button button-outline" to="/docs">
-            阅读安装文档
-          </AppLink>
-          <a className="button button-outline" href={repositoryUrl}>
-            <Github size={19} />
-            查看源代码
-          </a>
-        </div>
+        <DownloadCta
+          appearance="dark"
+          className="cta-download"
+          secondary={
+            <>
+              <AppLink className="button button-outline" to="/docs">
+                阅读安装文档
+              </AppLink>
+              <a className="button button-outline" href={repositoryUrl}>
+                <Github size={19} />
+                查看源代码
+              </a>
+            </>
+          }
+        />
         <span>
           v{APP_VERSION} · MIT License · macOS / Windows / Linux ·{' '}
           <a href={siteUrl}>官网</a>

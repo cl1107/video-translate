@@ -32,7 +32,7 @@ test('发布工作流按 Conventional Commit 类型整理 release notes', () => 
   assert.match(workflow, /每次发布都整理 notes/)
 })
 
-test('固定 Release 前言说明 bundled/slim 与非签名注意事项', async () => {
+test('固定 Release 前言精简说明 bundled/slim，并链到官网文档', async () => {
   const preamble = await readFile(
     'scripts/release-notes-preamble.md',
     'utf8'
@@ -41,9 +41,13 @@ test('固定 Release 前言说明 bundled/slim 与非签名注意事项', async 
   assert.match(preamble, /slim/)
   assert.match(preamble, /xattr -cr/)
   assert.match(preamble, /SmartScreen|仍要运行/)
-  assert.match(preamble, /chmod \+x/)
   assert.match(preamble, /SHA256SUMS/)
+  assert.match(preamble, /cl1107\.github\.io\/video-translate\/docs/)
+  // 完整安装步骤应在官网文档，不堆在 Release 正文
+  assert.doesNotMatch(preamble, /chmod \+x/)
+  assert.doesNotMatch(preamble, /## 非签名构建注意事项/)
 })
+
 
 test('桌面包明确禁用 electron-builder 隐式发布', async () => {
   const desktopPackage = JSON.parse(
