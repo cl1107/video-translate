@@ -6,6 +6,7 @@ import type { AsrEngineId } from './constants'
 import type { AppSettings, SubtitleBurnMode } from './settings'
 import type {
   OllamaModel,
+  TaskKind,
   TaskLog,
   TaskOutputArtifacts,
   TranslationTask,
@@ -16,12 +17,13 @@ export const IpcChannels = {
   openFileDialog: 'open-file-dialog',
   openTaskArtifact: 'open-task-artifact',
   uploadFiles: 'upload-files',
-  /** 从在线视频链接创建任务（yt-dlp 下载后走同一翻译流水线） */
+  /** 从在线视频链接创建任务（yt-dlp 下载后走对应流水线） */
   createTasksFromUrls: 'create-tasks-from-urls',
 
   // 任务
   getAllTasks: 'get-all-tasks',
   getTask: 'get-task',
+  getTaskMarkdownContent: 'get-task-markdown-content',
   pauseTask: 'pause-task',
   resumeTask: 'resume-task',
   deleteTask: 'delete-task',
@@ -65,7 +67,12 @@ export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
 /** 上传任务时使用完整 AppSettings（normalize 后） */
 export type UploadFilesSettings = AppSettings
 
-export type ArtifactKind = 'video' | 'subtitle' | 'result'
+export type ArtifactKind = 'video' | 'subtitle' | 'result' | 'markdown'
+
+/** 文件选择器媒体范围：字幕仅视频；文稿可音视频 */
+export type FileDialogMedia = 'video' | 'document'
+
+export type { TaskKind }
 
 export interface BurnSubtitleColors {
   originalColor?: string

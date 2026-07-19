@@ -139,11 +139,11 @@ export function DocsPage() {
         </p>
         <h1>
           装好依赖，
-          <em>跑通第一条字幕。</em>
+          <em>跑通第一条任务。</em>
         </h1>
         <p className="docs-lead">
           从系统工具到应用内流程：FFmpeg、Ollama、yt-dlp 怎么装，以及本地文件 /
-          在线链接如何翻译导出。依赖缺失时应用启动会自检并给出安装提示。
+          在线链接如何做字幕翻译或 Markdown 文稿。依赖缺失时应用启动会自检并给出安装提示。
         </p>
         <DownloadCta
           appearance="primary"
@@ -176,9 +176,11 @@ export function DocsPage() {
           <section id="overview" className="docs-section">
             <h2>概览</h2>
             <p>
-              视频翻译助手是本地优先的字幕工作台：导入视频 →
-              获取原文（平台字幕或 ASR）→ 翻译 →
-              导出字幕。大部分处理发生在你的电脑上。
+              视频翻译助手是本地优先的字幕与文稿工作台。顶栏可切换两条流水线：
+              <strong>字幕</strong>
+              （导入 → 原文/ASR → 翻译 → 导出 SRT/ASS / 可选硬烧录）与
+              <strong>文稿</strong>
+              （导入音视频 → ASR → 整篇润色 → 导出 Markdown）。大部分处理发生在你的电脑上。
             </p>
             <div className="docs-callout">
               <HardDrive size={18} />
@@ -585,13 +587,17 @@ pip install -U yt-dlp
               <li>进入主界面后，可在设置中确认翻译模型与目标语言。</li>
             </ol>
 
-            <h3>2. 导入素材（二选一）</h3>
+            <h3>2. 选择工作流并导入素材</h3>
+            <p>
+              主界面顶栏左侧切换 <strong>字幕</strong> 或 <strong>文稿</strong>
+              ；右侧「添加 / 任务」在当前工作流内切换面板。两条线任务列表独立。
+            </p>
             <div className="docs-cards">
               <article>
                 <h4>本地文件</h4>
                 <p>
-                  拖拽或选择视频（常见格式如 MP4 / MOV / MKV / WebM
-                  等）。适合已下载课程、成片、访谈素材。
+                  字幕线：拖拽或选择视频（MP4 / MOV / MKV / WebM
+                  等）。文稿线还支持常见音频（MP3 / WAV / M4A 等）。
                 </p>
               </article>
               <article>
@@ -603,7 +609,7 @@ pip install -U yt-dlp
               </article>
             </div>
 
-            <h3>3. 流水线会做什么</h3>
+            <h3>3. 字幕流水线</h3>
             <ol className="docs-steps docs-steps-pipeline">
               <li>
                 <strong>获取原文</strong>
@@ -622,18 +628,40 @@ pip install -U yt-dlp
               </li>
             </ol>
 
-            <h3>4. 任务与结果</h3>
+            <h3>4. 文稿流水线</h3>
+            <ol className="docs-steps docs-steps-pipeline">
+              <li>
+                <strong>识别</strong>
+                ：同样优先平台字幕，否则本地 ASR 得到全文。
+              </li>
+              <li>
+                <strong>整篇润色</strong>
+                ：用设置中的润色模型（Ollama 或 BYOK）整理为结构化 Markdown。
+              </li>
+              <li>
+                <strong>导出与预览</strong>：写入本机{' '}
+                <code>.md</code>
+                ；任务右下角「预览」可全屏阅读，也可复制或打开文件。
+              </li>
+            </ol>
+            <p className="docs-note">
+              文稿润色依赖已配置的润色模型（勿使用 hy-mt
+              等翻译专用模型）。未配置时任务会失败并提示去设置。
+            </p>
+
+            <h3>5. 任务与结果</h3>
             <ul className="docs-list">
-              <li>在任务列表查看进度、日志；支持暂停 / 恢复（视状态而定）。</li>
-              <li>完成后在任务详情中打开字幕或导出目录。</li>
+              <li>在对应工作流的任务列表查看进度、日志；支持暂停 / 恢复。</li>
+              <li>字幕完成：打开字幕或结果文件夹；可补烧硬字幕。</li>
+              <li>文稿完成：全屏预览 Markdown、复制、打开 .md 或结果文件夹。</li>
               <li>临时音频等中间文件会在流程结束后清理。</li>
             </ul>
 
-            <h3>5. 常用设置入口</h3>
+            <h3>6. 常用设置入口</h3>
             <ul className="docs-list">
               <li>ASR 引擎（SenseVoice / Fun-ASR-Nano）</li>
-              <li>源语言 / 目标语言</li>
-              <li>Ollama 翻译模型；可选润色（本地 Ollama 或在线 BYOK）</li>
+              <li>源语言 / 目标语言（字幕线）</li>
+              <li>Ollama 翻译模型；润色模型（字幕段润色与文稿整篇共用配置入口）</li>
               <li>硬字幕样式：仅原文 / 仅译文 / 双语堆叠与颜色</li>
             </ul>
           </section>

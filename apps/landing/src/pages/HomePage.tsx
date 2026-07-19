@@ -2,11 +2,11 @@ import {
   ArrowRight,
   Check,
   FileText,
-  Flame,
   Github,
   Languages,
   Link2,
   LockKeyhole,
+  NotebookPen,
   Play,
   ScanLine,
   Sparkles,
@@ -29,7 +29,8 @@ const translations = {
   日本語: '映像素材は、いつも自分のパソコンの中に。',
 }
 
-const workflow = [
+/** 字幕工作流 */
+const subtitleWorkflow = [
   {
     number: '01',
     label: '导入视频',
@@ -45,13 +46,41 @@ const workflow = [
   {
     number: '03',
     label: '翻译润色',
-    detail: 'Ollama 本地翻译；可选 BYOK 仅润色识别原文',
+    detail: 'Ollama 本地翻译；可选 BYOK 润色识别原文',
     icon: Languages,
   },
   {
     number: '04',
     label: '导出字幕',
     detail: 'SRT / ASS，可选双语硬字幕烧录',
+    icon: FileText,
+  },
+]
+
+/** 文稿工作流（独立入口） */
+const documentWorkflow = [
+  {
+    number: '01',
+    label: '导入音视频',
+    detail: '本地文件或在线链接，支持常见音视频格式',
+    icon: Link2,
+  },
+  {
+    number: '02',
+    label: '语音识别',
+    detail: '平台字幕优先；否则本地 SenseVoice ASR',
+    icon: Waves,
+  },
+  {
+    number: '03',
+    label: '整篇润色',
+    detail: '大模型整理结构：标题、分段、列表，不丢信息',
+    icon: NotebookPen,
+  },
+  {
+    number: '04',
+    label: '导出 Markdown',
+    detail: '生成 .md 文稿，应用内全屏预览与复制',
     icon: FileText,
   },
 ]
@@ -64,16 +93,16 @@ const features = [
   {
     icon: Link2,
     eyebrow: 'URL IMPORT',
-    title: '链接也能一键翻译',
+    title: '链接也能一键处理',
     description:
-      '粘贴 YouTube、B 站等 yt-dlp 支持的链接，自动下载最高画质后进入同一流水线。',
+      '粘贴 YouTube、B 站等 yt-dlp 支持的链接，自动下载后进入字幕或文稿流水线。',
   },
   {
     icon: Subtitles,
     eyebrow: 'PLATFORM FIRST',
     title: '平台字幕优先',
     description:
-      '有站内人工或自动字幕时直接翻译，跳过语音识别；没有字幕再走本地 ASR。',
+      '有站内人工或自动字幕时直接采用，跳过语音识别；没有字幕再走本地 ASR。',
   },
   {
     icon: Waves,
@@ -83,34 +112,35 @@ const features = [
       'SenseVoice 支持中、英、日、韩、粤语，适合课程、访谈和内容创作。',
   },
   {
-    icon: Languages,
-    eyebrow: 'OLLAMA / BYOK',
-    title: '翻译由你掌控',
+    icon: NotebookPen,
+    eyebrow: 'DOCUMENT MD',
+    title: '音视频整理成 Markdown',
     description:
-      '翻译走本地 Ollama；可选兼容 OpenAI 的 BYOK 仅做识别润色，不绑定固定额度。',
+      '独立「文稿」工作流：识别后整篇 AI 润色为结构化 MD，全屏预览，一键导出。',
   },
   {
-    icon: Flame,
-    eyebrow: 'HARD SUBS',
-    title: '双语硬字幕烧录',
-    description: '生成双语 ASS，可选仅原文 / 仅译文 / 堆叠双语，颜色可自定义。',
+    icon: Languages,
+    eyebrow: 'SUBTITLES',
+    title: '字幕翻译与硬烧录',
+    description:
+      '本地 Ollama 翻译；双语 SRT / ASS 导出，可选硬字幕烧录与颜色自定义。',
   },
   {
     icon: LockKeyhole,
     eyebrow: 'LOCAL FIRST',
     title: '素材不离开设备',
     description:
-      '识别、翻译和字幕生成默认在本机完成。视频无需上传到第三方云端。',
+      '识别、翻译、文稿整理默认在本机完成。视频无需上传到第三方云端。',
   },
 ]
 
 const highlights = [
-  '在线链接下载 + 翻译',
+  '字幕工作台 + 文稿整理',
+  '在线链接 / 本地文件',
   '平台字幕优先于 ASR',
-  '本地 SenseVoice 识别',
-  'Ollama 批量翻译',
-  '双语 SRT / ASS 导出',
-  '可选硬字幕烧录',
+  'SenseVoice 本地识别',
+  'Markdown 全屏预览',
+  '双语字幕与硬烧录',
 ]
 
 export function HomePage() {
@@ -124,7 +154,7 @@ export function HomePage() {
         <div className="hero-glow" aria-hidden="true" />
         <div className="hero-copy reveal reveal-one">
           <p className="kicker">
-            <span /> 本地优先 · 链接也能翻 · 字幕工作台
+            <span /> 本地优先 · 字幕工作台 · 文稿整理
           </p>
           <h1>
             让每段声音
@@ -132,8 +162,8 @@ export function HomePage() {
             <em>跨越语言。</em>
           </h1>
           <p className="hero-description">
-            本地文件或在线链接，平台字幕优先、没有再 ASR。
-            翻译、润色与双语字幕一条流水线完成——素材默认留在你的电脑里。
+            本地文件或在线链接：一条流水线做字幕翻译与硬烧录，另一条把音视频整理成
+            Markdown 文稿。平台字幕优先、没有再 ASR——素材默认留在你的电脑里。
           </p>
           <DownloadCta
             appearance="primary"
@@ -255,7 +285,7 @@ export function HomePage() {
           </div>
           <div className="floating-card url-card is-live">
             <WandSparkles size={15} />
-            链接 → 下载 → 字幕
+            链接 → 字幕 / 文稿
           </div>
         </div>
       </section>
@@ -265,7 +295,8 @@ export function HomePage() {
           在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
           <Sparkles size={16} />
           本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
-          双语硬字幕 <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
+          Markdown 文稿 <Sparkles size={16} /> 双语硬字幕{' '}
+          <Sparkles size={16} /> 隐私优先 <Sparkles size={16} />
           在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
           <Sparkles size={16} />
           本地语音识别
@@ -275,9 +306,9 @@ export function HomePage() {
       <section className="section features-section" id="features">
         <div className="section-heading">
           <h2>
-            从链接到成片字幕，
+            字幕与文稿，
             <br />
-            <span>都在同一条本地流水线。</span>
+            <span>两条本地流水线，一套隐私边界。</span>
           </h2>
         </div>
         <div className="feature-grid feature-grid-six">
@@ -294,26 +325,55 @@ export function HomePage() {
 
       <section className="section workflow-section" id="workflow">
         <div className="workflow-intro">
-          <h2>从素材到字幕，四步完成。</h2>
+          <h2>两条工作流，各自四步完成。</h2>
           <p>
-            本地文件或在线链接；有平台字幕就跳过识别，没有再走
-            SenseVoice。翻译后导出 SRT / ASS，也可烧录双语硬字幕。
+            顶栏切换「字幕」或「文稿」：字幕线做翻译与导出；文稿线把识别结果整篇润色为
+            Markdown。共享 ASR 与下载，任务列表彼此独立。
           </p>
         </div>
-        <div className="workflow-list">
-          {workflow.map(item => {
-            const Icon = item.icon
-            return (
-              <article key={item.number}>
-                <span>{item.number}</span>
-                <div>
-                  <h3>{item.label}</h3>
-                  <p>{item.detail}</p>
-                </div>
-                <Icon size={22} strokeWidth={1.7} />
-              </article>
-            )
-          })}
+        <div className="workflow-dual">
+          <div className="workflow-track">
+            <h3 className="workflow-track-title">
+              <Subtitles size={18} strokeWidth={1.8} />
+              字幕工作流
+            </h3>
+            <div className="workflow-list">
+              {subtitleWorkflow.map(item => {
+                const Icon = item.icon
+                return (
+                  <article key={`sub-${item.number}`}>
+                    <span>{item.number}</span>
+                    <div>
+                      <h3>{item.label}</h3>
+                      <p>{item.detail}</p>
+                    </div>
+                    <Icon size={22} strokeWidth={1.7} />
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+          <div className="workflow-track">
+            <h3 className="workflow-track-title">
+              <NotebookPen size={18} strokeWidth={1.8} />
+              文稿工作流
+            </h3>
+            <div className="workflow-list">
+              {documentWorkflow.map(item => {
+                const Icon = item.icon
+                return (
+                  <article key={`doc-${item.number}`}>
+                    <span>{item.number}</span>
+                    <div>
+                      <h3>{item.label}</h3>
+                      <p>{item.detail}</p>
+                    </div>
+                    <Icon size={22} strokeWidth={1.7} />
+                  </article>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -333,7 +393,8 @@ export function HomePage() {
         <div className="privacy-copy">
           <h2>你的素材，只属于你的设备。</h2>
           <p>
-            视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本和字幕产物都保存在本机路径中。
+            视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本、字幕与
+            Markdown 文稿都保存在本机路径中。
             在线润色（BYOK）仅在你主动配置时才会请求你指定的接口。
           </p>
           <ul>
@@ -353,7 +414,7 @@ export function HomePage() {
       <section className="cta-section">
         <div className="cta-lines" aria-hidden="true" />
         <p>READY WHEN YOU ARE</p>
-        <h2>下一条字幕，从本地开始。</h2>
+        <h2>下一条字幕或文稿，从本地开始。</h2>
         <DownloadCta
           appearance="dark"
           className="cta-download"

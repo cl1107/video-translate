@@ -3,6 +3,17 @@
 import type { AsrEngineId } from '../constants'
 import type { PolishProvider, SubtitleBurnMode } from '../settings'
 
+/** 任务工作流类型：字幕翻译 vs 文稿整理 */
+export type TaskKind = 'subtitle' | 'document'
+
+export function isTaskKind(value: unknown): value is TaskKind {
+  return value === 'subtitle' || value === 'document'
+}
+
+export function normalizeTaskKind(value: unknown): TaskKind {
+  return value === 'document' ? 'document' : 'subtitle'
+}
+
 export interface VideoFile {
   id: string
   name: string
@@ -48,12 +59,16 @@ export interface TaskOutputArtifacts {
   bilingualSubtitle?: string
   bilingualAss?: string
   burnedVideo?: string
+  /** 文稿任务：润色后的 Markdown 文件路径 */
+  polishedMarkdown?: string
   outputDirectory: string
 }
 
 export interface TranslationTask {
   id: string
   videoFile: VideoFile
+  /** 工作流：字幕（默认）或文稿；旧库缺失时按 subtitle */
+  kind: TaskKind
   status: TaskStatus
   progress: number
   sourceLanguage: string

@@ -3,11 +3,13 @@ import {
   IpcChannels,
   type ArtifactKind,
   type BurnSubtitleColors,
+  type FileDialogMedia,
 } from '../shared/ipc'
 import type { AppSettings, SubtitleBurnMode } from '../shared/settings'
 import type { SystemCheckProgress } from '../shared/system-check'
 import type {
   OllamaModel,
+  TaskKind,
   TaskLog,
   TranslationTask,
 } from '../shared/types/video'
@@ -15,7 +17,7 @@ import type {
 declare global {
   interface Window {
     App: {
-      openFileDialog: () => Promise<string[]>
+      openFileDialog: (media?: FileDialogMedia) => Promise<string[]>
       /**
        * Electron 32+ 起 File.path 在渲染进程不可用，
        * 拖放/文件输入必须经 preload 用 webUtils 解析本地路径。
@@ -27,15 +29,25 @@ declare global {
       ) => Promise<{ success: boolean; error?: string }>
       uploadFiles: (
         filePaths: string[],
-        settings: AppSettings | Partial<AppSettings>
+        settings: AppSettings | Partial<AppSettings>,
+        kind?: TaskKind
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
       createTasksFromUrls: (
         urls: string[],
-        settings: AppSettings | Partial<AppSettings>
+        settings: AppSettings | Partial<AppSettings>,
+        kind?: TaskKind
       ) => Promise<{ success: boolean; taskIds?: string[]; error?: string }>
 
-      getAllTasks: () => Promise<TranslationTask[]>
+      getAllTasks: (kind?: TaskKind) => Promise<TranslationTask[]>
       getTask: (taskId: string) => Promise<TranslationTask | null>
+      getTaskMarkdownContent: (
+        taskId: string
+      ) => Promise<{
+        success: boolean
+        content?: string
+        path?: string
+        error?: string
+      }>
       pauseTask: (taskId: string) => Promise<{ success: boolean }>
       resumeTask: (taskId: string) => Promise<{ success: boolean }>
       deleteTask: (taskId: string) => Promise<{ success: boolean }>
@@ -148,7 +160,8 @@ declare global {
 }
 
 const api = {
-  openFileDialog: () => ipcRenderer.invoke(IpcChannels.openFileDialog),
+  openFileDialog: (media?: FileDialogMedia) =>
+    ipcRenderer.invoke(IpcChannels.openFileDialog, media),
   getPathForFile: (file: File) => {
     try {
       return webUtils.getPathForFile(file)
@@ -161,15 +174,21 @@ const api = {
     ipcRenderer.invoke(IpcChannels.openTaskArtifact, taskId, kind),
   uploadFiles: (
     filePaths: string[],
-    settings: AppSettings | Partial<AppSettings>
-  ) => ipcRenderer.invoke(IpcChannels.uploadFiles, filePaths, settings),
+    settings: AppSettings | Partial<AppSettings>,
+    kind?: TaskKind
+  ) => ipcRenderer.invoke(IpcChannels.uploadFiles, filePaths, settings, kind),
   createTasksFromUrls: (
     urls: string[],
-    settings: AppSettings | Partial<AppSettings>
-  ) => ipcRenderer.invoke(IpcChannels.createTasksFromUrls, urls, settings),
+    settings: AppSettings | Partial<AppSettings>,
+    kind?: TaskKind
+  ) =>
+    ipcRenderer.invoke(IpcChannels.createTasksFromUrls, urls, settings, kind),
 
-  getAllTasks: () => ipcRenderer.invoke(IpcChannels.getAllTasks),
+  getAllTasks: (kind?: TaskKind) =>
+    ipcRenderer.invoke(IpcChannels.getAllTasks, kind),
   getTask: (taskId: string) => ipcRenderer.invoke(IpcChannels.getTask, taskId),
+  getTaskMarkdownContent: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.getTaskMarkdownContent, taskId),
   pauseTask: (taskId: string) =>
     ipcRenderer.invoke(IpcChannels.pauseTask, taskId),
   resumeTask: (taskId: string) =>

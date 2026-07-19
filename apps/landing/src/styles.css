@@ -1180,12 +1180,34 @@ h1 em {
   line-height: 1.9;
 }
 
+.workflow-dual {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.workflow-track-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.workflow-track-title svg {
+  color: var(--acid);
+  flex-shrink: 0;
+}
+
 .workflow-list article {
   display: grid;
   grid-template-columns: 52px 1fr auto;
   gap: 24px;
   align-items: center;
-  min-height: 128px;
+  min-height: 100px;
   border-bottom: 1px solid var(--line);
   /* 用 transform，避免动画 padding 触发布局 */
   transition:

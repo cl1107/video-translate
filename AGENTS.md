@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，使用 Ollama 进行 LLM 驱动的翻译。该应用支持从视频中提取音频、转录语音、翻译文本以及生成多种格式的字幕文件。
+这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，使用 Ollama（及可选 BYOK）进行 LLM 驱动的翻译与润色。应用提供两条独立工作流：**字幕**（翻译并导出 SRT/ASS，可选硬字幕烧录）与**文稿**（整篇润色为 Markdown 并全屏预览）。
 
 ## 关键开发命令
 
@@ -119,8 +119,9 @@ LLM 驱动的翻译：
 
 - 使用 **pnpm** 作为包管理器
 - **Electron-Vite** 作为构建工具
-- **TailwindCSS** 配合 Radix UI 组件进行样式设计
+- **TailwindCSS 4** 配合 **Base UI（@base-ui/react）** 组件进行样式与交互
 - **React 19** 配合 TypeScript
+- 文稿预览使用 **react-markdown + remark-gfm + @tailwindcss/typography**
 
 ## 重要实现细节
 
@@ -143,11 +144,11 @@ SQLite 数据库使用以下主要表：
 - `get-ollama-models` / `pull-ollama-model` - 模型管理
 - `check-system-dependencies` - 系统要求验证
 
-### 任务状态
+### 任务类型与状态
 
-任务经历以下状态：
-
-- `pending` → `extracting_audio` → `transcribing` → `translating` → `generating_subtitles` → `completed`/`failed`
+- `task.kind`: `subtitle`（默认）| `document`
+- 字幕：`pending` →（`downloading`）→ `extracting_audio` → `transcribing` → `polishing` → `translating` → `generating_subtitles` →（`burning_subtitles`）→ `completed`/`failed`
+- 文稿：`pending` →（`downloading`）→ `extracting_audio` → `transcribing` → `polishing` → `completed`/`failed`
 
 ### 错误处理
 
@@ -174,7 +175,7 @@ SQLite 数据库使用以下主要表：
 
 ### 组件架构
 
-- React 组件使用 Radix UI 原语配合 TailwindCSS
+- React 组件使用 Base UI 原语配合 TailwindCSS（shadcn 风格设计语言）
 - 通过 React hooks 和 IPC 通信进行状态管理
 - 支持响应式设计和暗黑模式
 

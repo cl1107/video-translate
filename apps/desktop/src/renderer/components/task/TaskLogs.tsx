@@ -1,33 +1,56 @@
 import { AlertCircle, CheckCircle, Info, XCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import type { TaskLog } from 'shared/types/video'
+import { useCallback, useEffect, useState } from 'react'
 import { cn } from 'renderer/lib/utils'
+import type { TaskLog } from 'shared/types/video'
 
 const { App } = window
 
 interface TaskLogsProps {
   taskId: string
+  /**
+   * 进行中任务自动轮询间隔（ms）；0 表示不轮询。
+   * 默认 2s，避免只加载一次导致后续日志不显示。
+   */
+  pollIntervalMs?: number
 }
 
-export function TaskLogs({ taskId }: TaskLogsProps) {
+export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
   const [logs, setLogs] = useState<TaskLog[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    void loadLogs()
-  }, [taskId])
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const taskLogs = await App.getTaskLogs(taskId)
       setLogs(taskLogs)
     } catch (error) {
       console.error('加载任务日志失败:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
+  }, [taskId])
+
+  useEffect(() => {
+    void loadLogs(false)
+
+    // 任务状态/进度更新时刷新（含润色完成、失败）
+    const unsubUpdated = App.onTaskUpdated(task => {
+      if (task.id === taskId) void loadLogs(true)
+    })
+
+    // 长耗时阶段（ASR/润色）期间可能长时间无 taskUpdated，轮询兜底
+    let timer: ReturnType<typeof setInterval> | undefined
+    if (pollIntervalMs > 0) {
+      timer = setInterval(() => {
+        void loadLogs(true)
+      }, pollIntervalMs)
+    }
+
+    return () => {
+      unsubUpdated()
+      if (timer) clearInterval(timer)
+    }
+  }, [taskId, loadLogs, pollIntervalMs])
 
   const getLogIcon = (level: TaskLog['level']) => {
     switch (level) {
@@ -67,7 +90,6 @@ export function TaskLogs({ taskId }: TaskLogsProps) {
     })
   }
 
-  // 嵌套在任务卡片内：不用 Card，避免嵌套卡片
   return (
     <section
       className="rounded-lg border bg-muted/30"

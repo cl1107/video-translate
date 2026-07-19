@@ -1,6 +1,6 @@
 /** 站点级常量与路由工具（兼容 Vite base / GitHub Pages 子路径） */
 
-export const APP_VERSION = '0.6.1'
+export const APP_VERSION = '0.7.0'
 export const releaseUrl =
   'https://github.com/cl1107/video-translate/releases/latest'
 export const repositoryUrl = 'https://github.com/cl1107/video-translate'

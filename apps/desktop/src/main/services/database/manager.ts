@@ -7,7 +7,9 @@ import {
   serializeTaskRuntimeOptions,
 } from '../../../shared/task-options'
 import {
+  normalizeTaskKind,
   TaskStatus,
+  type TaskKind,
   type TaskLog,
   type TaskOutputArtifacts,
   type TaskRuntimeOptions,
@@ -150,6 +152,11 @@ export class DatabaseManager {
         `ALTER TABLE translation_tasks ADD COLUMN platform_subtitle_language TEXT NULL`
       )
     }
+    if (!names.has('kind')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'subtitle'`
+      )
+    }
 
     const videoColumns = this.db
       .prepare(`PRAGMA table_info(video_files)`)
@@ -196,6 +203,7 @@ export class DatabaseManager {
         sourceUrl:
           (row.video_source_url as string | null | undefined) || sourceUrl,
       },
+      kind: normalizeTaskKind(row.kind),
       status: row.status as TaskStatus,
       progress: Number(row.progress ?? 0),
       sourceLanguage: String(row.source_language),
@@ -295,8 +303,8 @@ export class DatabaseManager {
       INSERT INTO translation_tasks
       (id, video_file_id, status, progress, source_language, target_language,
        created_at, updated_at, completed_at, error_message, options_json, artifacts_json,
-       source_url, platform_subtitle_path, platform_subtitle_language)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       source_url, platform_subtitle_path, platform_subtitle_language, kind)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -314,7 +322,8 @@ export class DatabaseManager {
       task.outputArtifacts ? JSON.stringify(task.outputArtifacts) : null,
       task.sourceUrl || task.videoFile.sourceUrl || null,
       task.platformSubtitlePath || null,
-      task.platformSubtitleLanguage || null
+      task.platformSubtitleLanguage || null,
+      normalizeTaskKind(task.kind)
     )
   }
 
@@ -384,6 +393,8 @@ export class DatabaseManager {
         partial.bilingualSubtitle ?? existing?.bilingualSubtitle,
       bilingualAss: partial.bilingualAss ?? existing?.bilingualAss,
       burnedVideo: partial.burnedVideo ?? existing?.burnedVideo,
+      polishedMarkdown:
+        partial.polishedMarkdown ?? existing?.polishedMarkdown,
     }
     this.saveTaskArtifacts(taskId, merged)
     return merged
@@ -459,17 +470,23 @@ export class DatabaseManager {
   /**
    * 获取所有翻译任务列表（按创建时间倒序）
    */
-  getAllTranslationTasks(): TranslationTask[] {
-    const stmt = this.db.prepare(`
+  getAllTranslationTasks(kind?: TaskKind): TranslationTask[] {
+    const base = `
       SELECT t.*, v.name as video_name, v.path as video_path, v.size as video_size,
              v.duration as video_duration, v.format as video_format, v.created_at as video_created_at,
              v.source_url as video_source_url
       FROM translation_tasks t
       JOIN video_files v ON t.video_file_id = v.id
-      ORDER BY t.created_at DESC
-    `)
+    `
+    const stmt = kind
+      ? this.db.prepare(
+          `${base} WHERE COALESCE(t.kind, 'subtitle') = ? ORDER BY t.created_at DESC`
+        )
+      : this.db.prepare(`${base} ORDER BY t.created_at DESC`)
 
-    const rows = stmt.all() as Array<Record<string, unknown>>
+    const rows = (
+      kind ? stmt.all(kind) : stmt.all()
+    ) as Array<Record<string, unknown>>
     return rows.map(row => this.mapTaskRow(row))
   }
 

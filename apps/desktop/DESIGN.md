@@ -84,7 +84,7 @@ components:
 
 **Creative North Star: "The Quiet Workbench"**
 
-桌面端是**安静工作台**：中性、可扫读、密度服务任务。用户来是为了把视频变成可用字幕，不是来感受品牌秀场。视觉语言来自 shadcn/ui New York + neutral 基底，用 OKLCH 中性斜坡与克制圆角支撑「锋利 · 现代 · 自信」——自信来自准确状态与稳定反馈，而不是饱和强调色。
+桌面端是**安静工作台**：中性、可扫读、密度服务任务。用户来是为了把视频变成可用字幕或 Markdown 文稿，不是来感受品牌秀场。视觉语言来自 shadcn 风格 New York + neutral 基底（实现上使用 Base UI 原语），用 OKLCH 中性斜坡与克制圆角支撑「锋利 · 现代 · 自信」——自信来自准确状态与稳定反馈，而不是饱和强调色。
 
 气质对齐 Linear / Raycast 一类桌面工具：短标签、清晰层级、少装饰。深度几乎只靠边框与轻微 `shadow-sm` / `shadow-xs`，不做舞台式抬升（那是官网的事）。
 

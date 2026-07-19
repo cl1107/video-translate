@@ -1,41 +1,48 @@
 # 视频翻译助手 🎬
 
-基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地视频翻译软件，支持离线语音识别、翻译和字幕生成。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
+基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Ollama + Electron** 的本地优先桌面工具：一条流水线做**视频字幕翻译**，另一条把音视频整理成 **Markdown 文稿**。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
 
 **产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
 
-![视频翻译助手](https://img.shields.io/badge/version-0.6.1-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.7.0-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Pages](https://img.shields.io/badge/GitHub%20Pages-live-success.svg)
 
 ## ✨ 特性
 
-- 🚀 **本地处理** - 视频、识别结果和翻译内容无需上传到第三方服务
-- 🔗 **在线链接** - 粘贴 YouTube / B 站等链接，经 yt-dlp 下载后走同一流水线
-- 📝 **平台字幕优先** - 有站内人工/自动字幕时直接翻译，跳过 ASR；无字幕再本地识别
+- 🚀 **本地处理** - 视频、识别结果、字幕与文稿无需上传到第三方服务
+- 🔀 **双工作流** - 顶栏切换「字幕」与「文稿」，任务列表与流水线彼此独立
+- 🔗 **在线链接** - 粘贴 YouTube / B 站等链接，经 yt-dlp 下载后进入对应流水线
+- 📝 **平台字幕优先** - 有站内人工/自动字幕时直接采用，跳过 ASR；无字幕再本地识别
 - 🎯 **高精度识别** - 基于 sherpa-onnx，默认 SenseVoice Small（中/英/日/韩/粤）
-- 🌍 **多语言翻译** - 通过本地 Ollama 大模型进行文本翻译
+- 🌍 **多语言翻译** - 字幕线通过本地 Ollama 翻译；可选 BYOK 润色识别原文
+- 📄 **Markdown 文稿** - 文稿线整篇 AI 润色为结构化 MD，全屏预览 / 复制 / 导出
 - ⚡ **智能处理** - 自动音频提取、分段识别与进度回调
-- 🎨 **现代界面** - React 19 + TailwindCSS，支持暗黑模式
-- 📁 **多格式输出** - SRT、VTT、TXT 字幕；可选硬字幕烧录
-- 🔄 **任务管理** - 支持任务进度跟踪、暂停/恢复与日志查看
+- 🎨 **现代界面** - React 19 + TailwindCSS 4 + Base UI，支持暗黑模式
+- 📁 **多格式输出** - SRT / ASS 字幕、可选硬字幕烧录；文稿输出 `.md`
+- 🔄 **任务管理** - 进度跟踪、暂停/恢复、处理日志
 - 🛠️ **系统依赖自检** - 启动时检测 FFmpeg / Ollama / ASR 模型，缺失 SenseVoice 时自动下载
 
 ## 🖼️ 界面预览
 
 ### 主界面
 
-- **上传视频**: 拖拽或选择视频文件
-- **任务列表**: 实时查看处理进度与任务日志
-- **设置页面**: 配置 ASR 引擎、Ollama 模型、语言与硬字幕选项
+- **工作流切换**: 字幕 / 文稿（次级入口，靠品牌区）
+- **添加 / 任务**: 当前工作流内的导入与任务列表
+- **设置页面**: ASR 引擎、Ollama 翻译/润色模型、语言与硬字幕选项
 
-### 工作流程
+### 字幕工作流
 
 1. 📹 **本地上传** 或 🔗 **在线链接（yt-dlp）**
-2. 🎵 **音频提取**（有平台字幕时可跳过）
-3. 🗣️ **语音识别 (ASR)** 或 直接使用**平台字幕**
-4. 🌐 **文本翻译** → 5. 📝 **字幕生成**（可选硬字幕烧录）
+2. 🗣️ **平台字幕** 或 **ASR 识别**
+3. 🌐 **可选润色 + 翻译** → 📝 **字幕导出**（可选硬字幕烧录）
+
+### 文稿工作流
+
+1. 📹 **本地音视频** 或 🔗 **在线链接**
+2. 🗣️ **平台字幕** 或 **ASR 识别**
+3. ✨ **整篇润色为 Markdown** → 📖 **全屏预览 / 导出 `.md`**
 
 ## 🚀 快速开始
 
@@ -136,9 +143,10 @@ ollama pull kaelri/hy-mt2:1.8b
 ### 前端 (Renderer Process)
 
 - **React 19** - UI 框架
-- **TypeScript 7** - 类型安全
+- **TypeScript 7** - 类型安全
 - **TailwindCSS 4** - 样式
-- **Radix UI / shadcn 风格组件** - 交互组件
+- **Base UI（@base-ui/react）** - 交互原语；组件风格兼容 shadcn 设计语言
+- **react-markdown + remark-gfm** - 文稿全屏预览
 
 ### 后端 (Main Process)
 
@@ -146,23 +154,23 @@ ollama pull kaelri/hy-mt2:1.8b
 - **SQLite (better-sqlite3)** - 本地任务与日志存储
 - **FFmpeg** - 音频提取、分段、可选硬字幕烧录
 - **sherpa-onnx-node** - 本地 ASR（SenseVoice / Fun-ASR-Nano）
-- **Ollama** - 本地大语言模型翻译
+- **Ollama** - 本地大语言模型（翻译 + 润色）；可选 BYOK OpenAI 兼容接口
 
 ### 核心服务
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Task Manager  │    │  Database Mgr   │    │  Subtitle Gen   │
-│   任务管理器    │ ←→ │   数据库管理    │ ←→ │   字幕生成器    │
+│   Task Manager  │    │  Database Mgr   │    │ Subtitle / MD   │
+│  任务（双 kind）│ ←→ │   数据库管理    │ ←→ │  字幕 / 文稿产物 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          ↓                       ↓                       ↓
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ FFmpeg Service  │    │  ASR (sherpa)   │    │ Ollama Service  │
-│   音视频处理    │    │   语音识别      │    │   文本翻译      │
+│ FFmpeg Service  │    │  ASR (sherpa)   │    │ Ollama / BYOK   │
+│   音视频处理    │    │   语音识别      │    │  翻译 · 润色    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### 翻译流水线
+### 字幕流水线
 
 1. **本地上传** 或 **在线链接**（yt-dlp 下载视频 + 平台字幕）
 2. **源文获取**（二选一）
@@ -172,6 +180,13 @@ ollama pull kaelri/hy-mt2:1.8b
 4. **字幕生成** → 输出 SRT / ASS 等
 5. **可选** → 硬字幕烧录到视频（需支持 libass 的 FFmpeg）
 6. **清理** → 删除临时文件并完成任务
+
+### 文稿流水线
+
+1. **本地音视频** 或 **在线链接**
+2. **源文获取**（平台字幕或 ASR，与字幕线共享基建）
+3. **整篇润色** → 结构化 Markdown（长文分块）
+4. **写入** `{素材旁}/output/{文件名}.md` → 应用内全屏预览
 
 ## 📚 详细文档
 
@@ -247,17 +262,18 @@ pnpm --filter video-translate rebuild:native
 ## 🎯 使用场景
 
 - 📺 **视频字幕制作** - 为视频添加多语言字幕
-- 🎓 **教育培训** - 课程视频本地化
+- 📄 **会议 / 课程笔记** - 把长视频整理成可读 Markdown 文稿
+- 🎓 **教育培训** - 课程视频本地化或文档化
 - 📰 **新闻媒体** - 新闻视频快速翻译
-- 🎬 **内容创作** - YouTube、B 站等视频字幕
-- 🏢 **企业培训** - 内部培训材料翻译
+- 🎬 **内容创作** - YouTube、B 站等视频字幕或文案底稿
+- 🏢 **企业培训** - 内部培训材料翻译与归档
 
 ## 🔒 隐私安全
 
-- ✅ **离线优先** - 识别与翻译均在本地完成
-- ✅ **本地存储** - 任务与日志保存在 SQLite
+- ✅ **离线优先** - 识别、翻译与文稿润色默认可在本地完成
+- ✅ **本地存储** - 任务、日志与产物保存在本机
 - ✅ **沙盒隔离** - 遵循 Electron 安全实践
-- ✅ **无云端上传** - 视频文件不上传到第三方云服务（除本地 Ollama / 首次下载 ASR 模型外）
+- ✅ **无云端上传** - 视频文件不上传到第三方云服务（除本地 Ollama / 可选 BYOK / 首次下载 ASR 模型外）
 
 ## 📦 发布包说明
 
@@ -284,7 +300,6 @@ video-translate-vX.Y.Z-linux-x64-bundled-ffmpeg.AppImage
 - 每个 Release 附带 `SHA256SUMS.txt`，下载后请校验完整性。
 - 官网文档：https://cl1107.github.io/video-translate/docs
   每个 Release 正文顶部会附带精简的包类型说明（由 `scripts/release-notes-preamble.md` 生成），完整安装与依赖说明见官网文档。
-
 
 ### 非签名构建注意事项
 

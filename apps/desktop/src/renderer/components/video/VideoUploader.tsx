@@ -8,9 +8,12 @@ import {
   DEFAULT_APP_SETTINGS,
   normalizeAppSettings,
 } from '../../../shared/settings'
+import type { TaskKind } from '../../../shared/types/video'
 
 interface VideoUploaderProps {
   onUploadSuccess?: () => void
+  /** 字幕（默认）或文稿工作流 */
+  kind?: TaskKind
 }
 
 function loadSettings() {
@@ -41,6 +44,8 @@ function extractUrls(text: string): string[] {
 }
 
 const VIDEO_EXT = /\.(mp4|avi|mov|mkv|webm|wmv|flv)$/i
+const MEDIA_EXT =
+  /\.(mp4|avi|mov|mkv|webm|wmv|flv|mp3|wav|m4a|aac|flac|ogg)$/i
 
 /** 解析拖入 File 的本地路径（Electron 必须走 webUtils，File.path 已失效） */
 function resolveDroppedFilePath(file: File): string {
@@ -59,12 +64,16 @@ function resolveDroppedFilePath(file: File): string {
   return ''
 }
 
-function isVideoPathOrName(pathOrName: string): boolean {
-  return VIDEO_EXT.test(pathOrName)
+function isAcceptedMedia(pathOrName: string, kind: TaskKind): boolean {
+  return kind === 'document' ? MEDIA_EXT.test(pathOrName) : VIDEO_EXT.test(pathOrName)
 }
 
-export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
+export function VideoUploader({
+  onUploadSuccess,
+  kind = 'subtitle',
+}: VideoUploaderProps) {
   const navigate = useNavigate()
+  const isDocument = kind === 'document'
   const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorHint, setErrorHint] = useState<'settings' | null>(null)
@@ -80,7 +89,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       setUploading(true)
       try {
         const settings = loadSettings()
-        const result = await window.App.uploadFiles(filePaths, settings)
+        const result = await window.App.uploadFiles(filePaths, settings, kind)
         if (result.success) {
           setError(null)
           setErrorHint(null)
@@ -88,13 +97,13 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
         } else {
           const msg = result.error || '未知错误'
           setError(`上传失败：${msg}`)
-          setErrorHint(/ollama|模型|翻译/i.test(msg) ? 'settings' : null)
+          setErrorHint(/ollama|模型|润色|翻译/i.test(msg) ? 'settings' : null)
         }
       } finally {
         setUploading(false)
       }
     },
-    [onUploadSuccess]
+    [onUploadSuccess, kind]
   )
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -156,12 +165,12 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
       for (const file of files) {
         const filePath = resolveDroppedFilePath(file)
         const nameForCheck = filePath || file.name
-        if (!isVideoPathOrName(nameForCheck)) {
+        if (!isAcceptedMedia(nameForCheck, kind)) {
           rejectedNames.push(file.name || nameForCheck)
           continue
         }
         if (!filePath) {
-          // 有视频扩展名但拿不到绝对路径
+          // 有扩展名但拿不到绝对路径
           rejectedNames.push(file.name)
           continue
         }
@@ -173,7 +182,9 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
           setError(
             `无法添加：${rejectedNames.slice(0, 3).join('、')}${
               rejectedNames.length > 3 ? ' 等' : ''
-            }。请拖入支持的视频格式，或使用「选择文件」。`
+            }。请拖入支持的${
+              isDocument ? '音视频' : '视频'
+            }格式，或使用「选择文件」。`
           )
         } else {
           setError('无法获取文件路径。请使用「选择文件」按钮添加。')
@@ -189,14 +200,16 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
         )
       }
     },
-    [uploadPaths]
+    [uploadPaths, kind, isDocument]
   )
 
   const openFileDialog = async () => {
     setError(null)
     setErrorHint(null)
     try {
-      const filePaths = await window.App.openFileDialog()
+      const filePaths = await window.App.openFileDialog(
+        isDocument ? 'document' : 'video'
+      )
       if (filePaths.length === 0) return
       await uploadPaths(filePaths)
     } catch (err) {
@@ -218,7 +231,7 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
     setUrlSubmitting(true)
     try {
       const settings = loadSettings()
-      const result = await window.App.createTasksFromUrls(urls, settings)
+      const result = await window.App.createTasksFromUrls(urls, settings, kind)
       if (result.success) {
         setUrlText('')
         onUploadSuccess?.()
@@ -287,11 +300,17 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
               {uploading
                 ? '正在添加…'
                 : dragActive
-                  ? '释放以添加视频'
-                  : '拖拽视频到此处'}
+                  ? isDocument
+                    ? '释放以添加音视频'
+                    : '释放以添加视频'
+                  : isDocument
+                    ? '拖拽音视频到此处'
+                    : '拖拽视频到此处'}
             </h2>
             <p className="text-sm text-muted-foreground">
-              MP4 / AVI / MOV / MKV / WebM / WMV / FLV · 最大 2GB
+              {isDocument
+                ? '视频 MP4/MKV/… · 音频 MP3/WAV/M4A/… · 最大 2GB'
+                : 'MP4 / AVI / MOV / MKV / WebM / WMV / FLV · 最大 2GB'}
             </p>
           </div>
 
@@ -320,8 +339,9 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
             <div className="flex min-w-0 flex-col gap-0.5">
               <h2 className="text-sm font-semibold">在线视频链接</h2>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                YouTube、B 站等地址；优先用平台字幕，否则本地识别。需本机已安装{' '}
-                <code className="text-[11px]">yt-dlp</code>。
+                {isDocument
+                  ? 'YouTube、B 站等；优先平台字幕，否则本地识别后整理为 Markdown。需 yt-dlp。'
+                  : 'YouTube、B 站等地址；优先用平台字幕，否则本地识别。需本机已安装 yt-dlp。'}
               </p>
             </div>
           </div>
@@ -339,7 +359,9 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              支持多行；与本地文件共用同一翻译流水线
+              {isDocument
+                ? '支持多行；下载后走文稿流水线'
+                : '支持多行；与本地文件共用同一翻译流水线'}
             </p>
             <Button
               variant="secondary"
@@ -348,7 +370,11 @@ export function VideoUploader({ onUploadSuccess }: VideoUploaderProps) {
               disabled={urlSubmitting || !urlText.trim()}
             >
               <Link2 className="h-4 w-4" />
-              {urlSubmitting ? '提交中…' : '下载并翻译'}
+              {urlSubmitting
+                ? '提交中…'
+                : isDocument
+                  ? '下载并整理'
+                  : '下载并翻译'}
             </Button>
           </div>
         </CardContent>

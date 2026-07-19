@@ -14,6 +14,8 @@ import {
   taskOptionsFromAppSettings,
 } from '../../shared/task-options'
 import {
+  normalizeTaskKind,
+  type TaskKind,
   type TaskLog,
   type TaskOutputArtifacts,
   type TaskRuntimeOptions,
@@ -25,6 +27,7 @@ import {
 import type { SubtitleColors } from '../utils/subtitle-artifacts'
 import { ensureSenseVoiceModel } from './asr/model-downloader'
 import { databaseManager } from './database/manager'
+import { runDocumentPipeline } from './document-pipeline'
 import { findBestPlatformSubtitle } from './download/platform-subtitles'
 import {
   derivePlaceholderName,
@@ -49,12 +52,15 @@ export interface CreateTaskOptions extends Partial<AppSettings> {
   filePath: string
   sourceLanguage: string
   targetLanguage: string
+  /** 默认字幕工作流 */
+  kind?: TaskKind
 }
 
 export interface CreateUrlTaskOptions extends Partial<AppSettings> {
   url: string
   sourceLanguage: string
   targetLanguage: string
+  kind?: TaskKind
 }
 
 function getDownloadsRoot(): string {
@@ -172,12 +178,14 @@ export class TaskManager {
   async createTask(options: CreateTaskOptions): Promise<string> {
     const taskId = uuidv4()
     const runtime = taskOptionsFromAppSettings(options)
+    const kind = normalizeTaskKind(options.kind)
+    const isDocument = kind === 'document'
 
     try {
       this.addTaskLog(
         taskId,
         'info',
-        '开始创建翻译任务',
+        isDocument ? '开始创建文稿任务' : '开始创建翻译任务',
         `文件路径: ${options.filePath}`
       )
 
@@ -202,6 +210,7 @@ export class TaskManager {
       const task: TranslationTask = {
         id: taskId,
         videoFile,
+        kind,
         status: TaskStatus.PENDING,
         progress: 0,
         sourceLanguage: options.sourceLanguage,
@@ -222,8 +231,10 @@ export class TaskManager {
       this.addTaskLog(
         taskId,
         'success',
-        '翻译任务创建成功',
-        `源语言: ${options.sourceLanguage}, 目标语言: ${options.targetLanguage}`
+        isDocument ? '文稿任务创建成功' : '翻译任务创建成功',
+        isDocument
+          ? `源语言: ${options.sourceLanguage}`
+          : `源语言: ${options.sourceLanguage}, 目标语言: ${options.targetLanguage}`
       )
 
       this.notifyTaskUpdate(task)
@@ -246,12 +257,14 @@ export class TaskManager {
     const taskId = uuidv4()
     const runtime = taskOptionsFromAppSettings(options)
     const url = validateVideoUrl(options.url)
+    const kind = normalizeTaskKind(options.kind)
+    const isDocument = kind === 'document'
 
     try {
       this.addTaskLog(
         taskId,
         'info',
-        '开始创建在线下载翻译任务',
+        isDocument ? '开始创建在线文稿任务' : '开始创建在线下载翻译任务',
         displayUrl(url)
       )
 
@@ -276,6 +289,7 @@ export class TaskManager {
       const task: TranslationTask = {
         id: taskId,
         videoFile,
+        kind,
         status: TaskStatus.PENDING,
         progress: 0,
         sourceLanguage: options.sourceLanguage,
@@ -297,7 +311,9 @@ export class TaskManager {
         taskId,
         'success',
         '在线任务创建成功，等待下载',
-        `源语言: ${options.sourceLanguage}, 目标语言: ${options.targetLanguage}`
+        isDocument
+          ? `源语言: ${options.sourceLanguage}`
+          : `源语言: ${options.sourceLanguage}, 目标语言: ${options.targetLanguage}`
       )
 
       this.notifyTaskUpdate(task)
@@ -372,34 +388,55 @@ export class TaskManager {
     this.abortControllers.set(taskId, controller)
 
     try {
-      // 在线任务：先下载到本地，再进入翻译流水线
+      // 在线任务：先下载到本地，再进入对应流水线
       await this.ensureLocalVideoReady(task, controller.signal)
 
-      const context = await runTranslationPipeline(
-        task,
-        options,
-        {
-          onLog: (level, message, details) =>
-            this.addTaskLog(taskId, level, message, details),
-          onStatus: (status, progress, errorMessage) =>
-            this.updateTaskStatus(taskId, status, progress, errorMessage),
-          onArtifacts: artifacts => {
-            const taskRef = this.activeTasks.get(taskId)
-            if (taskRef) {
-              taskRef.outputArtifacts = artifacts
-            }
-            databaseManager.saveTaskArtifacts(taskId, artifacts)
-          },
-          onSegments: segments => {
-            const taskRef = this.activeTasks.get(taskId)
-            if (taskRef) taskRef.segments = segments
-          },
-          resolveByokApiKey: () => getByokApiKey() ?? undefined,
+      const hooks = {
+        onLog: (
+          level: TaskLog['level'],
+          message: string,
+          details?: string
+        ) => this.addTaskLog(taskId, level, message, details),
+        onStatus: (
+          status: TaskStatus,
+          progress?: number,
+          errorMessage?: string
+        ) => this.updateTaskStatus(taskId, status, progress, errorMessage),
+        onArtifacts: (artifacts: TaskOutputArtifacts) => {
+          const taskRef = this.activeTasks.get(taskId)
+          if (taskRef) {
+            taskRef.outputArtifacts = artifacts
+          }
+          databaseManager.saveTaskArtifacts(taskId, artifacts)
         },
-        controller.signal
-      )
+        onSegments: (segments: TranscriptionSegment[]) => {
+          const taskRef = this.activeTasks.get(taskId)
+          if (taskRef) taskRef.segments = segments
+        },
+        resolveByokApiKey: () => getByokApiKey() ?? undefined,
+      }
 
-      await this.finalizeTask(taskId, context.subtitles, context.outputArtifacts)
+      if (normalizeTaskKind(task.kind) === 'document') {
+        const context = await runDocumentPipeline(
+          task,
+          options,
+          hooks,
+          controller.signal
+        )
+        await this.finalizeTask(taskId, undefined, context.outputArtifacts)
+      } else {
+        const context = await runTranslationPipeline(
+          task,
+          options,
+          hooks,
+          controller.signal
+        )
+        await this.finalizeTask(
+          taskId,
+          context.subtitles,
+          context.outputArtifacts
+        )
+      }
     } catch (error) {
       if (isAbortError(error) || controller.signal.aborted) {
         const current = this.activeTasks.get(taskId)
@@ -688,15 +725,40 @@ export class TaskManager {
     }
   }
 
-  getAllTasks(): TranslationTask[] {
-    return databaseManager.getAllTranslationTasks()
+  getAllTasks(kind?: TaskKind): TranslationTask[] {
+    return databaseManager.getAllTranslationTasks(kind)
   }
 
   getTask(taskId: string): TranslationTask | null {
-    return (
+    const task =
       this.activeTasks.get(taskId) ??
       databaseManager.getTranslationTask(taskId)
-    )
+    if (!task) return null
+    return { ...task, kind: normalizeTaskKind(task.kind) }
+  }
+
+  /** 读取文稿任务润色后的 Markdown 文本 */
+  async getTaskMarkdownContent(
+    taskId: string
+  ): Promise<{ success: boolean; content?: string; path?: string; error?: string }> {
+    const task = this.getTask(taskId)
+    if (!task) {
+      return { success: false, error: '任务不存在' }
+    }
+    if (normalizeTaskKind(task.kind) !== 'document') {
+      return { success: false, error: '仅文稿任务可读取 Markdown' }
+    }
+    const mdPath = task.outputArtifacts?.polishedMarkdown
+    if (!mdPath) {
+      return { success: false, error: '文稿尚未生成' }
+    }
+    try {
+      const content = await fs.readFile(mdPath, 'utf-8')
+      return { success: true, content, path: mdPath }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { success: false, error: `读取文稿失败：${message}` }
+    }
   }
 
   pauseTask(taskId: string): void {
@@ -820,6 +882,10 @@ export class TaskManager {
       existing ?? databaseManager.getTranslationTask(taskId)
     if (!task) {
       return { success: false, error: '任务不存在' }
+    }
+
+    if (normalizeTaskKind(task.kind) === 'document') {
+      return { success: false, error: '文稿任务不支持烧录字幕' }
     }
 
     if (

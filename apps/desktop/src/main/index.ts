@@ -6,6 +6,7 @@ import {
   normalizeAppSettings,
   type SubtitleBurnMode,
 } from '../shared/settings'
+import { normalizeTaskKind, type TaskKind } from '../shared/types/video'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
 import { ollamaClient } from './services/ollama/client'
 import {
@@ -25,17 +26,24 @@ import { MainWindow } from './windows/main'
 function setupIpcHandlers() {
   ipcMain.handle(
     IpcChannels.uploadFiles,
-    async (_event, filePaths: string[], settingsRaw: unknown) => {
+    async (
+      _event,
+      filePaths: string[],
+      settingsRaw: unknown,
+      kindRaw?: unknown
+    ) => {
       try {
         const settings = normalizeAppSettings(
           settingsRaw as Parameters<typeof normalizeAppSettings>[0]
         )
+        const kind = normalizeTaskKind(kindRaw)
         const taskIds: string[] = []
 
         for (const filePath of filePaths) {
           const taskId = await taskManager.createTask({
             filePath,
             ...settings,
+            kind,
           })
           taskIds.push(taskId)
         }
@@ -52,11 +60,17 @@ function setupIpcHandlers() {
 
   ipcMain.handle(
     IpcChannels.createTasksFromUrls,
-    async (_event, urlsRaw: unknown, settingsRaw: unknown) => {
+    async (
+      _event,
+      urlsRaw: unknown,
+      settingsRaw: unknown,
+      kindRaw?: unknown
+    ) => {
       try {
         const settings = normalizeAppSettings(
           settingsRaw as Parameters<typeof normalizeAppSettings>[0]
         )
+        const kind = normalizeTaskKind(kindRaw)
         const urls = Array.isArray(urlsRaw)
           ? urlsRaw.filter((u): u is string => typeof u === 'string')
           : []
@@ -69,6 +83,7 @@ function setupIpcHandlers() {
           const taskId = await taskManager.createTaskFromUrl({
             url,
             ...settings,
+            kind,
           })
           taskIds.push(taskId)
         }
@@ -95,13 +110,24 @@ function setupIpcHandlers() {
     return clearByokApiKey()
   })
 
-  ipcMain.handle(IpcChannels.getAllTasks, () => {
-    return taskManager.getAllTasks()
+  ipcMain.handle(IpcChannels.getAllTasks, (_event, kindRaw?: unknown) => {
+    const kind =
+      kindRaw === 'subtitle' || kindRaw === 'document'
+        ? (kindRaw as TaskKind)
+        : undefined
+    return taskManager.getAllTasks(kind)
   })
 
   ipcMain.handle(IpcChannels.getTask, (_event, taskId: string) => {
     return taskManager.getTask(taskId)
   })
+
+  ipcMain.handle(
+    IpcChannels.getTaskMarkdownContent,
+    async (_event, taskId: string) => {
+      return taskManager.getTaskMarkdownContent(taskId)
+    }
+  )
 
   ipcMain.handle(IpcChannels.pauseTask, (_event, taskId: string) => {
     taskManager.pauseTask(taskId)
@@ -240,23 +266,55 @@ function setupIpcHandlers() {
     }
   })
 
-  ipcMain.handle(IpcChannels.openFileDialog, async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openFile', 'multiSelections'],
-      filters: [
-        {
-          name: '视频文件',
-          extensions: ['mp4', 'avi', 'mov', 'mkv', 'webm', 'wmv', 'flv'],
-        },
-      ],
-    })
+  ipcMain.handle(
+    IpcChannels.openFileDialog,
+    async (_event, mediaRaw?: unknown) => {
+      const media = mediaRaw === 'document' ? 'document' : 'video'
+      const filters =
+        media === 'document'
+          ? [
+              {
+                name: '音视频文件',
+                extensions: [
+                  'mp4',
+                  'avi',
+                  'mov',
+                  'mkv',
+                  'webm',
+                  'wmv',
+                  'flv',
+                  'mp3',
+                  'wav',
+                  'm4a',
+                  'aac',
+                  'flac',
+                  'ogg',
+                ],
+              },
+            ]
+          : [
+              {
+                name: '视频文件',
+                extensions: ['mp4', 'avi', 'mov', 'mkv', 'webm', 'wmv', 'flv'],
+              },
+            ]
 
-    return result.filePaths
-  })
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile', 'multiSelections'],
+        filters,
+      })
+
+      return result.filePaths
+    }
+  )
 
   ipcMain.handle(
     IpcChannels.openTaskArtifact,
-    async (_event, taskId: string, kind: 'video' | 'subtitle' | 'result') => {
+    async (
+      _event,
+      taskId: string,
+      kind: 'video' | 'subtitle' | 'result' | 'markdown'
+    ) => {
       const task = taskManager.getTask(taskId)
       if (!task) {
         return { success: false, error: '任务不存在' }
@@ -267,8 +325,12 @@ function setupIpcHandlers() {
         kind === 'video'
           ? artifacts?.burnedVideo
           : kind === 'subtitle'
-            ? artifacts?.translatedSubtitle
-            : artifacts?.outputDirectory
+            ? artifacts?.translatedSubtitle ||
+              artifacts?.bilingualSubtitle ||
+              artifacts?.originalSubtitle
+            : kind === 'markdown'
+              ? artifacts?.polishedMarkdown
+              : artifacts?.outputDirectory
       if (!artifactPath) {
         return { success: false, error: '任务产物不存在' }
       }
