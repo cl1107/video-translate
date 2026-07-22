@@ -6,6 +6,11 @@ import {
 
 export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 
+/** 字幕与烧录视频的输出位置。 */
+export type SubtitleOutputLocation =
+  | 'output-subdirectory'
+  | 'source-directory'
+
 /** 识别文本润色后端：本地 Ollama 或用户自备 OpenAI 兼容 API */
 export type PolishProvider = 'ollama' | 'byok'
 
@@ -20,6 +25,7 @@ export interface AppSettings {
   sourceLanguage: string
   targetLanguage: string
   outputFormat: 'srt' | 'vtt' | 'txt'
+  subtitleOutputLocation: SubtitleOutputLocation
   burnSubtitles: boolean
   /** 烧录内容：双语堆叠 / 仅译文 / 仅原文 */
   burnSubtitleMode: SubtitleBurnMode
@@ -45,6 +51,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   sourceLanguage: 'auto',
   targetLanguage: 'zh',
   outputFormat: 'srt',
+  subtitleOutputLocation: 'output-subdirectory',
   burnSubtitles: false,
   burnSubtitleMode: 'bilingual',
   polishTranscript: true,
@@ -61,6 +68,14 @@ function normalizeBurnSubtitleMode(value?: string | null): SubtitleBurnMode {
     return value
   }
   return DEFAULT_APP_SETTINGS.burnSubtitleMode
+}
+
+function normalizeSubtitleOutputLocation(
+  value?: string | null
+): SubtitleOutputLocation {
+  return value === 'source-directory'
+    ? 'source-directory'
+    : 'output-subdirectory'
 }
 
 function normalizePolishProvider(value?: string | null): PolishProvider {
@@ -143,6 +158,9 @@ export function normalizeAppSettings(
     sourceLanguage: raw.sourceLanguage || DEFAULT_APP_SETTINGS.sourceLanguage,
     targetLanguage: raw.targetLanguage || DEFAULT_APP_SETTINGS.targetLanguage,
     outputFormat: raw.outputFormat || DEFAULT_APP_SETTINGS.outputFormat,
+    subtitleOutputLocation: normalizeSubtitleOutputLocation(
+      raw.subtitleOutputLocation
+    ),
     burnSubtitles: Boolean(raw.burnSubtitles),
     burnSubtitleMode: normalizeBurnSubtitleMode(raw.burnSubtitleMode),
     polishTranscript:
