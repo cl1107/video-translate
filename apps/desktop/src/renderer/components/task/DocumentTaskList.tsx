@@ -28,6 +28,7 @@ import {
   type TranslationTask,
 } from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
+import { formatDuration, formatProcessingTime } from './task-time'
 
 const { App } = window
 
@@ -84,18 +85,6 @@ const formatFileSize = (bytes: number): string => {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`
-}
-
-const formatDuration = (seconds: number): string => {
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = Math.floor(seconds % 60)
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs
-      .toString()
-      .padStart(2, '0')}`
-  }
-  return `${minutes}:${secs.toString().padStart(2, '0')}`
 }
 
 const formatDate = (date: string): string => date.split(' ')[0]
@@ -285,6 +274,10 @@ export function DocumentTaskList({
 
       {documentTasks.map(task => {
         const isExpanded = expandedTasks.has(task.id)
+        const processingTime = formatProcessingTime(
+          task.createdAt,
+          task.completedAt
+        )
         const isComplete = task.status === TaskStatus.COMPLETED
         const isRunning =
           task.status !== TaskStatus.PENDING &&
@@ -314,8 +307,9 @@ export function DocumentTaskList({
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
-                        {formatDuration(task.videoFile.duration)}
+                        媒体 {formatDuration(task.videoFile.duration)}
                       </span>
+                      {processingTime && <span>处理 {processingTime}</span>}
                       <span>{formatFileSize(task.videoFile.size)}</span>
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
