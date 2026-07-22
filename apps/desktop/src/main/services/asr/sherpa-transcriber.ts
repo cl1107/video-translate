@@ -3,6 +3,7 @@ import os from 'node:os'
 import { v4 as uuidv4 } from 'uuid'
 import type { AsrEngineId } from '../../../shared/constants'
 import { DEFAULT_ASR_ENGINE } from '../../../shared/constants'
+import { normalizeDetectedLanguage } from '../../../shared/language'
 import type { TranscriptionSegment } from '../../../shared/types/video'
 import { ffmpegProcessor } from '../ffmpeg/processor'
 import {
@@ -339,7 +340,11 @@ export class SherpaTranscriber {
           if (result.text) {
             rawText += `${result.text} `
           }
-          if (!detectedLang && result.lang) {
+          if (
+            !detectedLang &&
+            result.lang &&
+            part.some(segment => cleanAsrText(segment.originalText).length > 0)
+          ) {
             detectedLang = result.lang
           }
         } catch (error) {
@@ -379,7 +384,10 @@ export class SherpaTranscriber {
     return {
       segments,
       engine,
-      language: detectedLang || language,
+      language:
+        segments.length > 0
+          ? normalizeDetectedLanguage(detectedLang)
+          : undefined,
       rawText: rawText.trim(),
     }
   }

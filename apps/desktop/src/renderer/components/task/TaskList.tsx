@@ -455,7 +455,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <span className="font-medium">源语言:</span>{' '}
-                      {task.sourceLanguage}
+                      {task.detectedLanguage ?? task.sourceLanguage}
                     </div>
                     <div>
                       <span className="font-medium">目标语言:</span>{' '}

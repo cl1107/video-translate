@@ -4,7 +4,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
-import { toLanguageCode } from '../../shared/language'
+import { normalizeDetectedLanguage, toLanguageCode } from '../../shared/language'
 import type {
   TaskOutputArtifacts,
   TaskRuntimeOptions,
@@ -268,6 +268,14 @@ export async function runDocumentPipeline(
       )
     }
 
+    const detectedLanguage = normalizeDetectedLanguage(
+      context.transcription?.language
+    )
+    task.detectedLanguage = detectedLanguage
+    hooks.onDetectedLanguage(detectedLanguage)
+    if (detectedLanguage) {
+      hooks.onLog('info', '检测到原文语言', detectedLanguage)
+    }
     context.rawText =
       context.transcription?.rawText?.trim() ||
       joinSegmentsToRawText(context.transcription?.segments ?? [])

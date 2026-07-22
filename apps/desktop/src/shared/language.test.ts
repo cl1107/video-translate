@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
-import { toLanguageCode, toLanguageSuffix } from './language'
+import {
+  normalizeDetectedLanguage,
+  resolveSubtitleLanguageSuffixes,
+  toLanguageCode,
+  toLanguageSuffix,
+} from './language'
 
 test('toLanguageCode 统一展示名与短码', () => {
   assert.equal(toLanguageCode('English'), 'en')
@@ -13,4 +18,24 @@ test('toLanguageCode 统一展示名与短码', () => {
 test('toLanguageSuffix 对 auto 保持 auto', () => {
   assert.equal(toLanguageSuffix('auto'), 'auto')
   assert.equal(toLanguageSuffix('English'), 'en')
+})
+
+test('normalizeDetectedLanguage 清理 ASR 标签和语言展示名', () => {
+  assert.equal(normalizeDetectedLanguage('<|ja|>'), 'ja')
+  assert.equal(normalizeDetectedLanguage('English'), 'en')
+  assert.equal(normalizeDetectedLanguage('zh-Hans'), 'zh')
+  assert.equal(normalizeDetectedLanguage('<|NEUTRAL|><|ko|>'), 'ko')
+  assert.equal(normalizeDetectedLanguage('Spanish'), 'es')
+  assert.equal(normalizeDetectedLanguage('pt-BR'), 'pt')
+  assert.equal(normalizeDetectedLanguage('unknown-language'), undefined)
+})
+test('resolveSubtitleLanguageSuffixes 避免同语言产物互相覆盖', () => {
+  assert.deepEqual(resolveSubtitleLanguageSuffixes('ja', 'zh'), {
+    sourceSuffix: 'ja',
+    targetSuffix: 'zh',
+  })
+  assert.deepEqual(resolveSubtitleLanguageSuffixes('Chinese', 'zh'), {
+    sourceSuffix: 'zh_source',
+    targetSuffix: 'zh_translated',
+  })
 })

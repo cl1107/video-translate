@@ -413,6 +413,16 @@ export class TaskManager {
           const taskRef = this.activeTasks.get(taskId)
           if (taskRef) taskRef.segments = segments
         },
+        onDetectedLanguage: (
+          language: TranslationTask['detectedLanguage']
+        ) => {
+          const taskRef = this.activeTasks.get(taskId)
+          if (taskRef) {
+            taskRef.detectedLanguage = language
+            this.notifyTaskUpdate(taskRef)
+          }
+          databaseManager.saveDetectedLanguage(taskId, language)
+        },
         resolveByokApiKey: () => getByokApiKey() ?? undefined,
       }
 
@@ -924,6 +934,7 @@ export class TaskManager {
         databaseManager.saveTaskArtifacts(taskId, artifacts)
       },
       onSegments: (_segments: TranscriptionSegment[]) => {},
+      onDetectedLanguage: () => {},
       resolveByokApiKey: () => getByokApiKey() ?? undefined,
     }
 
