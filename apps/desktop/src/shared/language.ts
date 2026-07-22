@@ -68,7 +68,22 @@ export function toLanguageSuffix(language: string | undefined | null): string {
   return code === 'auto' ? 'auto' : code
 }
 
-export type DetectedLanguage = 'zh' | 'en' | 'ja' | 'ko' | 'yue'
+export type DetectedLanguage =
+  | 'zh'
+  | 'en'
+  | 'ja'
+  | 'ko'
+  | 'yue'
+  | 'es'
+  | 'fr'
+  | 'de'
+  | 'it'
+  | 'pt'
+  | 'ru'
+  | 'ar'
+  | 'hi'
+  | 'th'
+  | 'vi'
 
 const DETECTED_LANGUAGE_CODES = new Set<DetectedLanguage>([
   'zh',
@@ -76,6 +91,16 @@ const DETECTED_LANGUAGE_CODES = new Set<DetectedLanguage>([
   'ja',
   'ko',
   'yue',
+  'es',
+  'fr',
+  'de',
+  'it',
+  'pt',
+  'ru',
+  'ar',
+  'hi',
+  'th',
+  'vi',
 ])
 
 /** 将 SenseVoice / 平台字幕语言标记规范化为支持的检测语言。 */

@@ -25,7 +25,9 @@ test('normalizeDetectedLanguage 清理 ASR 标签和语言展示名', () => {
   assert.equal(normalizeDetectedLanguage('English'), 'en')
   assert.equal(normalizeDetectedLanguage('zh-Hans'), 'zh')
   assert.equal(normalizeDetectedLanguage('<|NEUTRAL|><|ko|>'), 'ko')
-  assert.equal(normalizeDetectedLanguage('Spanish'), undefined)
+  assert.equal(normalizeDetectedLanguage('Spanish'), 'es')
+  assert.equal(normalizeDetectedLanguage('pt-BR'), 'pt')
+  assert.equal(normalizeDetectedLanguage('unknown-language'), undefined)
 })
 test('resolveSubtitleLanguageSuffixes 避免同语言产物互相覆盖', () => {
   assert.deepEqual(resolveSubtitleLanguageSuffixes('ja', 'zh'), {
