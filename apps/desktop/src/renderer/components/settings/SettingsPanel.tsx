@@ -38,6 +38,7 @@ import {
   normalizeHexColor,
   normalizeOllamaModel,
   type PolishProvider,
+  type SubtitleProcessingMode,
 } from '../../../shared/settings'
 import type { OllamaModel } from '../../../shared/types/video'
 
@@ -481,7 +482,9 @@ export function SettingsPanel() {
         </div>
       </div>
 
-      {!ollamaStatus.isRunning && !ollamaStatus.loading && (
+      {!ollamaStatus.isRunning &&
+        !ollamaStatus.loading &&
+        settings.subtitleProcessingMode === 'translate' && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -533,29 +536,65 @@ export function SettingsPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="target-language">目标语言</Label>
+            <Label htmlFor="subtitle-processing-mode">字幕处理方式</Label>
             <Select
-              value={settings.targetLanguage}
+              value={settings.subtitleProcessingMode}
               onValueChange={value => {
                 if (value == null) return
-                setSettings(prev => ({ ...prev, targetLanguage: value }))
+                setSettings(prev => ({
+                  ...prev,
+                  subtitleProcessingMode: value as SubtitleProcessingMode,
+                }))
               }}
-              items={Object.fromEntries(
-                orderedTarget.map(lang => [lang.code, lang.name])
-              )}
+              items={{
+                translate: '字幕翻译（默认）',
+                extract: '仅提取原文字幕',
+              }}
             >
-              <SelectTrigger id="target-language" className="w-full min-w-0">
-                <SelectValue placeholder="选择目标语言" />
+              <SelectTrigger
+                id="subtitle-processing-mode"
+                className="w-full min-w-0"
+              >
+                <SelectValue placeholder="选择字幕处理方式" />
               </SelectTrigger>
               <SelectContent>
-                {orderedTarget.map(lang => (
-                  <SelectItem key={lang.code} value={lang.code}>
-                    {lang.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="translate">字幕翻译（默认）</SelectItem>
+                <SelectItem value="extract">仅提取原文字幕</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              仅提取模式不调用 Ollama，只生成原文 SRT。
+            </p>
           </div>
+          {settings.subtitleProcessingMode === 'translate' && (
+            <div className="space-y-2">
+              <Label htmlFor="target-language">目标语言</Label>
+              <Select
+                value={settings.targetLanguage}
+                onValueChange={value => {
+                  if (value == null) return
+                  setSettings(prev => ({ ...prev, targetLanguage: value }))
+                }}
+                items={Object.fromEntries(
+                  orderedTarget.map(lang => [lang.code, lang.name])
+                )}
+              >
+                <SelectTrigger
+                  id="target-language"
+                  className="w-full min-w-0"
+                >
+                  <SelectValue placeholder="选择目标语言" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orderedTarget.map(lang => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="source-language">源语言</Label>
             <Select

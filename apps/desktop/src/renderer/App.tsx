@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { AppRoutes } from './routes'
 import { SetupScreen } from './screens/setup'
-import type { SystemCheckProgress } from '../shared/system-check'
+import {
+  areRequiredSystemDependenciesReady,
+  type SystemCheckProgress,
+} from '../shared/system-check'
 import { SystemCheckProgressView } from './components/system/SystemCheckProgress'
 
 const { App: ElectronApp } = window
@@ -34,11 +37,7 @@ export function App() {
       const result = await ElectronApp.checkSystemDependencies()
       if (result.success) {
         // optional 依赖（如 yt-dlp）缺失不阻断进入主界面
-        const requiredReady = result.results.every(
-          dep =>
-            dep.available ||
-            (dep as { optional?: boolean }).optional === true
-        )
+        const requiredReady = areRequiredSystemDependenciesReady(result.results)
         if (requiredReady) {
           setIsSetupComplete(true)
         } else {
