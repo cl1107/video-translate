@@ -8,8 +8,8 @@ import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE, DEFAULT_OLLAMA_MODEL } from '../../shared/constants'
 import {
   normalizeDetectedLanguage,
+  resolveSubtitleLanguageSuffixes,
   toLanguageCode,
-  toLanguageSuffix,
 } from '../../shared/language'
 import {
   normalizeOllamaModel,
@@ -556,13 +556,17 @@ async function generateSubtitleStage(
   )
   const timestamp = dayjs().format('YYYYMMDD_HHmmss')
   const artifactBase = `${baseName}_${timestamp}`
+  const suffixes = resolveSubtitleLanguageSuffixes(
+    task.detectedLanguage ?? task.sourceLanguage,
+    task.targetLanguage
+  )
 
   const paths = await writeSubtitleArtifacts({
     segments,
     outputDir,
     baseName: artifactBase,
-    sourceSuffix: toLanguageSuffix(task.sourceLanguage),
-    targetSuffix: toLanguageSuffix(task.targetLanguage),
+    sourceSuffix: suffixes.sourceSuffix,
+    targetSuffix: suffixes.targetSuffix,
     videoSize,
     colors: resolveSubtitleColors(options),
   })

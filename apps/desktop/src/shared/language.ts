@@ -97,3 +97,25 @@ export function normalizeDetectedLanguage(
 
   return undefined
 }
+export interface SubtitleLanguageSuffixes {
+  sourceSuffix: string
+  targetSuffix: string
+}
+
+/** 生成原文/译文后缀；同语言时保证两个文件名不会冲突。 */
+export function resolveSubtitleLanguageSuffixes(
+  sourceLanguage: string | undefined | null,
+  targetLanguage: string | undefined | null
+): SubtitleLanguageSuffixes {
+  const sourceSuffix = toLanguageSuffix(sourceLanguage)
+  const targetSuffix = toLanguageSuffix(targetLanguage)
+
+  if (sourceSuffix === targetSuffix) {
+    return {
+      sourceSuffix: `${sourceSuffix}_source`,
+      targetSuffix: `${targetSuffix}_translated`,
+    }
+  }
+
+  return { sourceSuffix, targetSuffix }
+}
