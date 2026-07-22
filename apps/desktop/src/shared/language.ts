@@ -67,3 +67,33 @@ export function toLanguageSuffix(language: string | undefined | null): string {
   const code = toLanguageCode(language)
   return code === 'auto' ? 'auto' : code
 }
+
+export type DetectedLanguage = 'zh' | 'en' | 'ja' | 'ko' | 'yue'
+
+const DETECTED_LANGUAGE_CODES = new Set<DetectedLanguage>([
+  'zh',
+  'en',
+  'ja',
+  'ko',
+  'yue',
+])
+
+/** 将 SenseVoice / 平台字幕语言标记规范化为支持的检测语言。 */
+export function normalizeDetectedLanguage(
+  language: string | undefined | null
+): DetectedLanguage | undefined {
+  if (!language?.trim()) return undefined
+
+  const tagged = [...language.matchAll(/<\|([^|>]+)\|>/g)].map(
+    match => match[1]
+  )
+  const candidates = [...tagged, language]
+
+  for (const candidate of candidates) {
+    const code = toLanguageCode(candidate).toLowerCase().replaceAll('_', '-')
+    const base = code.split('-')[0] as DetectedLanguage
+    if (DETECTED_LANGUAGE_CODES.has(base)) return base
+  }
+
+  return undefined
+}

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import dayjs from 'dayjs'
 import { app } from 'electron'
 import path from 'node:path'
+import { normalizeDetectedLanguage } from '../../../shared/language'
 import {
   parseTaskRuntimeOptionsJson,
   serializeTaskRuntimeOptions,
@@ -63,6 +64,7 @@ export class DatabaseManager {
         status TEXT NOT NULL,
         progress REAL DEFAULT 0,
         source_language TEXT NOT NULL,
+        detected_language TEXT NULL,
         target_language TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -157,6 +159,11 @@ export class DatabaseManager {
         `ALTER TABLE translation_tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'subtitle'`
       )
     }
+    if (!names.has('detected_language')) {
+      this.db.exec(
+        `ALTER TABLE translation_tasks ADD COLUMN detected_language TEXT NULL`
+      )
+    }
 
     const videoColumns = this.db
       .prepare(`PRAGMA table_info(video_files)`)
@@ -207,6 +214,9 @@ export class DatabaseManager {
       status: row.status as TaskStatus,
       progress: Number(row.progress ?? 0),
       sourceLanguage: String(row.source_language),
+      detectedLanguage: normalizeDetectedLanguage(
+        row.detected_language as string | null | undefined
+      ),
       targetLanguage: String(row.target_language),
       options: parseTaskRuntimeOptionsJson(
         row.options_json as string | null | undefined
@@ -301,10 +311,10 @@ export class DatabaseManager {
   ): void {
     const stmt = this.db.prepare(`
       INSERT INTO translation_tasks
-      (id, video_file_id, status, progress, source_language, target_language,
+      (id, video_file_id, status, progress, source_language, detected_language, target_language,
        created_at, updated_at, completed_at, error_message, options_json, artifacts_json,
        source_url, platform_subtitle_path, platform_subtitle_language, kind)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -313,6 +323,7 @@ export class DatabaseManager {
       task.status,
       task.progress,
       task.sourceLanguage,
+      task.detectedLanguage || null,
       task.targetLanguage,
       task.createdAt,
       task.updatedAt,
@@ -324,6 +335,23 @@ export class DatabaseManager {
       task.platformSubtitlePath || null,
       task.platformSubtitleLanguage || null,
       normalizeTaskKind(task.kind)
+    )
+  }
+
+  /** 持久化 ASR / 平台字幕实际检测语言；undefined 表示清空。 */
+  saveDetectedLanguage(
+    taskId: string,
+    language: TranslationTask['detectedLanguage']
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE translation_tasks
+      SET detected_language = ?, updated_at = ?
+      WHERE id = ?
+    `)
+    stmt.run(
+      language || null,
+      dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      taskId
     )
   }
 

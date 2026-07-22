@@ -6,7 +6,11 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE, DEFAULT_OLLAMA_MODEL } from '../../shared/constants'
-import { toLanguageCode, toLanguageSuffix } from '../../shared/language'
+import {
+  normalizeDetectedLanguage,
+  toLanguageCode,
+  toLanguageSuffix,
+} from '../../shared/language'
 import {
   normalizeOllamaModel,
   type SubtitleBurnMode,
@@ -48,7 +52,6 @@ import {
   resolvePolishCompletionConfig,
 } from './llm/polish-service'
 import { ollamaClient } from './ollama/client'
-import { getByokApiKey } from './secure-store'
 import { tempWorkspace } from './temp-workspace'
 
 export interface PipelineHooks {
@@ -64,6 +67,9 @@ export interface PipelineHooks {
   ) => Promise<void>
   onArtifacts: (artifacts: TaskOutputArtifacts) => void
   onSegments: (segments: TranscriptionSegment[]) => void
+  onDetectedLanguage: (
+    language: TranslationTask['detectedLanguage']
+  ) => void
   resolveByokApiKey: () => string | undefined
 }
 
@@ -160,6 +166,14 @@ export async function runTranslationPipeline(
       )
     }
 
+    const detectedLanguage = normalizeDetectedLanguage(
+      context.transcription.language
+    )
+    task.detectedLanguage = detectedLanguage
+    hooks.onDetectedLanguage(detectedLanguage)
+    if (detectedLanguage) {
+      hooks.onLog('info', '检测到原文语言', detectedLanguage)
+    }
     context.displaySegments = buildDisplaySegments(
       context.transcription.segments,
       {

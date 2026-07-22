@@ -1,6 +1,7 @@
 // 视频翻译任务相关类型定义
 
 import type { AsrEngineId } from '../constants'
+import type { DetectedLanguage } from '../language'
 import type { PolishProvider, SubtitleBurnMode } from '../settings'
 
 /** 任务工作流类型：字幕翻译 vs 文稿整理 */
@@ -72,6 +73,8 @@ export interface TranslationTask {
   status: TaskStatus
   progress: number
   sourceLanguage: string
+  /** ASR 或平台字幕实际识别出的原文语言。 */
+  detectedLanguage?: DetectedLanguage
   targetLanguage: string
   /** 创建/重试时的运行配置；旧任务可能缺失 */
   options?: TaskRuntimeOptions
