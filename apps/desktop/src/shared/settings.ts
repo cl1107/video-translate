@@ -164,6 +164,33 @@ export function normalizeAppSettings(
   }
 }
 
+export interface ParseAppSettingsResult {
+  settings: AppSettings
+  recovered: boolean
+}
+
+/** 安全解析 localStorage 设置；损坏值回退默认设置。 */
+export function parseStoredAppSettings(
+  serialized?: string | null
+): ParseAppSettingsResult {
+  if (!serialized) {
+    return { settings: { ...DEFAULT_APP_SETTINGS }, recovered: false }
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(serialized)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { settings: { ...DEFAULT_APP_SETTINGS }, recovered: true }
+    }
+    return {
+      settings: normalizeAppSettings(parsed as Partial<AppSettings>),
+      recovered: false,
+    }
+  } catch {
+    return { settings: { ...DEFAULT_APP_SETTINGS }, recovered: true }
+  }
+}
+
 /** 语言代码 → 翻译提示用自然语言名 */
 export function languageDisplayName(code: string): string {
   const map: Record<string, string> = {

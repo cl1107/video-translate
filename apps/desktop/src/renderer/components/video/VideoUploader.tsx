@@ -4,10 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
 import { Button } from 'renderer/components/ui/button'
 import { Card, CardContent } from 'renderer/components/ui/card'
-import {
-  DEFAULT_APP_SETTINGS,
-  normalizeAppSettings,
-} from '../../../shared/settings'
+import { parseStoredAppSettings } from '../../../shared/settings'
 import type { TaskKind } from '../../../shared/types/video'
 
 interface VideoUploaderProps {
@@ -18,9 +15,7 @@ interface VideoUploaderProps {
 
 function loadSettings() {
   const savedSettings = localStorage.getItem('video-translate-settings')
-  const settings = normalizeAppSettings(
-    savedSettings ? JSON.parse(savedSettings) : DEFAULT_APP_SETTINGS
-  )
+  const { settings } = parseStoredAppSettings(savedSettings)
   localStorage.setItem('video-translate-settings', JSON.stringify(settings))
   return settings
 }

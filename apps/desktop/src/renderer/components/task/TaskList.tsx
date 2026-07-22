@@ -22,8 +22,7 @@ import {
 } from 'renderer/components/ui/card'
 import { Progress } from 'renderer/components/ui/progress'
 import {
-  DEFAULT_APP_SETTINGS,
-  normalizeAppSettings,
+  parseStoredAppSettings,
   type SubtitleBurnMode,
 } from 'shared/settings'
 import {
@@ -182,9 +181,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
           | undefined
         try {
           const raw = localStorage.getItem('video-translate-settings')
-          const settings = normalizeAppSettings(
-            raw ? JSON.parse(raw) : DEFAULT_APP_SETTINGS
-          )
+          const settings = parseStoredAppSettings(raw).settings
           colors = {
             originalColor: settings.originalSubtitleColor,
             translatedColor: settings.translatedSubtitleColor,
