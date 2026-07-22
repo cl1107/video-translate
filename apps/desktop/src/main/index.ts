@@ -144,6 +144,23 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  ipcMain.handle(IpcChannels.deleteTasks, async (_event, taskIdsRaw: unknown) => {
+    try {
+      const taskIds = Array.isArray(taskIdsRaw)
+        ? taskIdsRaw.filter((value): value is string => typeof value === 'string')
+        : []
+      const result = await taskManager.deleteTasks(taskIds)
+      return { success: true, ...result }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        success: false,
+        deletedTaskIds: [],
+        rejected: [],
+        error: message,
+      }
+    }
+  })
   ipcMain.handle(IpcChannels.retryTask, (_event, taskId: string) => {
     taskManager.retryTask(taskId)
     return { success: true }

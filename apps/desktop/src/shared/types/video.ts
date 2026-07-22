@@ -116,6 +116,17 @@ export enum TaskStatus {
   CANCELLED = 'cancelled',
 }
 
+const BULK_DELETABLE_TASK_STATUSES = new Set<TaskStatus>([
+  TaskStatus.COMPLETED,
+  TaskStatus.FAILED,
+  TaskStatus.CANCELLED,
+])
+
+/** 批量清理只允许终态任务，避免误删排队/运行/暂停任务。 */
+export function isBulkDeletableTaskStatus(status: TaskStatus): boolean {
+  return BULK_DELETABLE_TASK_STATUSES.has(status)
+}
+
 /**
  * 转录/显示段。
  *
