@@ -14,6 +14,7 @@ import {
   taskOptionsFromAppSettings,
 } from '../../shared/task-options'
 import {
+  isBulkDeletableTaskStatus,
   normalizeTaskKind,
   type TaskKind,
   type TaskLog,
@@ -24,6 +25,10 @@ import {
   type TranslationTask,
   type VideoFile,
 } from '../../shared/types/video'
+import {
+  isProtectedDownloadCacheEntry,
+  resolveDownloadCacheProtection,
+} from '../utils/download-cache-protection'
 import type { SubtitleColors } from '../utils/subtitle-artifacts'
 import { ensureSenseVoiceModel } from './asr/model-downloader'
 import { databaseManager } from './database/manager'
@@ -731,8 +736,7 @@ export class TaskManager {
 
   getTask(taskId: string): TranslationTask | null {
     const task =
-      this.activeTasks.get(taskId) ??
-      databaseManager.getTranslationTask(taskId)
+      this.activeTasks.get(taskId) ?? databaseManager.getTranslationTask(taskId)
     if (!task) return null
     return { ...task, kind: normalizeTaskKind(task.kind) }
   }
@@ -819,6 +823,46 @@ export class TaskManager {
     }
   }
 
+  async deleteTasks(taskIds: string[]): Promise<{
+    deletedTaskIds: string[]
+    rejected: Array<{ taskId: string; reason: string }>
+  }> {
+    const uniqueTaskIds = [...new Set(taskIds.filter(Boolean))]
+    const deletedTaskIds: string[] = []
+    const rejected: Array<{ taskId: string; reason: string }> = []
+
+    for (const taskId of uniqueTaskIds) {
+      const task =
+        this.activeTasks.get(taskId) ??
+        databaseManager.getTranslationTask(taskId)
+      if (!task) {
+        rejected.push({ taskId, reason: '任务不存在' })
+        continue
+      }
+      if (!isBulkDeletableTaskStatus(task.status)) {
+        rejected.push({ taskId, reason: '任务尚未结束，不能批量删除' })
+        continue
+      }
+
+      this.abortControllers.delete(taskId)
+      this.activeTasks.delete(taskId)
+      this.tempLogs.delete(taskId)
+      databaseManager.deleteTranslationTask(taskId)
+      await tempWorkspace.removeTaskDir(taskId).catch(error => {
+        console.warn(`清理任务临时缓存失败 (${taskId}):`, error)
+      })
+      await removeDownloadCachePreservingOutputs(task).catch(error => {
+        console.warn(`清理任务下载缓存失败 (${taskId}):`, error)
+      })
+      deletedTaskIds.push(taskId)
+
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send(IpcChannels.taskDeleted, taskId)
+      }
+    }
+
+    return { deletedTaskIds, rejected }
+  }
   retryTask(taskId: string): void {
     const task =
       this.activeTasks.get(taskId) ?? databaseManager.getTranslationTask(taskId)
@@ -1012,6 +1056,40 @@ export class TaskManager {
   }
 }
 
+async function removeDownloadCachePreservingOutputs(
+  task: TranslationTask
+): Promise<void> {
+  const taskRoot = path.resolve(getDownloadsRoot(), task.id)
+  const downloadsRoot = path.resolve(getDownloadsRoot())
+  if (
+    taskRoot === downloadsRoot ||
+    !taskRoot.startsWith(`${downloadsRoot}${path.sep}`)
+  ) {
+    throw new Error('任务下载缓存路径不安全，已停止清理')
+  }
+
+  const protection = resolveDownloadCacheProtection(taskRoot, task)
+  if (protection.preserveRoot) return
+
+  let entries: Array<{ name: string }> = []
+  try {
+    entries = await fs.readdir(taskRoot, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    if (isProtectedDownloadCacheEntry(protection, entry.name)) continue
+    await fs.rm(path.join(taskRoot, entry.name), {
+      recursive: true,
+      force: true,
+    })
+  }
+
+  if (protection.topLevelEntries.size === 0) {
+    await fs.rm(taskRoot, { recursive: true, force: true })
+  }
+}
 export const taskManager = new TaskManager()
 
 function sanitizeDownloadedName(title: string, format: string): string {

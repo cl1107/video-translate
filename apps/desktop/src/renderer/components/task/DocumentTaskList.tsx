@@ -11,7 +11,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MarkdownPreviewDialog } from 'renderer/components/markdown/MarkdownPreviewDialog'
 import { Badge } from 'renderer/components/ui/badge'
 import { Button } from 'renderer/components/ui/button'
@@ -23,6 +23,7 @@ import {
 } from 'renderer/components/ui/card'
 import { Progress } from 'renderer/components/ui/progress'
 import {
+  isBulkDeletableTaskStatus,
   normalizeTaskKind,
   TaskStatus,
   type TranslationTask,
@@ -110,6 +111,10 @@ export function DocumentTaskList({
     [tasks]
   )
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
+    new Set()
+  )
+  const [deletingTasks, setDeletingTasks] = useState(false)
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
   const [previewSource, setPreviewSource] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -123,6 +128,24 @@ export function DocumentTaskList({
     () => documentTasks.filter(t => t.status === TaskStatus.FAILED).length,
     [documentTasks]
   )
+  const deletableTaskIds = useMemo(
+    () =>
+      documentTasks
+        .filter(task => isBulkDeletableTaskStatus(task.status))
+        .map(task => task.id),
+    [documentTasks]
+  )
+
+  useEffect(() => {
+    const valid = new Set(deletableTaskIds)
+    setSelectedTaskIds(previous => {
+      const next = new Set([...previous].filter(taskId => valid.has(taskId)))
+      const unchanged =
+        next.size === previous.size &&
+        [...next].every(taskId => previous.has(taskId))
+      return unchanged ? previous : next
+    })
+  }, [deletableTaskIds])
 
   const previewTask = useMemo(
     () => documentTasks.find(t => t.id === previewTaskId) ?? null,
@@ -214,6 +237,56 @@ export function DocumentTaskList({
     [onTasksChange, showError, openPreview, previewTaskId, closePreview]
   )
 
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTaskIds(previous => {
+      const next = new Set(previous)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    const taskIds = [...selectedTaskIds]
+    if (taskIds.length === 0) return
+    if (
+      !window.confirm(
+        `确定删除已选的 ${taskIds.length} 个历史文稿任务？只删除任务记录和应用缓存，不删除源文件及结果文件。`
+      )
+    ) {
+      return
+    }
+
+    setDeletingTasks(true)
+    setBanner(null)
+    try {
+      const result = await App.deleteTasks(taskIds)
+      if (!result.success) throw new Error(result.error || '批量删除失败')
+      if (previewTaskId && result.deletedTaskIds.includes(previewTaskId)) {
+        closePreview()
+      }
+      setSelectedTaskIds(new Set())
+      if (result.rejected.length > 0) {
+        setBanner({
+          type: 'error',
+          text: `已删除 ${result.deletedTaskIds.length} 个任务，${result.rejected.length} 个任务未删除。`,
+        })
+      } else {
+        setBanner({
+          type: 'info',
+          text: `已删除 ${result.deletedTaskIds.length} 个历史任务。源文件和结果文件已保留。`,
+        })
+      }
+      onTasksChange()
+    } catch (error) {
+      showError(
+        `批量删除失败：${error instanceof Error ? error.message : String(error)}`
+      )
+    } finally {
+      setDeletingTasks(false)
+    }
+  }
+
   const toggleExpanded = (taskId: string) => {
     setExpandedTasks(prev => {
       const next = new Set(prev)
@@ -253,7 +326,36 @@ export function DocumentTaskList({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">文稿任务</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {deletableTaskIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deletingTasks}
+              onClick={() =>
+                setSelectedTaskIds(previous =>
+                  previous.size === deletableTaskIds.length
+                    ? new Set()
+                    : new Set(deletableTaskIds)
+                )
+              }
+            >
+              {selectedTaskIds.size === deletableTaskIds.length
+                ? '取消全选'
+                : '全选历史'}
+            </Button>
+          )}
+          {selectedTaskIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deletingTasks}
+              onClick={() => void handleBulkDelete()}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deletingTasks ? '删除中…' : `删除已选 (${selectedTaskIds.size})`}
+            </Button>
+          )}
           {failedCount > 0 && (
             <Badge variant="destructive">{failedCount} 个失败</Badge>
           )}
@@ -298,6 +400,16 @@ export function DocumentTaskList({
             <CardHeader className="gap-0 px-5 py-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
+                  {isBulkDeletableTaskStatus(task.status) && (
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 accent-primary"
+                      aria-label={`选择文稿任务 ${task.videoFile.name}`}
+                      checked={selectedTaskIds.has(task.id)}
+                      disabled={deletingTasks}
+                      onChange={() => toggleTaskSelection(task.id)}
+                    />
+                  )}
                   <FileText className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
                     <CardTitle className="truncate text-sm font-semibold">
