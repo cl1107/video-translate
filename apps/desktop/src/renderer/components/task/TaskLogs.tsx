@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle, Info, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from 'renderer/lib/utils'
 import type { TaskLog } from 'shared/types/video'
+import { formatLogTime } from './task-time'
 
 const { App } = window
 
@@ -80,16 +81,6 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
     }
   }
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('zh-CN', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 1,
-    })
-  }
-
   return (
     <section
       className="rounded-lg border bg-muted/30"
@@ -138,7 +129,7 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
                         className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
                         dateTime={log.timestamp}
                       >
-                        {formatTime(log.timestamp)}
+                        {formatLogTime(log.timestamp)}
                       </time>
                     </div>
                     {log.details ? (
