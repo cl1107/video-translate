@@ -8,7 +8,10 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { SystemCheckProgress } from '../../../shared/system-check'
+import {
+  areRequiredSystemDependenciesReady,
+  type SystemCheckProgress,
+} from '../../../shared/system-check'
 import { SystemCheckProgressView } from './SystemCheckProgress'
 import { Badge } from 'renderer/components/ui/badge'
 import { Button } from 'renderer/components/ui/button'
@@ -88,9 +91,7 @@ export function DependencyChecker({
           setDiagnosticPaths(result.diagnosticPaths)
         }
 
-        const requiredReady = result.results.every(
-          dep => dep.available || dep.optional === true
-        )
+        const requiredReady = areRequiredSystemDependenciesReady(result.results)
         setAllReady(requiredReady)
 
         // 全部就绪时直接进入，减少门禁停留；继续按钮作手动兜底
@@ -160,7 +161,7 @@ export function DependencyChecker({
         </Badge>
       )
     }
-    if (dep.optional) {
+    if (dep.optional || dep.name === 'ollama') {
       return (
         <Badge variant="secondary" className="text-xs">
           可选 · 未安装

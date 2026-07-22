@@ -7,6 +7,7 @@ import type { TranscriptionSegment } from '../../shared/types/video'
 import {
   generateBilingualAss,
   validateSubtitleArtifacts,
+  writeOriginalSubtitleArtifact,
   writeSubtitleArtifacts,
 } from './subtitle-artifacts'
 
@@ -169,4 +170,29 @@ test('原文和双语字幕保留 ASR 日语原文而不使用润色文本', asy
   assert.match(bilingual, /時刻は間もなく深夜1時\n即将到深夜1点/)
   assert.match(ass, /時刻は間もなく深夜1時/)
   assert.doesNotMatch(ass, /时间即将进入/)
+})
+
+test('仅原文产物不生成译文并保留已有文件', async () => {
+  testDirectory = await mkdtemp(
+    path.join(tmpdir(), 'subtitle-artifacts-original-only-')
+  )
+  const first = await writeOriginalSubtitleArtifact({
+    segments: sampleSegments,
+    outputDir: testDirectory,
+    baseName: 'demo',
+    sourceSuffix: 'en',
+  })
+  const second = await writeOriginalSubtitleArtifact({
+    segments: sampleSegments,
+    outputDir: testDirectory,
+    baseName: 'demo',
+    sourceSuffix: 'en',
+  })
+
+  assert.ok(first.original.endsWith('demo_en.srt'))
+  assert.ok(second.original.endsWith('demo_en.2.srt'))
+  assert.match(await readFile(first.original, 'utf8'), /Hello world/)
+  await assert.rejects(
+    readFile(path.join(testDirectory, 'demo_zh.srt'), 'utf8')
+  )
 })

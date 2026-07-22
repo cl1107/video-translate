@@ -36,3 +36,17 @@ test('normalizeAppSettings 忽略非法 polishProvider', () => {
   })
   assert.equal(settings.polishProvider, 'ollama')
 })
+
+test('normalizeAppSettings 规范化字幕处理方式', () => {
+  assert.equal(normalizeAppSettings({}).subtitleProcessingMode, 'translate')
+  assert.equal(
+    normalizeAppSettings({ subtitleProcessingMode: 'extract' })
+      .subtitleProcessingMode,
+    'extract'
+  )
+  assert.equal(
+    normalizeAppSettings({ subtitleProcessingMode: 'invalid' as never })
+      .subtitleProcessingMode,
+    'translate'
+  )
+})
