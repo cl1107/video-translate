@@ -3,6 +3,7 @@ import { test } from 'vitest'
 import {
   DEFAULT_APP_SETTINGS,
   normalizeAppSettings,
+  parseStoredAppSettings,
 } from './settings'
 
 test('normalizeAppSettings 提供润色 BYOK 字段默认值', () => {
@@ -35,4 +36,20 @@ test('normalizeAppSettings 忽略非法 polishProvider', () => {
     polishProvider: 'unknown' as never,
   })
   assert.equal(settings.polishProvider, 'ollama')
+})
+
+test('parseStoredAppSettings 从损坏 JSON 恢复默认设置', () => {
+  const result = parseStoredAppSettings('{broken')
+  assert.equal(result.recovered, true)
+  assert.deepEqual(result.settings, DEFAULT_APP_SETTINGS)
+})
+
+test('parseStoredAppSettings 拒绝非对象 JSON 并规范化合法设置', () => {
+  assert.equal(parseStoredAppSettings('[]').recovered, true)
+  const result = parseStoredAppSettings(
+    JSON.stringify({ sourceLanguage: 'ja', polishProvider: 'invalid' })
+  )
+  assert.equal(result.recovered, false)
+  assert.equal(result.settings.sourceLanguage, 'ja')
+  assert.equal(result.settings.polishProvider, 'ollama')
 })

@@ -37,6 +37,7 @@ import {
   normalizeAppSettings,
   normalizeHexColor,
   normalizeOllamaModel,
+  parseStoredAppSettings,
   type PolishProvider,
 } from '../../../shared/settings'
 import type { OllamaModel } from '../../../shared/types/video'
@@ -255,12 +256,17 @@ export function SettingsPanel() {
     try {
       const savedSettings = localStorage.getItem('video-translate-settings')
       if (savedSettings) {
-        const normalized = normalizeAppSettings(JSON.parse(savedSettings))
+        const parsed = parseStoredAppSettings(savedSettings)
+        const normalized = parsed.settings
         setSettings(normalized)
         localStorage.setItem(
           'video-translate-settings',
           JSON.stringify(normalized)
         )
+        if (parsed.recovered) {
+          setStatusTone('error')
+          setStatus('本地设置已损坏，已恢复默认值，请检查后重新保存')
+        }
       } else {
         setSettings({ ...DEFAULT_APP_SETTINGS })
       }
