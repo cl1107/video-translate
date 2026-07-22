@@ -38,6 +38,7 @@ import {
   normalizeHexColor,
   normalizeOllamaModel,
   type PolishProvider,
+  type SubtitleOutputLocation,
 } from '../../../shared/settings'
 import type { OllamaModel } from '../../../shared/types/video'
 
@@ -609,6 +610,39 @@ export function SettingsPanel() {
                 <SelectItem value="txt">TXT 纯文本</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="subtitle-output-location">字幕输出位置</Label>
+            <Select
+              value={settings.subtitleOutputLocation}
+              onValueChange={value => {
+                if (value == null) return
+                setSettings(prev => ({
+                  ...prev,
+                  subtitleOutputLocation: value as SubtitleOutputLocation,
+                }))
+              }}
+              items={{
+                'output-subdirectory': 'output 子目录（默认）',
+                'source-directory': '源视频同目录',
+              }}
+            >
+              <SelectTrigger
+                id="subtitle-output-location"
+                className="w-full min-w-0"
+              >
+                <SelectValue placeholder="选择字幕输出位置" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="output-subdirectory">
+                  output 子目录（默认）
+                </SelectItem>
+                <SelectItem value="source-directory">源视频同目录</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              同时应用于字幕文件和烧录后的视频；文稿仍保存在 output 子目录。
+            </p>
           </div>
         </CardContent>
       </Card>

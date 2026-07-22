@@ -17,6 +17,7 @@ import {
   type AppSettings,
   type PolishProvider,
   type SubtitleBurnMode,
+  type SubtitleOutputLocation,
 } from './settings'
 import type { TaskRuntimeOptions } from './types/video'
 
@@ -26,6 +27,7 @@ export function defaultTaskRuntimeOptions(): TaskRuntimeOptions {
     asrEngine: DEFAULT_ASR_ENGINE,
     burnSubtitles: false,
     burnSubtitleMode: 'bilingual',
+    subtitleOutputLocation: 'output-subdirectory',
     polishTranscript: true,
     polishProvider: 'ollama',
     polishOllamaModel: '',
@@ -46,6 +48,7 @@ export function taskOptionsFromAppSettings(
     asrEngine: app.asrEngine,
     burnSubtitles: app.burnSubtitles,
     burnSubtitleMode: app.burnSubtitleMode,
+    subtitleOutputLocation: app.subtitleOutputLocation,
     polishTranscript: app.polishTranscript,
     polishProvider: app.polishProvider,
     polishOllamaModel: app.polishOllamaModel,
@@ -75,6 +78,10 @@ export function normalizeTaskRuntimeOptions(
     raw.polishProvider === 'byok' || raw.polishProvider === 'ollama'
       ? raw.polishProvider
       : base.polishProvider
+  const subtitleOutputLocation: SubtitleOutputLocation =
+    raw.subtitleOutputLocation === 'source-directory'
+      ? 'source-directory'
+      : 'output-subdirectory'
 
   return {
     ollamaModel: normalizeOllamaModel(raw.ollamaModel ?? base.ollamaModel),
@@ -86,6 +93,7 @@ export function normalizeTaskRuntimeOptions(
         ? base.burnSubtitles
         : Boolean(raw.burnSubtitles),
     burnSubtitleMode: resolvedBurn,
+    subtitleOutputLocation,
     polishTranscript:
       raw.polishTranscript === undefined
         ? base.polishTranscript
