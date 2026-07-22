@@ -21,6 +21,7 @@ import {
   getInstallationSuggestions,
 } from './utils/system-check'
 import { getAppDiagnosticPaths } from './utils/system-logger'
+import { resolveTaskArtifactPath } from './utils/task-artifact-path'
 import { MainWindow } from './windows/main'
 
 function setupIpcHandlers() {
@@ -320,17 +321,7 @@ function setupIpcHandlers() {
         return { success: false, error: '任务不存在' }
       }
 
-      const artifacts = task.outputArtifacts
-      const artifactPath =
-        kind === 'video'
-          ? artifacts?.burnedVideo
-          : kind === 'subtitle'
-            ? artifacts?.translatedSubtitle ||
-              artifacts?.bilingualSubtitle ||
-              artifacts?.originalSubtitle
-            : kind === 'markdown'
-              ? artifacts?.polishedMarkdown
-              : artifacts?.outputDirectory
+      const artifactPath = resolveTaskArtifactPath(task, kind)
       if (!artifactPath) {
         return { success: false, error: '任务产物不存在' }
       }
