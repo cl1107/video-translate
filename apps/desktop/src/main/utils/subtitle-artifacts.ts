@@ -276,6 +276,83 @@ export function selectBurnSubtitleContent(
   }
 }
 
+function buildArtifactPaths(
+  outputDir: string,
+  baseName: string,
+  sourceSuffix: string,
+  targetSuffix: string,
+  sequence: number
+): SubtitleArtifactPaths {
+  const version = sequence === 1 ? '' : `.${sequence}`
+  return {
+    original: path.join(
+      outputDir,
+      `${baseName}_${sourceSuffix}${version}.srt`
+    ),
+    translated: path.join(
+      outputDir,
+      `${baseName}_${targetSuffix}${version}.srt`
+    ),
+    bilingual: path.join(outputDir, `${baseName}_bilingual${version}.srt`),
+    bilingualAss: path.join(
+      outputDir,
+      `${baseName}_bilingual${version}.ass`
+    ),
+    outputDirectory: outputDir,
+  }
+}
+
+async function removeReservedFiles(paths: string[]): Promise<void> {
+  await Promise.all(paths.map(filePath => fs.unlink(filePath).catch(() => {})))
+}
+
+/** 排他预占整组产物，冲突时整组递增编号。 */
+async function reserveArtifactPaths(
+  outputDir: string,
+  baseName: string,
+  sourceSuffix: string,
+  targetSuffix: string
+): Promise<SubtitleArtifactPaths> {
+  for (let sequence = 1; ; sequence += 1) {
+    const paths = buildArtifactPaths(
+      outputDir,
+      baseName,
+      sourceSuffix,
+      targetSuffix,
+      sequence
+    )
+    const files = [
+      paths.original,
+      paths.translated,
+      paths.bilingual,
+      paths.bilingualAss,
+    ]
+    if (new Set(files).size !== files.length) {
+      throw new Error('字幕原文与译文文件名冲突，请使用不同语言后缀')
+    }
+
+    const reserved: string[] = []
+    try {
+      for (const filePath of files) {
+        const handle = await fs.open(filePath, 'wx')
+        await handle.close()
+        reserved.push(filePath)
+      }
+      return paths
+    } catch (error) {
+      await removeReservedFiles(reserved)
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'EEXIST'
+      ) {
+        continue
+      }
+      throw error
+    }
+  }
+}
 export async function writeSubtitleArtifacts(options: {
   segments: Array<DisplaySegment | TranscriptionSegment>
   outputDir: string
@@ -297,27 +374,32 @@ export async function writeSubtitleArtifacts(options: {
 
   await fs.mkdir(outputDir, { recursive: true })
 
-  const originalPath = path.join(outputDir, `${baseName}_${sourceSuffix}.srt`)
-  const translatedPath = path.join(outputDir, `${baseName}_${targetSuffix}.srt`)
-  const bilingualPath = path.join(outputDir, `${baseName}_bilingual.srt`)
-  const bilingualAssPath = path.join(outputDir, `${baseName}_bilingual.ass`)
+  const paths = await reserveArtifactPaths(
+    outputDir,
+    baseName,
+    sourceSuffix,
+    targetSuffix
+  )
 
   const original = segmentsToOriginalSubtitles(segments, videoSize)
   const translated = segmentsToTranslatedSubtitles(segments, videoSize)
   const bilingual = segmentsToBilingualSubtitles(segments, videoSize)
   const ass = generateBilingualAss(segments, videoSize, 'Sans', colors)
 
-  await SubtitleGenerator.saveSubtitle(original, originalPath, 'srt')
-  await SubtitleGenerator.saveSubtitle(translated, translatedPath, 'srt')
-  await SubtitleGenerator.saveSubtitle(bilingual, bilingualPath, 'srt')
-  await fs.writeFile(bilingualAssPath, ass, 'utf-8')
-
-  return {
-    original: originalPath,
-    translated: translatedPath,
-    bilingual: bilingualPath,
-    bilingualAss: bilingualAssPath,
-    outputDirectory: outputDir,
+  try {
+    await SubtitleGenerator.saveSubtitle(original, paths.original, 'srt')
+    await SubtitleGenerator.saveSubtitle(translated, paths.translated, 'srt')
+    await SubtitleGenerator.saveSubtitle(bilingual, paths.bilingual, 'srt')
+    await fs.writeFile(paths.bilingualAss, ass, 'utf-8')
+    return paths
+  } catch (error) {
+    await removeReservedFiles([
+      paths.original,
+      paths.translated,
+      paths.bilingual,
+      paths.bilingualAss,
+    ])
+    throw error
   }
 }
 
