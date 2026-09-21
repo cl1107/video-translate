@@ -286,8 +286,7 @@ export function VideoUploader({
                     ['extract', '仅提取原文'],
                   ] as const
                 ).map(([value, label]) => {
-                  const selected =
-                    taskOptions.subtitleProcessingMode === value
+                  const selected = taskOptions.subtitleProcessingMode === value
                   return (
                     <Button
                       key={value}

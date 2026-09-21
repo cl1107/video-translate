@@ -38,9 +38,7 @@ test('derivePlaceholderName 从 YouTube / B 站链接提取可读名', () => {
     /youtube\.com · dQw4w9WgXcQ/
   )
   assert.match(
-    derivePlaceholderName(
-      'https://www.bilibili.com/video/BV1xx411c7mD?p=1'
-    ),
+    derivePlaceholderName('https://www.bilibili.com/video/BV1xx411c7mD?p=1'),
     /bilibili\.com · BV1xx411c7mD/
   )
 })

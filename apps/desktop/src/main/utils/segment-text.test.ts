@@ -28,9 +28,6 @@ test('翻译输入与显示源优先 polished', () => {
 
 test('译文优先 translated，缺失时回退显示源', () => {
   assert.equal(getTranslatedText(segment), '即将到深夜1点。')
-  assert.equal(
-    getTranslatedText({ originalText: 'a', polishedText: 'b' }),
-    'b'
-  )
+  assert.equal(getTranslatedText({ originalText: 'a', polishedText: 'b' }), 'b')
   assert.equal(getTranslatedText({ originalText: 'a' }), 'a')
 })

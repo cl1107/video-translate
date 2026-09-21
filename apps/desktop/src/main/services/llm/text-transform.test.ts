@@ -99,16 +99,13 @@ test('translateTextBatch 空结果重试后回退原文且不中断批次', asyn
     },
   }
 
-  const translated = await translateTextBatch(
-    ['// TODO: fix', 'third'],
-    {
-      sourceLanguage: 'en',
-      targetLanguage: 'zh',
-      client,
-      maxAttempts: 2,
-      onSegmentIssue: issue => issues.push(issue),
-    }
-  )
+  const translated = await translateTextBatch(['// TODO: fix', 'third'], {
+    sourceLanguage: 'en',
+    targetLanguage: 'zh',
+    client,
+    maxAttempts: 2,
+    onSegmentIssue: issue => issues.push(issue),
+  })
 
   assert.deepEqual(translated, ['// TODO: fix', '第三段译文'])
   assert.ok(issues.some(i => i.action === 'retry'))

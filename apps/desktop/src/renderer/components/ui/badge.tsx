@@ -15,8 +15,7 @@ const badgeVariants = cva(
         destructive:
           'bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20',
         /** 完成 / 成功：酸绿实心，前景深色以保证对比 */
-        brand:
-          'bg-brand text-brand-foreground [a]:hover:bg-brand/90',
+        brand: 'bg-brand text-brand-foreground [a]:hover:bg-brand/90',
         /** 进行中：浅 brand 底 + brand 文案，与 destructive 红区分 */
         'brand-soft':
           'border border-brand/30 bg-brand/15 text-brand-ink [a]:hover:bg-brand/25 dark:bg-brand/12 dark:text-brand-ink',

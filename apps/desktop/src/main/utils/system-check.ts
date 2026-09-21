@@ -36,70 +36,86 @@ function checkCommand(
   args: string[] = ['-version']
 ): Promise<SystemCheckResult> {
   return new Promise(resolve => {
-    const resolved = resolveCommandPath(command)
-    const child = spawn(resolved, args)
-    let output = ''
-    let error = ''
+    let resolved = command
     let settled = false
+    let timeout: NodeJS.Timeout | undefined
 
     const finish = (result: SystemCheckResult) => {
       if (settled) return
       settled = true
-      clearTimeout(timeout)
+      if (timeout) clearTimeout(timeout)
       resolve({
         ...result,
         resolvedPath: resolved !== command ? resolved : result.resolvedPath,
       })
     }
 
-    child.stdout.on('data', data => {
-      output += data.toString()
-    })
+    try {
+      resolved = resolveCommandPath(command)
+      const child = spawn(resolved, args)
+      let output = ''
+      let error = ''
 
-    child.stderr.on('data', data => {
-      error += data.toString()
-    })
-
-    child.on('error', err => {
-      finish({
-        name: command,
-        available: false,
-        error: err.message,
-        resolvedPath: resolved,
+      child.stdout.on('data', data => {
+        output += data.toString()
       })
-    })
 
-    child.on('close', code => {
-      if (code === 0) {
-        const versionMatch =
-          (output + error).match(/version\s+(\d+\.\d+\.\d+)/i) ||
-          (output + error).match(/(\d+\.\d+\.\d+)/)
+      child.stderr.on('data', data => {
+        error += data.toString()
+      })
 
-        finish({
-          name: command,
-          available: true,
-          version: versionMatch ? versionMatch[1] : 'unknown',
-          resolvedPath: resolved,
-        })
-      } else {
+      child.on('error', err => {
         finish({
           name: command,
           available: false,
-          error: `Command failed with code ${code}`,
+          error: err.message,
           resolvedPath: resolved,
         })
-      }
-    })
+      })
 
-    const timeout = setTimeout(() => {
-      child.kill()
+      child.on('close', code => {
+        if (code === 0) {
+          const versionMatch =
+            (output + error).match(/version\s+(\d+\.\d+\.\d+)/i) ||
+            (output + error).match(/(\d+\.\d+\.\d+)/)
+
+          finish({
+            name: command,
+            available: true,
+            version: versionMatch ? versionMatch[1] : 'unknown',
+            resolvedPath: resolved,
+          })
+        } else {
+          finish({
+            name: command,
+            available: false,
+            error: `Command failed with code ${code}`,
+            resolvedPath: resolved,
+          })
+        }
+      })
+
+      timeout = setTimeout(() => {
+        try {
+          child.kill()
+        } catch {
+          // ignore
+        }
+        finish({
+          name: command,
+          available: false,
+          error: 'Command timeout',
+          resolvedPath: resolved,
+        })
+      }, 5000)
+    } catch (err) {
       finish({
         name: command,
         available: false,
-        error: 'Command timeout',
+        error: err instanceof Error ? err.message : String(err),
         resolvedPath: resolved,
       })
-    }, 5000)
+    }
   })
 }
 

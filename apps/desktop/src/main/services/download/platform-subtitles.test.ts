@@ -17,10 +17,7 @@ test('parseLanguageFromSubtitleFilename 解析常见 yt-dlp 命名', () => {
     parseLanguageFromSubtitleFilename('Video.zh-Hans.srt'),
     'zh-Hans'
   )
-  assert.equal(
-    parseLanguageFromSubtitleFilename('clip.en-orig.vtt'),
-    'en-orig'
-  )
+  assert.equal(parseLanguageFromSubtitleFilename('clip.en-orig.vtt'), 'en-orig')
   assert.equal(parseLanguageFromSubtitleFilename('nosublang.srt'), null)
 })
 

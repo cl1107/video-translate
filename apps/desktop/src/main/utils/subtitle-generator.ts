@@ -127,14 +127,20 @@ function parseTime(timeStr: string): number {
  * 兼容常见变体：空行、多行文本、BOM、可选序号。
  */
 function parseSRT(content: string): SubtitleEntry[] {
-  const text = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').trim()
+  const text = content
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .trim()
   if (!text) return []
 
   const blocks = text.split(/\n\s*\n/)
   const entries: SubtitleEntry[] = []
 
   for (const block of blocks) {
-    const lines = block.split('\n').map(l => l.trimEnd()).filter(l => l.length > 0)
+    const lines = block
+      .split('\n')
+      .map(l => l.trimEnd())
+      .filter(l => l.length > 0)
     if (lines.length < 2) continue
 
     let timeLineIdx = 0

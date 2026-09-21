@@ -4,7 +4,10 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
-import { normalizeDetectedLanguage, toLanguageCode } from '../../shared/language'
+import {
+  normalizeDetectedLanguage,
+  toLanguageCode,
+} from '../../shared/language'
 import type {
   TaskOutputArtifacts,
   TaskRuntimeOptions,
@@ -49,7 +52,9 @@ function resolveOutputDir(task: TranslationTask): string {
 /**
  * 将段落拼为润色用原文（保留换行分段）。
  */
-export function joinSegmentsToRawText(segments: TranscriptionSegment[]): string {
+export function joinSegmentsToRawText(
+  segments: TranscriptionSegment[]
+): string {
   return segments
     .map(s => (s.originalText ?? '').trim())
     .filter(Boolean)
@@ -239,10 +244,7 @@ export async function runDocumentPipeline(
             // 约每 25% 记一条，避免长视频识别期间日志“卡住”
             if (progress - lastAsrLogPct >= 25) {
               lastAsrLogPct = progress
-              hooks.onLog(
-                'info',
-                `语音识别进行中 ${Math.round(progress)}%`
-              )
+              hooks.onLog('info', `语音识别进行中 ${Math.round(progress)}%`)
             }
           }
         )
@@ -285,11 +287,7 @@ export async function runDocumentPipeline(
     }
 
     const rawChars = context.rawText.length
-    hooks.onLog(
-      'info',
-      '识别原文已就绪，准备整理文稿',
-      `约 ${rawChars} 字`
-    )
+    hooks.onLog('info', '识别原文已就绪，准备整理文稿', `约 ${rawChars} 字`)
 
     await hooks.onStatus(TaskStatus.POLISHING, 70)
     hooks.onLog('info', '开始整理为 Markdown 文稿', polishResolved.label)
@@ -309,9 +307,7 @@ export async function runDocumentPipeline(
             void hooks.onStatus(TaskStatus.POLISHING, pct)
             hooks.onLog(
               'info',
-              total > 1
-                ? `文稿润色进度 ${done}/${total} 块`
-                : '文稿润色生成中…'
+              total > 1 ? `文稿润色进度 ${done}/${total} 块` : '文稿润色生成中…'
             )
           },
         }

@@ -17,6 +17,8 @@
     "test:watch": "vitest tests",
     "start:desktop": "pnpm --filter video-translate start",
     "preview:landing": "pnpm --filter @video-translate/landing preview",
+    "install:desktop": "./scripts/install-desktop.sh",
+    "install:local": "./scripts/install-desktop.sh",
     "release": "pnpm --filter video-translate release",
     "make:release": "pnpm --filter video-translate make:release"
   },

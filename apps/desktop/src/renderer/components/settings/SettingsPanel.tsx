@@ -641,9 +641,7 @@ export function SettingsPanel() {
                   <SelectItem value="output-subdirectory">
                     output 子目录（默认）
                   </SelectItem>
-                  <SelectItem value="source-directory">
-                    源视频同目录
-                  </SelectItem>
+                  <SelectItem value="source-directory">源视频同目录</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">

@@ -150,8 +150,7 @@ async function translateOneSegment(
       lastError = new Error('翻译结果为空')
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') throw error
-      lastError =
-        error instanceof Error ? error : new Error(String(error))
+      lastError = error instanceof Error ? error : new Error(String(error))
     }
 
     const willRetry = attempt < maxAttempts

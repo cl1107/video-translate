@@ -170,9 +170,7 @@ export class DatabaseManager {
       .all() as Array<{ name: string }>
     const videoNames = new Set(videoColumns.map(c => c.name))
     if (!videoNames.has('source_url')) {
-      this.db.exec(
-        `ALTER TABLE video_files ADD COLUMN source_url TEXT NULL`
-      )
+      this.db.exec(`ALTER TABLE video_files ADD COLUMN source_url TEXT NULL`)
     }
   }
 
@@ -348,11 +346,7 @@ export class DatabaseManager {
       SET detected_language = ?, updated_at = ?
       WHERE id = ?
     `)
-    stmt.run(
-      language || null,
-      dayjs().format('YYYY-MM-DD HH:mm:ss'),
-      taskId
-    )
+    stmt.run(language || null, dayjs().format('YYYY-MM-DD HH:mm:ss'), taskId)
   }
 
   /** 更新平台字幕路径（下载后写入；可清空） */
@@ -410,19 +404,15 @@ export class DatabaseManager {
     const existing = this.getTranslationTask(taskId)?.outputArtifacts
     const merged: TaskOutputArtifacts = {
       outputDirectory:
-        partial.outputDirectory ||
-        existing?.outputDirectory ||
-        '',
-      originalSubtitle:
-        partial.originalSubtitle ?? existing?.originalSubtitle,
+        partial.outputDirectory || existing?.outputDirectory || '',
+      originalSubtitle: partial.originalSubtitle ?? existing?.originalSubtitle,
       translatedSubtitle:
         partial.translatedSubtitle ?? existing?.translatedSubtitle,
       bilingualSubtitle:
         partial.bilingualSubtitle ?? existing?.bilingualSubtitle,
       bilingualAss: partial.bilingualAss ?? existing?.bilingualAss,
       burnedVideo: partial.burnedVideo ?? existing?.burnedVideo,
-      polishedMarkdown:
-        partial.polishedMarkdown ?? existing?.polishedMarkdown,
+      polishedMarkdown: partial.polishedMarkdown ?? existing?.polishedMarkdown,
     }
     this.saveTaskArtifacts(taskId, merged)
     return merged
@@ -512,9 +502,9 @@ export class DatabaseManager {
         )
       : this.db.prepare(`${base} ORDER BY t.created_at DESC`)
 
-    const rows = (
-      kind ? stmt.all(kind) : stmt.all()
-    ) as Array<Record<string, unknown>>
+    const rows = (kind ? stmt.all(kind) : stmt.all()) as Array<
+      Record<string, unknown>
+    >
     return rows.map(row => this.mapTaskRow(row))
   }
 

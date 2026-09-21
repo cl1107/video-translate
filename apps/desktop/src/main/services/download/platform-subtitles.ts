@@ -16,7 +16,18 @@ const SKIP_LANG_CODES = new Set([
 
 /** 语言别名组：匹配源语 / 排除目标语时使用 */
 const LANGUAGE_ALIAS_GROUPS: string[][] = [
-  ['zh', 'zho', 'chi', 'cmn', 'yue', 'wuu', 'zh-cn', 'zh-tw', 'zh-hans', 'zh-hant'],
+  [
+    'zh',
+    'zho',
+    'chi',
+    'cmn',
+    'yue',
+    'wuu',
+    'zh-cn',
+    'zh-tw',
+    'zh-hans',
+    'zh-hant',
+  ],
   ['en', 'eng', 'en-us', 'en-gb', 'en-orig'],
   ['ja', 'jpn', 'jp'],
   ['ko', 'kor', 'kr'],
@@ -65,7 +76,16 @@ export function buildYtDlpSubLangs(
   }
 
   // 常见源语（排除与目标语同组时可仍下载，选取阶段再过滤）
-  const commons = ['en.*', 'zh.*', 'ja.*', 'ko.*', 'yue.*', 'es.*', 'fr.*', 'de.*']
+  const commons = [
+    'en.*',
+    'zh.*',
+    'ja.*',
+    'ko.*',
+    'yue.*',
+    'es.*',
+    'fr.*',
+    'de.*',
+  ]
   for (const c of commons) {
     if (!parts.includes(c)) parts.push(c)
   }
@@ -119,7 +139,9 @@ export async function listSubtitleCandidates(
 /**
  * 从 `video.en.srt` / `video.zh-Hans.vtt` / `video.en-orig.srt` 解析语言码。
  */
-export function parseLanguageFromSubtitleFilename(filename: string): string | null {
+export function parseLanguageFromSubtitleFilename(
+  filename: string
+): string | null {
   const base = path.basename(filename)
   // 去掉扩展名后，取最后一个「像语言码」的点分段
   // 例: Title_id.en.srt → en；Title.zh-Hans.srt → zh-Hans
@@ -133,14 +155,20 @@ export function parseLanguageFromSubtitleFilename(filename: string): string | nu
     if (!part) continue
     if (/^(live_chat|live-chat|danmaku)$/i.test(part)) return part.toLowerCase()
     // yt-dlp 自动字幕偶发 a-en / en-orig
-    if (/^[a-z]{1,3}(-[a-z0-9]+)*$/i.test(part) || /^a-[a-z]{2,3}/i.test(part)) {
+    if (
+      /^[a-z]{1,3}(-[a-z0-9]+)*$/i.test(part) ||
+      /^a-[a-z]{2,3}/i.test(part)
+    ) {
       return part
     }
   }
   return null
 }
 
-export function isLikelyAutoSubtitle(filename: string, language: string): boolean {
+export function isLikelyAutoSubtitle(
+  filename: string,
+  language: string
+): boolean {
   const lower = filename.toLowerCase()
   const lang = language.toLowerCase()
   return (
@@ -166,7 +194,8 @@ export function selectBestPlatformSubtitle(
 
   const source = toLanguageCode(options.sourceLanguage)
   const target = toLanguageCode(options.targetLanguage)
-  const sourceAliases = source && source !== 'auto' ? languageAliases(source) : []
+  const sourceAliases =
+    source && source !== 'auto' ? languageAliases(source) : []
   const targetAliases =
     target && target !== 'auto' ? languageAliases(target) : []
 
@@ -176,7 +205,10 @@ export function selectBestPlatformSubtitle(
 
     // 源语精确/别名匹配
     if (sourceAliases.length > 0) {
-      if (sourceAliases.includes(lang) || sourceAliases.some(a => lang.startsWith(`${a}-`))) {
+      if (
+        sourceAliases.includes(lang) ||
+        sourceAliases.some(a => lang.startsWith(`${a}-`))
+      ) {
         score += 100
       } else if (sourceAliases.some(a => lang.startsWith(a))) {
         score += 80
@@ -198,8 +230,10 @@ export function selectBestPlatformSubtitle(
 
     // 常见通用语小幅加分（auto 源语时）
     if (source === 'auto' || !source) {
-      if (['en', 'eng'].some(a => lang === a || lang.startsWith(`${a}-`))) score += 10
-      if (['zh', 'ja', 'ko'].some(a => lang === a || lang.startsWith(`${a}-`))) score += 8
+      if (['en', 'eng'].some(a => lang === a || lang.startsWith(`${a}-`)))
+        score += 10
+      if (['zh', 'ja', 'ko'].some(a => lang === a || lang.startsWith(`${a}-`)))
+        score += 8
     }
 
     return { candidate: c, score }

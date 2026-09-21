@@ -16,10 +16,11 @@ pnpm dev:desktop          # 启动桌面应用开发服务器
 pnpm dev:landing          # 启动 landing page
 pnpm start:desktop        # 预览已构建的桌面应用
 
-# 构建打包
+# 构建打包与本地安装
 pnpm build                # 通过 Turborepo 构建全部应用
 pnpm build:desktop        # 构建桌面安装包
 pnpm build:landing        # 构建 landing page
+pnpm install:local        # 本地自用：一键编译、代码签名并安装至 /Applications
 pnpm make:release         # 创建发布版本
 
 # 代码质量
@@ -203,11 +204,11 @@ SQLite 数据库使用以下主要表：
 
 UI / 设计工作请先读对应应用的产品与视觉上下文（Impeccable）：
 
-| 应用 | Register | PRODUCT | DESIGN |
-|------|----------|---------|--------|
-| 桌面端 | product | `apps/desktop/PRODUCT.md` | `apps/desktop/DESIGN.md` |
-| 官网 | brand | `apps/landing/PRODUCT.md` | `apps/landing/DESIGN.md` |
+| 应用   | Register | PRODUCT                   | DESIGN                   |
+| ------ | -------- | ------------------------- | ------------------------ |
+| 桌面端 | product  | `apps/desktop/PRODUCT.md` | `apps/desktop/DESIGN.md` |
+| 官网   | brand    | `apps/landing/PRODUCT.md` | `apps/landing/DESIGN.md` |
 
-- **North stars:** desktop = *The Quiet Workbench*；landing = *The Acid Studio*
+- **North stars:** desktop = _The Quiet Workbench_；landing = _The Acid Studio_
 - **Live 配置:** `apps/desktop/.impeccable/live/config.json`、`apps/landing/.impeccable/live/config.json`
 - 命令入口：`$impeccable`（需指定 target 应用）。设计相关原则与 anti-references 以 PRODUCT/DESIGN 为准，勿与实现细节混写。

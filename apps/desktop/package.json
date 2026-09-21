@@ -27,6 +27,8 @@
     "build:ci": "pnpm run prepare:ffmpeg && pnpm run rebuild:native && electron-builder --publish never",
     "build:bundled": "cross-env BUNDLE_FFMPEG=1 pnpm run build",
     "build:slim": "cross-env BUNDLE_FFMPEG=0 pnpm run build",
+    "install:desktop": "../../scripts/install-desktop.sh",
+    "install:local": "../../scripts/install-desktop.sh",
     "postinstall": "run-s prebuild rebuild:native",
     "install:deps": "electron-builder install-app-deps",
     "rebuild:native": "electron-rebuild --force --only better-sqlite3",

@@ -20,7 +20,10 @@ function keyFilePath(): string {
  * 使用 Electron safeStorage 加密保存 BYOK API Key。
  * 不可用时回退为明文文件（仍不写日志）；调用方勿 echo 返回值。
  */
-export function setByokApiKey(apiKey: string): { success: boolean; error?: string } {
+export function setByokApiKey(apiKey: string): {
+  success: boolean
+  error?: string
+} {
   try {
     const trimmed = (apiKey ?? '').trim()
     if (!trimmed) {

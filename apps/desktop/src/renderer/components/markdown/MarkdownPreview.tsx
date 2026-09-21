@@ -26,9 +26,7 @@ export function MarkdownPreview({
 
   if (!trimmed) {
     return (
-      emptyFallback ?? (
-        <p className="text-sm text-muted-foreground">暂无内容</p>
-      )
+      emptyFallback ?? <p className="text-sm text-muted-foreground">暂无内容</p>
     )
   }
 

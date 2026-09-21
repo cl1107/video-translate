@@ -16,10 +16,7 @@ interface ThemeToggleProps {
   className?: string
 }
 
-export function ThemeToggle({
-  variant = 'icon',
-  className,
-}: ThemeToggleProps) {
+export function ThemeToggle({ variant = 'icon', className }: ThemeToggleProps) {
   const { preference, setTheme, cycleTheme } = useTheme()
 
   if (variant === 'segmented') {
@@ -77,10 +74,7 @@ export function ThemeToggle({
       aria-label={`切换主题，当前：${PREFERENCE_LABEL[preference]}`}
       title={`主题：${PREFERENCE_LABEL[preference]}（点击切换）`}
     >
-      <Icon
-        key={preference}
-        className="motion-panel-in h-4 w-4"
-      />
+      <Icon key={preference} className="motion-panel-in h-4 w-4" />
     </Button>
   )
 }

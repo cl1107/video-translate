@@ -126,11 +126,11 @@ git ls-remote origin refs/heads/main 'refs/tags/vX.Y.Z^{}'
 
 ## 失败模式速查
 
-| 现象 | 根因 | 处理 |
-| --- | --- | --- |
-| `Could not resolve workspace` | 根 `packageManager` 缺失 | 恢复并固定 `pnpm@11.12.0` |
-| self-installer 的 `integrity` 错误 | action 自举版本切换失败 | 改为 Node 后 `npm install --global` |
-| standalone 生成 `This: not found` | `@pnpm/exe` 下载或缓存异常 | 移除 standalone，并关闭自动缓存 |
-| setup-node 找不到 pnpm | 自动缓存早于 pnpm 安装 | 设置 `package-manager-cache: false` |
-| `electron-builder: command not found` | 从错误 workspace 上下文直接调用 | 使用桌面包的 `build:ci` 脚本 |
-| Release 没有资产 | 只完成了矩阵 job | 等待并检查 `Publish GitHub Release` |
+| 现象                                  | 根因                            | 处理                                |
+| ------------------------------------- | ------------------------------- | ----------------------------------- |
+| `Could not resolve workspace`         | 根 `packageManager` 缺失        | 恢复并固定 `pnpm@11.12.0`           |
+| self-installer 的 `integrity` 错误    | action 自举版本切换失败         | 改为 Node 后 `npm install --global` |
+| standalone 生成 `This: not found`     | `@pnpm/exe` 下载或缓存异常      | 移除 standalone，并关闭自动缓存     |
+| setup-node 找不到 pnpm                | 自动缓存早于 pnpm 安装          | 设置 `package-manager-cache: false` |
+| `electron-builder: command not found` | 从错误 workspace 上下文直接调用 | 使用桌面包的 `build:ci` 脚本        |
+| Release 没有资产                      | 只完成了矩阵 job                | 等待并检查 `Publish GitHub Release` |

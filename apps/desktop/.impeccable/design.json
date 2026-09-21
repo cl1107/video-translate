@@ -66,7 +66,10 @@
       }
     },
     "typographyMeta": {
-      "title": { "displayName": "Title", "purpose": "页面主标题，最大约 text-lg。" },
+      "title": {
+        "displayName": "Title",
+        "purpose": "页面主标题，最大约 text-lg。"
+      },
       "body": { "displayName": "Body", "purpose": "默认正文与说明，text-sm。" },
       "label": { "displayName": "Label", "purpose": "按钮与控件标签。" }
     },
@@ -89,9 +92,7 @@
         "purpose": "控件状态反馈；无编排入场。"
       }
     ],
-    "breakpoints": [
-      { "name": "content-max", "value": "64rem" }
-    ]
+    "breakpoints": [{ "name": "content-max", "value": "64rem" }]
   },
   "components": [
     {

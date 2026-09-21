@@ -108,12 +108,7 @@ export async function polishTranscriptBatch(
     try {
       const response = await client.complete({
         system,
-        user: buildPolishUserPrompt(
-          texts,
-          i,
-          options.sourceLanguage,
-          radius
-        ),
+        user: buildPolishUserPrompt(texts, i, options.sourceLanguage, radius),
         temperature: 0.1,
         maxTokens: 2000,
       })

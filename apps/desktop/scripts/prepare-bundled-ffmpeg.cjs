@@ -24,7 +24,14 @@ const SOURCE = {
     },
   },
   darwin: {
-    universal: {
+    arm64: {
+      format: 'zip',
+      urls: [
+        'https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip',
+        'https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip',
+      ],
+    },
+    x64: {
       format: 'zip',
       urls: [
         'https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip',
@@ -174,10 +181,7 @@ async function main() {
 
   const requestedArch = process.env.FFMPEG_ARCH || process.arch
   const platformSource = SOURCE[process.platform]
-  const source =
-    platformSource?.[
-      process.platform === 'darwin' ? 'universal' : requestedArch
-    ]
+  const source = platformSource?.[requestedArch] || platformSource?.universal
   if (!source) {
     throw new Error(
       `Bundled FFmpeg is not configured for ${process.platform}-${requestedArch}. ` +
@@ -187,7 +191,8 @@ async function main() {
 
   const executableExtension = process.platform === 'win32' ? '.exe' : ''
   const destination = path.resolve(
-    'src/resources/ffmpeg',
+    __dirname,
+    '../src/resources/ffmpeg',
     `${process.platform}-${requestedArch}`
   )
   const ffmpegDestination = path.join(
@@ -199,8 +204,17 @@ async function main() {
     `ffprobe${executableExtension}`
   )
   if ((await exists(ffmpegDestination)) && (await exists(ffprobeDestination))) {
-    console.log(`Using existing bundled FFmpeg files in ${destination}`)
-    return
+    try {
+      await verify(ffmpegDestination, ffprobeDestination)
+      console.log(
+        `Using existing verified bundled FFmpeg files in ${destination}`
+      )
+      return
+    } catch (error) {
+      console.warn(
+        `Existing bundled FFmpeg in ${destination} is invalid or architecture mismatched (${error.message}). Re-downloading...`
+      )
+    }
   }
 
   const tempDirectory = await require('node:fs/promises').mkdtemp(

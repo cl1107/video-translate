@@ -2,80 +2,80 @@
 name: 视频翻译助手 · Desktop
 description: 本地优先的字幕工作台 — 安静、利落、任务优先
 colors:
-  background: "oklch(1 0 0)"
-  foreground: "oklch(0.145 0 0)"
-  card: "oklch(1 0 0)"
-  primary: "oklch(0.205 0 0)"
-  primary-foreground: "oklch(0.985 0 0)"
-  secondary: "oklch(0.97 0 0)"
-  muted: "oklch(0.97 0 0)"
-  muted-foreground: "oklch(0.556 0 0)"
-  accent: "oklch(0.97 0 0)"
-  brand: "oklch(0.88 0.17 122)"
-  brand-foreground: "oklch(0.28 0.06 125)"
-  brand-ink: "oklch(0.48 0.12 128)"
-  border: "oklch(0.922 0 0)"
-  ring: "oklch(0.72 0.09 122)"
-  destructive: "oklch(0.577 0.245 27.325)"
-  dark-background: "oklch(0.145 0 0)"
-  dark-foreground: "oklch(0.985 0 0)"
-  dark-primary: "oklch(0.985 0 0)"
-  dark-muted: "oklch(0.269 0 0)"
-  dark-brand: "oklch(0.92 0.18 122)"
-  dark-brand-ink: "oklch(0.88 0.16 122)"
-  dark-ring: "oklch(0.82 0.14 122)"
+  background: 'oklch(1 0 0)'
+  foreground: 'oklch(0.145 0 0)'
+  card: 'oklch(1 0 0)'
+  primary: 'oklch(0.205 0 0)'
+  primary-foreground: 'oklch(0.985 0 0)'
+  secondary: 'oklch(0.97 0 0)'
+  muted: 'oklch(0.97 0 0)'
+  muted-foreground: 'oklch(0.556 0 0)'
+  accent: 'oklch(0.97 0 0)'
+  brand: 'oklch(0.88 0.17 122)'
+  brand-foreground: 'oklch(0.28 0.06 125)'
+  brand-ink: 'oklch(0.48 0.12 128)'
+  border: 'oklch(0.922 0 0)'
+  ring: 'oklch(0.72 0.09 122)'
+  destructive: 'oklch(0.577 0.245 27.325)'
+  dark-background: 'oklch(0.145 0 0)'
+  dark-foreground: 'oklch(0.985 0 0)'
+  dark-primary: 'oklch(0.985 0 0)'
+  dark-muted: 'oklch(0.269 0 0)'
+  dark-brand: 'oklch(0.92 0.18 122)'
+  dark-brand-ink: 'oklch(0.88 0.16 122)'
+  dark-ring: 'oklch(0.82 0.14 122)'
 typography:
   title:
-    fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
-    fontSize: "1.125rem"
+    fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
+    fontSize: '1.125rem'
     fontWeight: 600
     lineHeight: 1.25
-    letterSpacing: "-0.025em"
+    letterSpacing: '-0.025em'
   body:
-    fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
-    fontSize: "0.875rem"
+    fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
+    fontSize: '0.875rem'
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif"
-    fontSize: "0.875rem"
+    fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
+    fontSize: '0.875rem'
     fontWeight: 500
     lineHeight: 1.25
 rounded:
-  sm: "calc(0.625rem - 4px)"
-  md: "calc(0.625rem - 2px)"
-  lg: "0.625rem"
-  xl: "calc(0.625rem + 4px)"
+  sm: 'calc(0.625rem - 4px)'
+  md: 'calc(0.625rem - 2px)'
+  lg: '0.625rem'
+  xl: 'calc(0.625rem + 4px)'
 spacing:
-  page-x: "1.5rem"
-  page-y: "1.5rem"
-  content-max: "64rem"
-  section-gap: "1.25rem"
+  page-x: '1.5rem'
+  page-y: '1.5rem'
+  content-max: '64rem'
+  section-gap: '1.25rem'
 components:
   button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.primary-foreground}"
-    rounded: "{rounded.md}"
-    padding: "0.5rem 1rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.primary}'
+    textColor: '{colors.primary-foreground}'
+    rounded: '{rounded.md}'
+    padding: '0.5rem 1rem'
+    height: '2.25rem'
   button-primary-hover:
-    backgroundColor: "oklch(0.205 0 0 / 0.9)"
+    backgroundColor: 'oklch(0.205 0 0 / 0.9)'
   button-outline:
-    backgroundColor: "{colors.background}"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
-    padding: "0.5rem 1rem"
-    height: "2.25rem"
+    backgroundColor: '{colors.background}'
+    textColor: '{colors.foreground}'
+    rounded: '{rounded.md}'
+    padding: '0.5rem 1rem'
+    height: '2.25rem'
   button-ghost:
-    backgroundColor: "transparent"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
-    height: "2.25rem"
+    backgroundColor: 'transparent'
+    textColor: '{colors.foreground}'
+    rounded: '{rounded.md}'
+    height: '2.25rem'
   card:
-    backgroundColor: "{colors.card}"
-    textColor: "{colors.foreground}"
-    rounded: "{rounded.xl}"
-    padding: "1.5rem 0"
+    backgroundColor: '{colors.card}'
+    textColor: '{colors.foreground}'
+    rounded: '{rounded.xl}'
+    padding: '1.5rem 0'
 ---
 
 # Design System: 视频翻译助手 · Desktop

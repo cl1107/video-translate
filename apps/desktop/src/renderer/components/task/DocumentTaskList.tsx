@@ -100,9 +100,7 @@ export function DocumentTaskList({
     [tasks]
   )
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
-    new Set()
-  )
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
   const [deletingTasks, setDeletingTasks] = useState(false)
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
   const [previewSource, setPreviewSource] = useState('')
@@ -479,7 +477,8 @@ export function DocumentTaskList({
 
               {isComplete && (
                 <p className="text-xs text-brand-ink">
-                  文稿已就绪（本机）。点右下角「预览」全屏阅读，或复制 / 打开文件
+                  文稿已就绪（本机）。点右下角「预览」全屏阅读，或复制 /
+                  打开文件
                   {task.outputArtifacts?.polishedMarkdown
                     ? ` · ${task.outputArtifacts.polishedMarkdown
                         .split(/[/\\]/)
@@ -491,7 +490,9 @@ export function DocumentTaskList({
 
               {task.errorMessage && (
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                  <p className="text-sm text-destructive">{task.errorMessage}</p>
+                  <p className="text-sm text-destructive">
+                    {task.errorMessage}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     可点「重试」；若与润色服务相关，请到设置检查 Ollama / BYOK。
                   </p>

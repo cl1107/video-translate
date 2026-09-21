@@ -10,9 +10,7 @@ export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 export type SubtitleProcessingMode = 'translate' | 'extract'
 
 /** 字幕与烧录视频的输出位置。 */
-export type SubtitleOutputLocation =
-  | 'output-subdirectory'
-  | 'source-directory'
+export type SubtitleOutputLocation = 'output-subdirectory' | 'source-directory'
 
 export interface TaskSubmissionOptions {
   subtitleProcessingMode: SubtitleProcessingMode

@@ -71,9 +71,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [preference, resolved, setTheme, cycleTheme]
   )
 
-  return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-  )
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
 /**

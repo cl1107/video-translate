@@ -1,8 +1,5 @@
 import OpenAI from 'openai'
-import type {
-  CompleteOptions,
-  TextCompletionPort,
-} from './completion-port'
+import type { CompleteOptions, TextCompletionPort } from './completion-port'
 
 export type { CompleteOptions }
 

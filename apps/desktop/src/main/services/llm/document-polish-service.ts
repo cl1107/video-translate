@@ -70,7 +70,10 @@ export function splitRawTextForDocumentPolish(
   if (!text) return []
   if (text.length <= maxChars) return [text]
 
-  const paragraphs = text.split(/\n{2,}|\n/).map(p => p.trim()).filter(Boolean)
+  const paragraphs = text
+    .split(/\n{2,}|\n/)
+    .map(p => p.trim())
+    .filter(Boolean)
   const chunks: string[] = []
   let current = ''
 
@@ -163,9 +166,7 @@ export async function polishDocumentToMarkdown(
         temperature: 0.2,
         maxTokens: 4096,
       })
-      let polished = stripOuterMarkdownFence(
-        cleanModelText(response, 'polish')
-      )
+      let polished = stripOuterMarkdownFence(cleanModelText(response, 'polish'))
       if (!polished) {
         throw new Error('润色结果为空')
       }

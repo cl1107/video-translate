@@ -756,9 +756,7 @@ export class TaskManager {
   }
 
   /** 读取文稿任务润色后的 Markdown 文本 */
-  async getTaskMarkdownContent(
-    taskId: string
-  ): Promise<{
+  async getTaskMarkdownContent(taskId: string): Promise<{
     success: boolean
     content?: string
     path?: string

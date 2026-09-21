@@ -21,10 +21,7 @@ import {
   CardTitle,
 } from 'renderer/components/ui/card'
 import { Progress } from 'renderer/components/ui/progress'
-import {
-  parseStoredAppSettings,
-  type SubtitleBurnMode,
-} from 'shared/settings'
+import { parseStoredAppSettings, type SubtitleBurnMode } from 'shared/settings'
 import {
   isBulkDeletableTaskStatus,
   TaskStatus,
@@ -132,9 +129,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
   const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>()
   const [openBurnMenuTaskId, setOpenBurnMenuTaskId] = useState<string>()
   const [burningTaskIds, setBurningTaskIds] = useState<Set<string>>(new Set())
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
-    new Set()
-  )
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
   const [deletingTasks, setDeletingTasks] = useState(false)
   const [banner, setBanner] = useState<{
     type: 'error' | 'info'
@@ -542,7 +537,9 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
 
               {task.errorMessage && (
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                  <p className="text-sm text-destructive">{task.errorMessage}</p>
+                  <p className="text-sm text-destructive">
+                    {task.errorMessage}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     可点「重试」；若与翻译服务相关，请到设置检查 Ollama。
                   </p>

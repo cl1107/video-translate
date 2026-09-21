@@ -254,7 +254,11 @@ export async function downloadVideo(
       cookiesFromBrowser: explicitCookies,
     })
   } catch (error) {
-    if (explicitCookies || !isAuthOrBotError(error) || options.signal?.aborted) {
+    if (
+      explicitCookies ||
+      !isAuthOrBotError(error) ||
+      options.signal?.aborted
+    ) {
       throw error
     }
 
@@ -311,10 +315,7 @@ async function downloadVideoOnce(
   const { url, outputDir } = options
 
   // 输出模板：标题 + id，避免重名；ext 由合并格式决定
-  const outputTemplate = path.join(
-    outputDir,
-    '%(title).180B [%(id)s].%(ext)s'
-  )
+  const outputTemplate = path.join(outputDir, '%(title).180B [%(id)s].%(ext)s')
 
   const writeSubtitles = options.writeSubtitles !== false
   const args = [
@@ -582,16 +583,13 @@ function runYtDlp(
 /** 去掉可能的 cookie/token 片段，避免写入任务日志 */
 function sanitizeDiagnostic(text: string): string {
   return text
-    .replace(
-      /https?:\/\/[^\s'"]+/g,
-      match => {
-        try {
-          return displayUrl(match)
-        } catch {
-          return '<url>'
-        }
+    .replace(/https?:\/\/[^\s'"]+/g, match => {
+      try {
+        return displayUrl(match)
+      } catch {
+        return '<url>'
       }
-    )
+    })
     .replace(
       /(cookie|authorization|token|password|sessdata)\s*[:=]\s*\S+/gi,
       '$1=<redacted>'

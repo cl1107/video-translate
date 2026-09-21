@@ -19,17 +19,20 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
   const [logs, setLogs] = useState<TaskLog[]>([])
   const [loading, setLoading] = useState(true)
 
-  const loadLogs = useCallback(async (silent = false) => {
-    try {
-      if (!silent) setLoading(true)
-      const taskLogs = await App.getTaskLogs(taskId)
-      setLogs(taskLogs)
-    } catch (error) {
-      console.error('加载任务日志失败:', error)
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [taskId])
+  const loadLogs = useCallback(
+    async (silent = false) => {
+      try {
+        if (!silent) setLoading(true)
+        const taskLogs = await App.getTaskLogs(taskId)
+        setLogs(taskLogs)
+      } catch (error) {
+        console.error('加载任务日志失败:', error)
+      } finally {
+        if (!silent) setLoading(false)
+      }
+    },
+    [taskId]
+  )
 
   useEffect(() => {
     void loadLogs(false)
@@ -82,10 +85,7 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
   }
 
   return (
-    <section
-      className="rounded-lg border bg-muted/30"
-      aria-label="处理日志"
-    >
+    <section className="rounded-lg border bg-muted/30" aria-label="处理日志">
       <header className="flex items-center gap-2 border-b px-3 py-2">
         <Info className="h-3.5 w-3.5 text-muted-foreground" />
         <h3 className="text-xs font-medium text-foreground">
@@ -119,7 +119,9 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
                 )}
               >
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 shrink-0">{getLogIcon(log.level)}</span>
+                  <span className="mt-0.5 shrink-0">
+                    {getLogIcon(log.level)}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="text-xs font-medium text-foreground select-text">

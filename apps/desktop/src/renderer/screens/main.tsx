@@ -1,11 +1,5 @@
 import appLogo from 'assets/logo-transparent.png'
-import {
-  Captions,
-  FileText,
-  ListTodo,
-  Settings,
-  Upload,
-} from 'lucide-react'
+import { Captions, FileText, ListTodo, Settings, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DocumentTaskList } from 'renderer/components/task/DocumentTaskList'
