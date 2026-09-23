@@ -44,6 +44,38 @@ export default {
     output: `dist/v${version}`,
   },
 
+  asar: true,
+  asarUnpack: [
+    '**/node_modules/better-sqlite3/build/Release/*.node',
+    '**/node_modules/sherpa-onnx-node/**',
+    '**/node_modules/sherpa-onnx-*/**',
+  ],
+  electronLanguages: ['zh_CN', 'zh_TW', 'en', 'en_US'],
+  afterPack: './scripts/after-pack.cjs',
+
+  files: [
+    'main/**/*',
+    'preload/**/*',
+    'renderer/**/*',
+    'package.json',
+    '!**/*.map',
+    '!**/*.d.ts',
+    '!**/*.d.ts.map',
+    '!**/*.md',
+    '!**/README*',
+    '!**/LICENSE*',
+    '!**/CHANGELOG*',
+    '!**/test/**',
+    '!**/tests/**',
+    '!**/__tests__/**',
+    '!**/*.test.*',
+    '!**/*.spec.*',
+    '!**/Makefile',
+    '!**/binding.gyp',
+    '!**/*.gyp',
+    '!**/*.mk',
+  ],
+
   mac: {
     artifactName,
     icon: `${resources}/build/icons/icon.icns`,

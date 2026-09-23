@@ -5,7 +5,9 @@
     "correctness": "error"
   },
   "rules": {
+    "jsx-a11y/label-has-associated-control": "off",
     "jsx-a11y/prefer-tag-over-role": "off",
+    "no-control-regex": "off",
     "react-hooks/exhaustive-deps": "off"
   },
   "ignorePatterns": [

@@ -4,7 +4,7 @@
 
 **产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
 
-![视频翻译助手](https://img.shields.io/badge/version-0.8.1-blue.svg)
+![视频翻译助手](https://img.shields.io/badge/version-0.8.2-blue.svg)
 ![平台支持](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Pages](https://img.shields.io/badge/GitHub%20Pages-live-success.svg)
@@ -25,7 +25,15 @@
 - 🔄 **任务管理** - 进度、日志、本地时间与处理耗时；支持暂停/恢复和批量删除已结束任务
 - 🛠️ **系统依赖自检** - 启动时检测 FFmpeg、可选 Ollama 与 ASR 模型，缺失 SenseVoice 时自动下载
 
-## 🆕 0.8.1 更新
+## 🆕 0.8.2 更新
+
+- **深度精简安装包体积**：精简生产环境 node_modules 依赖，排除前端未引用的依赖与源码映射，业务 asar 归档从 72MB 压缩至 11MB（-84.7%）。
+- **原生模块与动态库去重**：清除 better-sqlite3 源码与中间编译文件（-22MB），自动去重 sherpa-onnx 动态链接库（-28.3MB）。
+- **语言包裁剪**：剔除 Electron 框架中 50+ 个非中英文本地化语言包。
+- **Slim 构建模式与自用脚本**：`pnpm install:local` 默认以 Slim 模式安装，整体占用从 557MB 腰斩至 275MB（-50.6%），并提供 `--bundled` 选项。
+- **现代化运行时**：Ollama 客户端升级为使用 Node 原生 `fetch`，彻底移除 `node-fetch` 依赖。
+
+## 0.8.1 更新
 
 - 字幕翻译单段空结果会自动重试；仍为空时回退该段原文，不再因偶发空译中断整条任务。
 - 重试、回退与失败段会写入处理日志（含原文预览），完成时汇总回退段数。

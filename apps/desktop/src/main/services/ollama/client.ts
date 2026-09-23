@@ -8,20 +8,6 @@ import {
   translateTextBatch,
 } from '../llm/text-transform'
 
-// 使用动态导入来处理 node-fetch ES 模块
-let fetch: any
-/**
- * 动态获取node-fetch模块（处理ES模块导入）
- * @returns 返回node-fetch模块
- */
-async function getFetch() {
-  if (!fetch) {
-    const { default: nodeFetch } = await import('node-fetch')
-    fetch = nodeFetch
-  }
-  return fetch
-}
-
 /**
  * Ollama生成文本请求接口
  */
@@ -97,10 +83,9 @@ export class OllamaClient {
    */
   async isRunning(): Promise<boolean> {
     try {
-      const fetchFn = await getFetch()
-      const response = await fetchFn(`${this.baseUrl}/api/tags`, {
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
         method: 'GET',
-        timeout: 5000,
+        signal: AbortSignal.timeout(5000),
       })
       return response.ok
     } catch {
@@ -205,8 +190,7 @@ export class OllamaClient {
    */
   async listModels(): Promise<OllamaModel[]> {
     try {
-      const fetchFn = await getFetch()
-      const response = await fetchFn(`${this.baseUrl}/api/tags`)
+      const response = await fetch(`${this.baseUrl}/api/tags`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -233,8 +217,7 @@ export class OllamaClient {
     onProgress?: (progress: string) => void
   ): Promise<void> {
     try {
-      const fetchFn = await getFetch()
-      const response = await fetchFn(`${this.baseUrl}/api/pull`, {
+      const response = await fetch(`${this.baseUrl}/api/pull`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -285,14 +268,13 @@ export class OllamaClient {
    */
   async generate(request: OllamaGenerateRequest): Promise<string> {
     try {
-      const fetchFn = await getFetch()
       const url = `${this.baseUrl}/api/generate`
       const requestBody = {
         ...request,
         stream: false,
       }
 
-      const response = await fetchFn(url, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

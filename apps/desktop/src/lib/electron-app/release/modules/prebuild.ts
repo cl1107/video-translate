@@ -7,18 +7,37 @@ import { getDevFolder } from '../utils/path'
 
 const ONLY_BUILT_DEPENDENCIES_FILE = 'trusted-dependencies-scripts.json'
 
+const ALLOWED_RUNTIME_DEPENDENCIES = new Set([
+  'better-sqlite3',
+  'dayjs',
+  'openai',
+  'sherpa-onnx-node',
+  'uuid',
+])
+
 async function createPackageJSONDistVersion() {
   const {
     main,
     scripts: _scripts,
     resources: _resources,
     devDependencies: _devDependencies,
+    dependencies,
     ...rest
-  } = packageJSON
+  } = packageJSON as any
+
+  const filteredDependencies: Record<string, string> = {}
+  if (dependencies) {
+    for (const [key, value] of Object.entries(dependencies)) {
+      if (ALLOWED_RUNTIME_DEPENDENCIES.has(key)) {
+        filteredDependencies[key] = value as string
+      }
+    }
+  }
 
   const packageJSONDistVersion = {
     main: './main/index.js',
     ...rest,
+    dependencies: filteredDependencies,
   }
 
   try {

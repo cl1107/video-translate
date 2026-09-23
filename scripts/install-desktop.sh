@@ -46,7 +46,7 @@ DESKTOP_DIR="${REPO_ROOT}/apps/desktop"
 # 默认选项
 DEST_DIR="/Applications"
 SKIP_BUILD=false
-BUNDLE_FFMPEG_VAL="1"
+BUNDLE_FFMPEG_VAL="0"
 SIGN_IDENTITY=""
 FORCE_ADHOC=false
 AUTO_OPEN=false
@@ -57,11 +57,13 @@ usage() {
 使用方法: $(basename "$0") [选项]
 
 将《视频翻译助手》本地编译、深度签名并安装至 /Applications（主要用于个人自用）。
+默认采用 slim 轻量模式构建（不捆绑 FFmpeg 二进制，体积更小，依赖系统 PATH/Homebrew FFmpeg）。
 
 选项:
   -o, --open              安装完成后自动启动应用
   -s, --skip-build        跳过编译步骤，直接使用已有产物进行签名和安装
-  --slim                  不捆绑 FFmpeg 二进制（默认捆绑，方便离线开箱即用）
+  --slim                  不捆绑 FFmpeg 二进制（默认行为，轻量化）
+  --bundled               捆绑内置 FFmpeg 二进制（方便完全离线或无系统 FFmpeg 时使用）
   -i, --identity <NAME>   显式指定用于代码签名的证书名称（默认自动检测本地可用证书）
   --ad-hoc                强制使用 Ad-hoc 自签名（无需任何 Apple 开发者证书）
   -d, --dest <PATH>       自定义安装目录（默认: /Applications）
@@ -69,8 +71,9 @@ usage() {
   -h, --help              显示此帮助信息
 
 示例:
-  pnpm install:local              # 一键编译、自动查找证书签名并安装到 /Applications
+  pnpm install:local              # 默认以 slim 模式一键编译、自动签名并安装到 /Applications
   pnpm install:local --open       # 编译、签名、安装后直接打开应用
+  pnpm install:local --bundled    # 显式捆绑内置 FFmpeg 构建并安装
   pnpm install:local --skip-build # 仅重签并重新部署已有构建产物
   pnpm install:local --ad-hoc     # 强制使用 Ad-hoc 签名安装
 EOF
@@ -90,6 +93,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --slim)
       BUNDLE_FFMPEG_VAL="0"
+      shift
+      ;;
+    --bundled)
+      BUNDLE_FFMPEG_VAL="1"
       shift
       ;;
     -i|--identity)
