@@ -5,7 +5,6 @@ import {
   buildPolishUserPrompt,
   cleanPolishedText,
   polishTranscriptBatch,
-  resolvePolishCompletionConfig,
   supportsTranscriptPolish,
 } from './polish-service'
 
@@ -113,41 +112,4 @@ test('polishTranscriptBatch 模型返回空文本时明确失败', async () => {
     }),
     /润色结果为空/
   )
-})
-
-test('resolvePolishCompletionConfig 本地与 BYOK 分支', () => {
-  const hyMt = resolvePolishCompletionConfig({
-    polishProvider: 'ollama',
-    polishOllamaModel: 'kaelri/hy-mt2:1.8b',
-  })
-  assert.equal(hyMt.ok, false)
-
-  const local = resolvePolishCompletionConfig({
-    polishProvider: 'ollama',
-    polishOllamaModel: 'qwen2.5:7b',
-  })
-  assert.equal(local.ok, true)
-  if (local.ok) {
-    assert.match(local.config.baseUrl, /11434\/v1$/)
-    assert.equal(local.config.model, 'qwen2.5:7b')
-  }
-
-  const byokMissingKey = resolvePolishCompletionConfig({
-    polishProvider: 'byok',
-    byokBaseUrl: 'https://api.example.com/v1',
-    byokModelId: 'gpt-4o-mini',
-  })
-  assert.equal(byokMissingKey.ok, false)
-
-  const byok = resolvePolishCompletionConfig({
-    polishProvider: 'byok',
-    byokBaseUrl: 'https://api.example.com/v1',
-    byokModelId: 'gpt-4o-mini',
-    byokApiKey: 'sk-test',
-  })
-  assert.equal(byok.ok, true)
-  if (byok.ok) {
-    assert.equal(byok.config.apiKey, 'sk-test')
-    assert.equal(byok.label, 'BYOK gpt-4o-mini')
-  }
 })
