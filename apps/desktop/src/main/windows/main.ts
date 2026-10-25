@@ -6,6 +6,8 @@ import { createWindow } from 'lib/electron-app/factories/windows/create'
 import { ENVIRONMENT } from 'shared/constants'
 import { displayName } from '~/package.json'
 
+import { resolveWindowChrome } from './window-chrome'
+
 function resolveWindowIconPath(): string | undefined {
   const candidates = [
     // 开发态：electron-vite 主进程输出在 node_modules/.dev/main
@@ -31,6 +33,8 @@ export async function MainWindow() {
     alwaysOnTop: false,
     autoHideMenuBar: true,
     icon: resolveWindowIconPath(),
+    // macOS 自绘标题栏：顶栏与窗口融为一体
+    ...resolveWindowChrome(),
 
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

@@ -41,11 +41,13 @@ import {
   derivePlaceholderName,
   displayUrl,
   downloadVideo,
+  resolveVideo,
   validateVideoUrl,
+  type CookieAttempt,
+  type VideoInfo,
 } from './download/yt-dlp-downloader'
 import { ffmpegProcessor } from './ffmpeg/processor'
-import { ollamaClient } from './ollama/client'
-import { getByokApiKey } from './secure-store'
+import { getLlmApiKey } from './secure-store'
 import { tempWorkspace } from './temp-workspace'
 import {
   burnHardSubtitlesStage,
@@ -73,6 +75,23 @@ export interface CreateUrlTaskOptions extends Partial<TaskCreationSettings> {
 
 function getDownloadsRoot(): string {
   return path.join(app.getPath('userData'), 'downloads')
+}
+
+/**
+ * 按设置生成登录态尝试顺序：自动 = 匿名优先，失败后再试本机浏览器；
+ * 指定浏览器 = 直接用该浏览器的 Cookie；不使用 = 只匿名。
+ */
+function resolveDownloadCookieAttempts(
+  options?: TaskRuntimeOptions
+): CookieAttempt[] {
+  const mode = options?.downloadCookieBrowser ?? 'auto'
+  if (mode === 'none') return [null]
+  if (mode !== 'auto') return [mode]
+  const browsers: CookieAttempt[] =
+    process.platform === 'darwin'
+      ? ['chrome', 'safari', 'edge', 'firefox']
+      : ['chrome', 'edge', 'firefox']
+  return [null, ...browsers]
 }
 
 async function fileLooksReady(filePath: string): Promise<boolean> {
@@ -122,10 +141,6 @@ export class TaskManager {
         console.log(
           `[Temp] 已清理 ${stale.removedEntries} 项残留缓存，释放约 ${stale.freedBytes} 字节`
         )
-      }
-
-      if (!(await ollamaClient.isRunning())) {
-        await ollamaClient.startDaemon()
       }
 
       const asrReady = await ensureSenseVoiceModel(p => {
@@ -426,7 +441,7 @@ export class TaskManager {
           }
           databaseManager.saveDetectedLanguage(taskId, language)
         },
-        resolveByokApiKey: () => getByokApiKey() ?? undefined,
+        resolveLlmApiKey: () => getLlmApiKey() ?? undefined,
       }
 
       if (normalizeTaskKind(task.kind) === 'document') {
@@ -497,16 +512,74 @@ export class TaskManager {
     }
 
     await this.updateTaskStatus(task.id, TaskStatus.DOWNLOADING, 0)
+    await fs.mkdir(downloadDir, { recursive: true })
+
+    const audioOnly = task.kind === 'document'
+    const cookieAttempts = resolveDownloadCookieAttempts(task.options)
+    const proxy = (task.options?.downloadProxy ?? '').trim() || undefined
+
     this.addTaskLog(
       task.id,
       'info',
-      '开始下载在线视频（优先抓取平台字幕）',
-      displayUrl(sourceUrl)
+      '正在解析在线视频信息',
+      `${displayUrl(sourceUrl)}${audioOnly ? ' · 文稿任务仅下载音频' : ''}`
     )
 
-    await fs.mkdir(downloadDir, { recursive: true })
+    let info: VideoInfo
+    try {
+      info = await resolveVideo(sourceUrl, {
+        signal,
+        cookieAttempts,
+        proxy,
+        sourceLanguage: task.sourceLanguage,
+        targetLanguage: task.targetLanguage,
+      })
+    } catch (error) {
+      this.addTaskLog(
+        task.id,
+        'error',
+        '解析视频信息失败',
+        error instanceof Error ? error.message : String(error)
+      )
+      throw error
+    }
+
+    // 解析后先写回标题 / 时长，界面不必等下载完成才显示真实名称。
+    task.videoFile = {
+      ...task.videoFile,
+      name: info.title.trim() || task.videoFile.name,
+      duration: info.durationSec ?? task.videoFile.duration,
+    }
+    databaseManager.updateVideoFile(task.videoFile)
+    this.activeTasks.set(task.id, task)
+    this.notifyTaskUpdate(task)
+
+    const subtitleCount =
+      info.manualSubtitles.length + info.autoSubtitles.length
+    this.addTaskLog(
+      task.id,
+      'success',
+      '已解析视频信息',
+      [
+        info.title,
+        info.uploader,
+        info.durationSec ? formatDurationLabel(info.durationSec) : undefined,
+        subtitleCount > 0 ? `${subtitleCount} 条平台字幕` : '无平台字幕',
+        info.cookieBrowser ? `登录态：${info.cookieBrowser}` : '匿名访问',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    )
+
+    this.addTaskLog(
+      task.id,
+      'info',
+      audioOnly ? '开始下载音频（文稿任务）' : '开始下载视频',
+      `优先平台字幕 · ${displayUrl(sourceUrl)}`
+    )
 
     let lastLoggedPercent = -10
+    let lastStageMessage = ''
     const result = await downloadVideo({
       url: sourceUrl,
       outputDir: downloadDir,
@@ -514,42 +587,55 @@ export class TaskManager {
       sourceLanguage: task.sourceLanguage,
       targetLanguage: task.targetLanguage,
       writeSubtitles: true,
+      audioOnly,
+      cookieAttempts,
+      proxy,
+      info,
       onProgress: progress => {
+        if (
+          progress.stage === 'processing' &&
+          progress.message &&
+          progress.message !== lastStageMessage
+        ) {
+          lastStageMessage = progress.message
+          this.addTaskLog(task.id, 'info', '下载处理中', progress.message)
+        }
+
         const percent =
           progress.percent !== undefined
-            ? Math.min(95, Math.max(0, progress.percent))
+            ? Math.min(99, Math.max(0, progress.percent))
             : undefined
-        if (percent !== undefined) {
-          void this.updateTaskStatus(
+        if (percent === undefined) return
+
+        void this.updateTaskStatus(
+          task.id,
+          TaskStatus.DOWNLOADING,
+          Math.round(percent * 0.15) // 下载占整体约 0–15%
+        )
+        // 每跨约 10% 记一条日志，避免刷屏
+        if (percent - lastLoggedPercent >= 10) {
+          lastLoggedPercent = percent
+          this.addTaskLog(
             task.id,
-            TaskStatus.DOWNLOADING,
-            Math.round(percent * 0.15) // 下载占整体约 0–15%
+            'info',
+            `下载进度 ${percent.toFixed(0)}%`,
+            progress.message
           )
-          // 每跨约 10% 记一条日志，避免刷屏
-          if (percent - lastLoggedPercent >= 10) {
-            lastLoggedPercent = percent
-            this.addTaskLog(
-              task.id,
-              'info',
-              `下载进度 ${percent.toFixed(0)}%`,
-              progress.message
-            )
-          }
         }
       },
     })
 
-    let duration = 0
+    let duration = result.durationSec ?? 0
     let format = result.format
     try {
-      const info = await ffmpegProcessor.getVideoInfo(result.videoPath)
-      duration = info.duration
-      format = info.format || result.format
+      const probed = await ffmpegProcessor.getVideoInfo(result.videoPath)
+      duration = probed.duration || duration
+      format = probed.format || result.format
     } catch (error) {
       this.addTaskLog(
         task.id,
         'warn',
-        '下载完成但读取视频信息失败，将使用默认元数据',
+        '下载完成但读取媒体信息失败，将使用默认元数据',
         error instanceof Error ? error.message : String(error)
       )
     }
@@ -604,7 +690,7 @@ export class TaskManager {
     this.addTaskLog(
       task.id,
       'success',
-      '视频下载完成',
+      audioOnly ? '音频下载完成' : '视频下载完成',
       `${safeName}（${formatFileSize(result.size)}）`
     )
     await this.updateTaskStatus(task.id, TaskStatus.DOWNLOADING, 15)
@@ -985,7 +1071,7 @@ export class TaskManager {
       },
       onSegments: (_segments: TranscriptionSegment[]) => {},
       onDetectedLanguage: () => {},
-      resolveByokApiKey: () => getByokApiKey() ?? undefined,
+      resolveLlmApiKey: () => getLlmApiKey() ?? undefined,
     }
 
     try {
@@ -1122,6 +1208,16 @@ function sanitizeDownloadedName(title: string, format: string): string {
     return base
   }
   return `${base}${ext}`
+}
+
+function formatDurationLabel(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  const mm = String(minutes).padStart(2, '0')
+  const ss = String(secs).padStart(2, '0')
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`
 }
 
 function formatFileSize(bytes: number): string {

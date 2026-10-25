@@ -494,7 +494,7 @@ export function DocumentTaskList({
                     {task.errorMessage}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    可点「重试」；若与润色服务相关，请到设置检查 Ollama / BYOK。
+                    可点「重试」；若与润色相关，请到 设置 › 模型服务 检查。
                   </p>
                 </div>
               )}

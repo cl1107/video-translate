@@ -114,7 +114,7 @@ export function VideoUploader({
         } else {
           const msg = result.error || '未知错误'
           setError(`上传失败：${msg}`)
-          setErrorHint(/ollama|模型|润色|翻译/i.test(msg) ? 'settings' : null)
+          setErrorHint(/模型|润色|翻译|endpoint/i.test(msg) ? 'settings' : null)
         }
       } finally {
         setUploading(false)
@@ -341,8 +341,8 @@ export function VideoUploader({
 
             <p className="text-xs text-muted-foreground">
               {taskOptions.subtitleProcessingMode === 'extract'
-                ? '只生成原文 SRT，无需 Ollama'
-                : '生成原文 / 译文 / 双语 · 需 Ollama'}
+                ? '只生成原文 SRT，无需模型服务'
+                : '生成原文 / 译文 / 双语 · 需配置模型服务'}
             </p>
 
             {taskOptions.burnSubtitles &&

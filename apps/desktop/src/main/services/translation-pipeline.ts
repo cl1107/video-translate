@@ -5,19 +5,13 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import {
-  DEFAULT_ASR_ENGINE,
-  DEFAULT_OLLAMA_MODEL,
-} from '../../shared/constants'
+import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
 import {
   normalizeDetectedLanguage,
   resolveSubtitleLanguageSuffixes,
   toLanguageCode,
 } from '../../shared/language'
-import {
-  normalizeOllamaModel,
-  type SubtitleBurnMode,
-} from '../../shared/settings'
+import type { SubtitleBurnMode } from '../../shared/settings'
 import type {
   SubtitleEntry,
   TaskOutputArtifacts,
@@ -52,11 +46,10 @@ import {
 import { databaseManager } from './database/manager'
 import { ffmpegProcessor } from './ffmpeg/processor'
 import { throwIfAborted } from './llm/completion-port'
-import {
-  polishTranscriptBatch,
-  resolvePolishCompletionConfig,
-} from './llm/polish-service'
-import { ollamaClient } from './ollama/client'
+import { resolveLlmCompletionConfig } from './llm/llm-config'
+import { createCompletionClient } from './llm/openai-completion-client'
+import { polishTranscriptBatch } from './llm/polish-service'
+import { translateTextBatch } from './llm/text-transform'
 import { tempWorkspace } from './temp-workspace'
 
 export interface PipelineHooks {
@@ -73,7 +66,8 @@ export interface PipelineHooks {
   onArtifacts: (artifacts: TaskOutputArtifacts) => void
   onSegments: (segments: TranscriptionSegment[]) => void
   onDetectedLanguage: (language: TranslationTask['detectedLanguage']) => void
-  resolveByokApiKey: () => string | undefined
+  /** 模型服务 API Key（secure store 注入；本地推理服务可为空） */
+  resolveLlmApiKey: () => string | undefined
 }
 
 export interface PipelineContext {
@@ -122,9 +116,9 @@ export async function runTranslationPipeline(
     )
 
     const originalOnly = options.subtitleProcessingMode === 'extract'
-    await ensurePipelineDependencies(task.id, hooks, signal, {
+    await ensurePipelineDependencies(options, hooks, signal, {
       requireAsr: !usePlatformSubtitles,
-      requireOllama: !originalOnly,
+      requireLlm: !originalOnly,
     })
 
     const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
@@ -204,13 +198,10 @@ export async function runTranslationPipeline(
         signal
       )
 
-      const ollamaModel = normalizeOllamaModel(
-        options.ollamaModel ?? DEFAULT_OLLAMA_MODEL
-      )
       context.translatedSegments = await translateStage(
         task,
         context.displaySegments,
-        ollamaModel,
+        options,
         hooks,
         signal
       )
@@ -266,10 +257,10 @@ export async function runTranslationPipeline(
 }
 
 async function ensurePipelineDependencies(
-  taskId: string,
+  options: TaskRuntimeOptions,
   hooks: PipelineHooks,
   signal?: AbortSignal,
-  opts?: { requireAsr?: boolean; requireOllama?: boolean }
+  opts?: { requireAsr?: boolean; requireLlm?: boolean }
 ): Promise<void> {
   throwIfAborted(signal)
   hooks.onLog('info', '检查 FFmpeg 可用性...')
@@ -301,16 +292,21 @@ async function ensurePipelineDependencies(
     hooks.onLog('info', '已有平台字幕，跳过 ASR 依赖检查')
   }
 
-  if (opts?.requireOllama !== false) {
-    hooks.onLog('info', '检查 Ollama 服务状态...')
-    if (!(await ollamaClient.isAvailable())) {
-      throw new Error('Ollama 服务不可用，请先启动 Ollama')
+  if (opts?.requireLlm !== false) {
+    // 只校验配置完整，不发探测请求：连接/模型错误在首次调用时自然暴露
+    const resolved = resolveLlmCompletionConfig(
+      { llmBaseUrl: options.llmBaseUrl, model: options.translateModel },
+      '翻译'
+    )
+    if (!resolved.ok) {
+      throw new Error(
+        `翻译未就绪：${resolved.reason}。请到 设置 › 模型服务 配置`
+      )
     }
-    hooks.onLog('success', 'Ollama 可用性检查通过')
+    hooks.onLog('success', '模型服务配置检查通过', resolved.label)
   } else {
-    hooks.onLog('info', '仅提取原文字幕，不需要 Ollama')
+    hooks.onLog('info', '仅提取原文字幕，不需要模型服务')
   }
-  void taskId
 }
 
 /**
@@ -445,16 +441,15 @@ async function polishStage(
     }))
   }
 
-  const polishResolved = resolvePolishCompletionConfig({
-    polishProvider: options.polishProvider ?? 'ollama',
-    polishOllamaModel: options.polishOllamaModel,
-    byokBaseUrl: options.byokBaseUrl,
-    byokModelId: options.byokModelId,
-    byokApiKey:
-      (options.polishProvider ?? 'ollama') === 'byok'
-        ? hooks.resolveByokApiKey()
-        : undefined,
-  })
+  // 润色模型为空 = 跟随翻译模型
+  const polishResolved = resolveLlmCompletionConfig(
+    {
+      llmBaseUrl: options.llmBaseUrl,
+      model: options.polishModel || options.translateModel,
+      apiKey: hooks.resolveLlmApiKey(),
+    },
+    '润色'
+  )
 
   if (!polishResolved.ok) {
     hooks.onLog('warn', '已跳过识别文本润色', polishResolved.reason)
@@ -498,31 +493,43 @@ function getAsrOrSelf(segment: DisplaySegment): string {
 async function translateStage(
   task: TranslationTask,
   segments: DisplaySegment[],
-  ollamaModel: string,
+  options: TaskRuntimeOptions,
   hooks: PipelineHooks,
   signal?: AbortSignal
 ): Promise<DisplaySegment[]> {
   throwIfAborted(signal)
   await hooks.onStatus(TaskStatus.TRANSLATING, 65)
+
+  const resolved = resolveLlmCompletionConfig(
+    {
+      llmBaseUrl: options.llmBaseUrl,
+      model: options.translateModel,
+      apiKey: hooks.resolveLlmApiKey(),
+    },
+    '翻译'
+  )
+  if (!resolved.ok) {
+    throw new Error(`翻译未就绪：${resolved.reason}。请到 设置 › 模型服务 配置`)
+  }
+  const client = createCompletionClient(resolved.config)
   hooks.onLog(
     'info',
     '开始翻译字幕',
-    `Ollama 模型: ${ollamaModel}, 目标语言: ${task.targetLanguage}`
+    `模型: ${resolved.label}, 目标语言: ${task.targetLanguage}`
   )
 
   const texts = segments.map(segment => getTranslateInput(segment))
   let fallbackCount = 0
-  const translated = await ollamaClient.translateBatch(
-    texts,
-    task.sourceLanguage,
-    task.targetLanguage,
-    ollamaModel,
-    (completed, total) => {
+  const translated = await translateTextBatch(texts, {
+    client,
+    sourceLanguage: task.sourceLanguage,
+    targetLanguage: task.targetLanguage,
+    signal,
+    onProgress: (completed, total) => {
       const normalized = 65 + (completed / total) * 20
       void hooks.onStatus(TaskStatus.TRANSLATING, normalized)
     },
-    signal,
-    issue => {
+    onSegmentIssue: issue => {
       if (issue.action === 'retry') {
         hooks.onLog(
           'warn',
@@ -545,8 +552,8 @@ async function translateStage(
         `翻译第 ${issue.index}/${issue.total} 段失败`,
         `${issue.reason}；原文：${issue.source}`
       )
-    }
-  )
+    },
+  })
 
   const merged = segments.map((segment, index) => ({
     ...segment,

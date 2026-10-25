@@ -8,12 +8,7 @@ import {
 } from '../shared/ipc'
 import type { SubtitleBurnMode, TaskCreationSettings } from '../shared/settings'
 import type { SystemCheckProgress } from '../shared/system-check'
-import type {
-  OllamaModel,
-  TaskKind,
-  TaskLog,
-  TranslationTask,
-} from '../shared/types/video'
+import type { TaskKind, TaskLog, TranslationTask } from '../shared/types/video'
 import type { UpdateCheckerStatus } from '../shared/update-checker'
 
 declare global {
@@ -60,27 +55,23 @@ declare global {
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<TaskLog[]>
 
-      getByokApiKeyStatus: () => Promise<{
+      getLlmApiKeyStatus: () => Promise<{
         success: boolean
         configured: boolean
       }>
-      setByokApiKey: (
+      setLlmApiKey: (
         apiKey: string
       ) => Promise<{ success: boolean; error?: string }>
-      clearByokApiKey: () => Promise<{ success: boolean; error?: string }>
-
-      getOllamaModels: () => Promise<{
+      clearLlmApiKey: () => Promise<{ success: boolean; error?: string }>
+      /** 拉取 OpenAI 兼容端点 /models（同时充当连接测试）；apiKey 留空时用已存 Key */
+      listLlmModels: (
+        baseUrl: string,
+        apiKey?: string
+      ) => Promise<{
         success: boolean
-        models: OllamaModel[]
+        models: string[]
         error?: string
       }>
-      checkOllamaStatus: () => Promise<{
-        success: boolean
-        isRunning: boolean
-      }>
-      pullOllamaModel: (
-        modelName: string
-      ) => Promise<{ success: boolean; error?: string }>
 
       getAsrStatus: () => Promise<{
         success: boolean
@@ -165,9 +156,6 @@ declare global {
 
       onTaskUpdated: (callback: (task: TranslationTask) => void) => () => void
       onTaskDeleted: (callback: (taskId: string) => void) => () => void
-      onOllamaPullProgress: (
-        callback: (data: { modelName: string; progress: string }) => void
-      ) => () => void
       onSystemCheckProgress: (
         callback: (progress: SystemCheckProgress) => void
       ) => () => void
@@ -226,15 +214,12 @@ const api = {
   getTaskLogs: (taskId: string) =>
     ipcRenderer.invoke(IpcChannels.getTaskLogs, taskId),
 
-  getByokApiKeyStatus: () => ipcRenderer.invoke(IpcChannels.byokApiKeyStatus),
-  setByokApiKey: (apiKey: string) =>
-    ipcRenderer.invoke(IpcChannels.setByokApiKey, apiKey),
-  clearByokApiKey: () => ipcRenderer.invoke(IpcChannels.clearByokApiKey),
-
-  getOllamaModels: () => ipcRenderer.invoke(IpcChannels.getOllamaModels),
-  checkOllamaStatus: () => ipcRenderer.invoke(IpcChannels.checkOllamaStatus),
-  pullOllamaModel: (modelName: string) =>
-    ipcRenderer.invoke(IpcChannels.pullOllamaModel, modelName),
+  getLlmApiKeyStatus: () => ipcRenderer.invoke(IpcChannels.llmApiKeyStatus),
+  setLlmApiKey: (apiKey: string) =>
+    ipcRenderer.invoke(IpcChannels.setLlmApiKey, apiKey),
+  clearLlmApiKey: () => ipcRenderer.invoke(IpcChannels.clearLlmApiKey),
+  listLlmModels: (baseUrl: string, apiKey?: string) =>
+    ipcRenderer.invoke(IpcChannels.listLlmModels, baseUrl, apiKey),
 
   getAsrStatus: () => ipcRenderer.invoke(IpcChannels.getAsrStatus),
 
@@ -268,18 +253,6 @@ const api = {
     const listener = (_event: unknown, taskId: string) => callback(taskId)
     ipcRenderer.on(IpcChannels.taskDeleted, listener)
     return () => ipcRenderer.removeListener(IpcChannels.taskDeleted, listener)
-  },
-
-  onOllamaPullProgress: (
-    callback: (data: { modelName: string; progress: string }) => void
-  ) => {
-    const listener = (
-      _event: unknown,
-      data: { modelName: string; progress: string }
-    ) => callback(data)
-    ipcRenderer.on(IpcChannels.ollamaPullProgress, listener)
-    return () =>
-      ipcRenderer.removeListener(IpcChannels.ollamaPullProgress, listener)
   },
 
   onSystemCheckProgress: (

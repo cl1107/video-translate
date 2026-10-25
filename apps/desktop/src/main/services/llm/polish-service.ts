@@ -1,7 +1,4 @@
-import {
-  languageDisplayName,
-  type PolishProvider,
-} from '../../../shared/settings'
+import { languageDisplayName } from '../../../shared/settings'
 import {
   cleanModelText,
   isPunctuationOnly,
@@ -11,8 +8,6 @@ import {
 import {
   type CompletionClientConfig,
   createCompletionClient,
-  OLLAMA_OPENAI_BASE_URL,
-  OLLAMA_OPENAI_DUMMY_KEY,
   type OpenAiCompletionClient,
 } from './openai-completion-client'
 
@@ -131,69 +126,4 @@ export async function polishTranscriptBatch(
   return results
 }
 
-export type { PolishProvider }
-
-export interface ResolvePolishConfigInput {
-  polishProvider: PolishProvider
-  polishOllamaModel?: string
-  byokBaseUrl?: string
-  byokModelId?: string
-  byokApiKey?: string
-}
-
-export type ResolvePolishConfigResult =
-  | { ok: true; config: CompletionClientConfig; label: string }
-  | { ok: false; reason: string }
-
-/**
- * 将应用设置解析为润色用 Completion 配置；无法润色时返回 reason。
- */
-export function resolvePolishCompletionConfig(
-  input: ResolvePolishConfigInput
-): ResolvePolishConfigResult {
-  if (input.polishProvider === 'byok') {
-    const baseUrl = (input.byokBaseUrl ?? '').trim()
-    const model = (input.byokModelId ?? '').trim()
-    const apiKey = (input.byokApiKey ?? '').trim()
-    if (!baseUrl) {
-      return { ok: false, reason: 'BYOK Base URL 未配置' }
-    }
-    if (!model) {
-      return { ok: false, reason: 'BYOK 模型 ID 未配置' }
-    }
-    if (!apiKey) {
-      return { ok: false, reason: 'BYOK API Key 未配置' }
-    }
-    return {
-      ok: true,
-      config: { baseUrl, apiKey, model },
-      label: `BYOK ${model}`,
-    }
-  }
-
-  const model = (input.polishOllamaModel ?? '').trim()
-  if (!model) {
-    return {
-      ok: false,
-      reason: '未配置本地润色模型（翻译专用 hy-mt 不可用于润色）',
-    }
-  }
-  if (!supportsTranscriptPolish(model)) {
-    return {
-      ok: false,
-      reason: `模型 ${model} 为翻译专用模型，无法保证润色后仍保持源语言`,
-    }
-  }
-  return {
-    ok: true,
-    config: {
-      baseUrl: OLLAMA_OPENAI_BASE_URL,
-      apiKey: OLLAMA_OPENAI_DUMMY_KEY,
-      model,
-    },
-    label: `Ollama ${model}`,
-  }
-}
-
-// re-export for callers that need OpenAi type
 export type { OpenAiCompletionClient }

@@ -8,11 +8,11 @@ import {
 } from '../shared/settings'
 import { normalizeTaskKind, type TaskKind } from '../shared/types/video'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
-import { ollamaClient } from './services/ollama/client'
+import { listEndpointModels } from './services/llm/llm-config'
 import {
-  clearByokApiKey,
-  hasByokApiKey,
-  setByokApiKey,
+  clearLlmApiKey,
+  hasLlmApiKey,
+  setLlmApiKey,
 } from './services/secure-store'
 import { taskManager } from './services/task-manager'
 import { updateChecker } from './services/update-checker'
@@ -100,17 +100,42 @@ function setupIpcHandlers() {
     }
   )
 
-  ipcMain.handle(IpcChannels.byokApiKeyStatus, () => {
-    return { success: true, configured: hasByokApiKey() }
+  ipcMain.handle(IpcChannels.llmApiKeyStatus, () => {
+    return { success: true, configured: hasLlmApiKey() }
   })
 
-  ipcMain.handle(IpcChannels.setByokApiKey, (_event, apiKey: string) => {
-    return setByokApiKey(typeof apiKey === 'string' ? apiKey : '')
+  ipcMain.handle(IpcChannels.setLlmApiKey, (_event, apiKey: string) => {
+    return setLlmApiKey(typeof apiKey === 'string' ? apiKey : '')
   })
 
-  ipcMain.handle(IpcChannels.clearByokApiKey, () => {
-    return clearByokApiKey()
+  ipcMain.handle(IpcChannels.clearLlmApiKey, () => {
+    return clearLlmApiKey()
   })
+
+  ipcMain.handle(
+    IpcChannels.listLlmModels,
+    async (_event, baseUrlRaw: unknown, apiKeyRaw?: unknown) => {
+      const baseUrl = typeof baseUrlRaw === 'string' ? baseUrlRaw.trim() : ''
+      // 未显式传入 Key 时回退 secure store（表单里 Key 可后填）
+      const apiKey =
+        typeof apiKeyRaw === 'string' && apiKeyRaw.trim()
+          ? apiKeyRaw
+          : undefined
+      if (!baseUrl) {
+        return { success: false, models: [], error: 'Endpoint 不能为空' }
+      }
+      try {
+        const result = await listEndpointModels(baseUrl, apiKey)
+        return result.ok
+          ? { success: true, models: result.models }
+          : { success: false, models: [], error: result.error }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        return { success: false, models: [], error: errorMessage }
+      }
+    }
+  )
 
   ipcMain.handle(IpcChannels.getAllTasks, (_event, kindRaw?: unknown) => {
     const kind =
@@ -176,48 +201,6 @@ function setupIpcHandlers() {
   ipcMain.handle(IpcChannels.getTaskLogs, (_event, taskId: string) => {
     return taskManager.getTaskLogs(taskId)
   })
-
-  ipcMain.handle(IpcChannels.getOllamaModels, async () => {
-    try {
-      const models = await ollamaClient.listModels()
-      return { success: true, models }
-    } catch (error) {
-      console.error('获取 Ollama 模型失败:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : String(error)
-      return { success: false, error: errorMessage, models: [] }
-    }
-  })
-
-  ipcMain.handle(IpcChannels.checkOllamaStatus, async () => {
-    try {
-      const isRunning = await ollamaClient.isRunning()
-      return { success: true, isRunning }
-    } catch (error) {
-      console.error('检查 Ollama 状态失败:', error)
-      return { success: false, isRunning: false }
-    }
-  })
-
-  ipcMain.handle(
-    IpcChannels.pullOllamaModel,
-    async (event, modelName: string) => {
-      try {
-        await ollamaClient.pullModel(modelName, progress => {
-          event.sender.send(IpcChannels.ollamaPullProgress, {
-            modelName,
-            progress,
-          })
-        })
-        return { success: true }
-      } catch (error) {
-        console.error('拉取 Ollama 模型失败:', error)
-        const errorMessage =
-          error instanceof Error ? error.message : String(error)
-        return { success: false, error: errorMessage }
-      }
-    }
-  )
 
   ipcMain.handle(IpcChannels.checkSystemDependencies, async event => {
     try {

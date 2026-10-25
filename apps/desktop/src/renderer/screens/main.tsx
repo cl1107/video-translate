@@ -113,8 +113,9 @@ export function MainScreen() {
         左：身份 + 次级工作流（字幕|文稿）
         右主：面板主 chrome（添加|任务）
         最右：utility（主题|设置）
+        window-drag：macOS 隐藏原生标题栏，这一条就是窗口标题栏
       */}
-      <header className="sticky top-0 z-10 border-b bg-card/95 backdrop-blur-sm">
+      <header className="window-drag sticky top-0 z-10 border-b bg-card/95 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-6">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex min-w-0 items-center gap-2.5">

@@ -541,7 +541,7 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                     {task.errorMessage}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    可点「重试」；若与翻译服务相关，请到设置检查 Ollama。
+                    可点「重试」；若与翻译相关，请到 设置 › 模型服务 检查。
                   </p>
                 </div>
               )}

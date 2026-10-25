@@ -161,7 +161,7 @@ export function DependencyChecker({
         </Badge>
       )
     }
-    if (dep.optional || dep.name === 'ollama') {
+    if (dep.optional) {
       return (
         <Badge variant="secondary" className="text-xs">
           可选 · 未安装
@@ -184,8 +184,6 @@ export function DependencyChecker({
         return 'FFprobe'
       case 'node':
         return 'Node.js'
-      case 'ollama':
-        return 'Ollama（本地翻译）'
       case 'sherpa-onnx-asr':
         return '语音识别模型'
       case 'yt-dlp':
@@ -203,8 +201,6 @@ export function DependencyChecker({
         return '读取视频时长与格式'
       case 'node':
         return '应用内置运行环境'
-      case 'ollama':
-        return '本机大模型服务，用于翻译'
       case 'sherpa-onnx-asr':
         return '本机语音识别；缺失时会自动下载'
       case 'yt-dlp':

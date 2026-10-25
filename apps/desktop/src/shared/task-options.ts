@@ -1,20 +1,14 @@
 /**
  * TaskRuntimeOptions 与任务创建设置之间的规范化与映射。
  */
-import {
-  DEFAULT_ASR_ENGINE,
-  DEFAULT_OLLAMA_MODEL,
-  type AsrEngineId,
-} from './constants'
+import { DEFAULT_ASR_ENGINE, type AsrEngineId } from './constants'
 import {
   DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   DEFAULT_TRANSLATED_SUBTITLE_COLOR,
+  migrateLegacyLlmFields,
   normalizeTaskCreationSettings,
   normalizeAsrEngine,
   normalizeHexColor,
-  normalizeOllamaModel,
-  normalizePolishOllamaModel,
-  type PolishProvider,
   type SubtitleBurnMode,
   type SubtitleOutputLocation,
   type SubtitleProcessingMode,
@@ -24,17 +18,15 @@ import type { TaskRuntimeOptions } from './types/video'
 
 export function defaultTaskRuntimeOptions(): TaskRuntimeOptions {
   return {
-    ollamaModel: DEFAULT_OLLAMA_MODEL,
+    llmBaseUrl: '',
+    translateModel: '',
+    polishModel: '',
     asrEngine: DEFAULT_ASR_ENGINE,
     burnSubtitles: false,
     burnSubtitleMode: 'bilingual',
     subtitleProcessingMode: 'translate',
     subtitleOutputLocation: 'output-subdirectory',
     polishTranscript: true,
-    polishProvider: 'ollama',
-    polishOllamaModel: '',
-    byokBaseUrl: '',
-    byokModelId: '',
     originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
     translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
   }
@@ -46,23 +38,21 @@ export function taskOptionsFromAppSettings(
 ): TaskRuntimeOptions {
   const app = normalizeTaskCreationSettings(settings)
   return {
-    ollamaModel: app.ollamaModel,
+    llmBaseUrl: app.llmBaseUrl,
+    translateModel: app.translateModel,
+    polishModel: app.polishModel,
     asrEngine: app.asrEngine,
     burnSubtitles: app.burnSubtitles,
     burnSubtitleMode: app.burnSubtitleMode,
     subtitleProcessingMode: app.subtitleProcessingMode,
     subtitleOutputLocation: app.subtitleOutputLocation,
     polishTranscript: app.polishTranscript,
-    polishProvider: app.polishProvider,
-    polishOllamaModel: app.polishOllamaModel,
-    byokBaseUrl: app.byokBaseUrl,
-    byokModelId: app.byokModelId,
     originalSubtitleColor: app.originalSubtitleColor,
     translatedSubtitleColor: app.translatedSubtitleColor,
   }
 }
 
-/** 合并/清洗部分覆盖；保证字段齐全 */
+/** 合并/清洗部分覆盖；保证字段齐全。旧版分离配置经 migrateLegacyLlmFields 迁移。 */
 export function normalizeTaskRuntimeOptions(
   raw?: Partial<TaskRuntimeOptions> | null
 ): TaskRuntimeOptions {
@@ -77,10 +67,6 @@ export function normalizeTaskRuntimeOptions(
       ? burnMode
       : base.burnSubtitleMode
 
-  const polishProvider: PolishProvider =
-    raw.polishProvider === 'byok' || raw.polishProvider === 'ollama'
-      ? raw.polishProvider
-      : base.polishProvider
   const subtitleProcessingMode: SubtitleProcessingMode =
     raw.subtitleProcessingMode === 'extract' ? 'extract' : 'translate'
   const subtitleOutputLocation: SubtitleOutputLocation =
@@ -90,8 +76,12 @@ export function normalizeTaskRuntimeOptions(
   const resolvedBurnMode =
     subtitleProcessingMode === 'extract' ? 'original' : resolvedBurn
 
+  const llm = migrateLegacyLlmFields(raw as Record<string, unknown>)
+
   return {
-    ollamaModel: normalizeOllamaModel(raw.ollamaModel ?? base.ollamaModel),
+    llmBaseUrl: llm.llmBaseUrl,
+    translateModel: llm.translateModel,
+    polishModel: llm.polishModel,
     asrEngine: normalizeAsrEngine(
       (raw.asrEngine as AsrEngineId | undefined) ?? base.asrEngine
     ),
@@ -106,12 +96,6 @@ export function normalizeTaskRuntimeOptions(
       raw.polishTranscript === undefined
         ? base.polishTranscript
         : Boolean(raw.polishTranscript),
-    polishProvider,
-    polishOllamaModel: normalizePolishOllamaModel(
-      raw.polishOllamaModel ?? base.polishOllamaModel
-    ),
-    byokBaseUrl: (raw.byokBaseUrl ?? base.byokBaseUrl).trim(),
-    byokModelId: (raw.byokModelId ?? base.byokModelId).trim(),
     originalSubtitleColor: normalizeHexColor(
       raw.originalSubtitleColor,
       DEFAULT_ORIGINAL_SUBTITLE_COLOR

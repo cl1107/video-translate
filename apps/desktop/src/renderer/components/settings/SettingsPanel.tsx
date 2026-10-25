@@ -1,11 +1,9 @@
 import {
   AlertCircle,
   Check,
-  ChevronDown,
-  ChevronRight,
-  Download,
   FolderOpen,
   Loader2,
+  RefreshCw,
   Trash2,
   XCircle,
 } from 'lucide-react'
@@ -32,17 +30,13 @@ import {
   SelectValue,
 } from 'renderer/components/ui/select'
 import type { AsrEngineId } from '../../../shared/constants'
-import { DEFAULT_OLLAMA_MODEL } from '../../../shared/constants'
 import {
   DEFAULT_APP_SETTINGS,
   normalizeAppSettings,
   normalizeHexColor,
-  normalizeOllamaModel,
   parseStoredAppSettings,
-  type PolishProvider,
   type SubtitleOutputLocation,
 } from '../../../shared/settings'
-import type { OllamaModel } from '../../../shared/types/video'
 
 const { App } = window
 
@@ -58,11 +52,22 @@ interface LanguageInfo {
   name: string
 }
 
-interface DownloadProgress {
-  [modelName: string]: string
+export type SettingsCategoryId = 'general' | 'models' | 'system'
+
+const SETTINGS_CATEGORY_IDS: SettingsCategoryId[] = [
+  'general',
+  'models',
+  'system',
+]
+
+interface SettingsPanelProps {
+  category: SettingsCategoryId
+  /** 右栏顶部标题（由外层布局传入） */
+  title: string
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({ category, title }: SettingsPanelProps) {
+  void SETTINGS_CATEGORY_IDS
   const navigate = useNavigate()
   const [asrEngines] = useState<ModelInfo[]>([
     {
@@ -77,7 +82,6 @@ export function SettingsPanel() {
     },
   ])
 
-  const [ollamaModels, setOllamaModels] = useState<ModelInfo[]>([])
   const [asrStatus, setAsrStatus] = useState<
     Array<{
       engine: string
@@ -86,16 +90,18 @@ export function SettingsPanel() {
       detail?: string
     }>
   >([])
-  const [ollamaStatus, setOllamaStatus] = useState<{
-    isRunning: boolean
-    loading: boolean
-    error?: string
-  }>({ isRunning: false, loading: true })
 
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>({})
-  const [downloadingModels, setDownloadingModels] = useState<Set<string>>(
-    new Set()
-  )
+  /** 模型服务：从 endpoint 拉到的模型列表与连接测试状态 */
+  const [llmModels, setLlmModels] = useState<string[]>([])
+  const [llmTesting, setLlmTesting] = useState(false)
+  const [llmTestResult, setLlmTestResult] = useState<{
+    ok: boolean
+    message: string
+  } | null>(null)
+  /** 仅 UI 草稿；落盘走主进程 safeStorage，不进 localStorage */
+  const [llmApiKeyDraft, setLlmApiKeyDraft] = useState('')
+  const [llmApiKeyConfigured, setLlmApiKeyConfigured] = useState(false)
+
   const [tempCache, setTempCache] = useState<{
     path: string
     totalBytes: number
@@ -136,58 +142,15 @@ export function SettingsPanel() {
   )
 
   const [settings, setSettings] = useState(DEFAULT_APP_SETTINGS)
-  /** 仅 UI 草稿；落盘走主进程 safeStorage，不进 localStorage */
-  const [byokApiKeyDraft, setByokApiKeyDraft] = useState('')
-  const [byokApiKeyConfigured, setByokApiKeyConfigured] = useState(false)
 
-  const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string>('')
   const [statusTone, setStatusTone] = useState<'ok' | 'error'>('ok')
-  /** 高级：润色 / 烧录 / 颜色 */
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  /** 系统：依赖 / 缓存 / 危险区 */
-  const [showSystem, setShowSystem] = useState(false)
-
-  // 推荐的模型列表
-  const recommendedModels = [
-    {
-      name: DEFAULT_OLLAMA_MODEL,
-      size: '~1.5GB',
-      description: 'Hunyuan-MT 翻译专用小模型（默认）',
-    },
-  ]
-
-  const polishCapableModels = ollamaModels.filter(
-    m => m.installed && !/hy-mt/i.test(m.name)
-  )
-
   // 加载设置
   useEffect(() => {
     loadSettings()
-    checkOllamaStatus()
-    void loadOllamaModels()
     loadAsrStatus()
     void loadTempCacheStats()
-
-    // 监听模型下载进度
-    const unsubscribe = App.onOllamaPullProgress(data => {
-      setDownloadProgress(prev => ({
-        ...prev,
-        [data.modelName]: data.progress,
-      }))
-    })
-
-    return () => {
-      unsubscribe()
-    }
   }, [])
-
-  // 已开启润色时默认展开，避免配置「消失」
-  useEffect(() => {
-    if (settings.polishTranscript) {
-      setShowAdvanced(true)
-    }
-  }, [settings.polishTranscript])
 
   const loadTempCacheStats = async () => {
     setTempCache(prev => ({ ...prev, loading: true, message: undefined }))
@@ -273,10 +236,10 @@ export function SettingsPanel() {
         setSettings({ ...DEFAULT_APP_SETTINGS })
       }
       try {
-        const keyStatus = await App.getByokApiKeyStatus()
-        setByokApiKeyConfigured(Boolean(keyStatus.configured))
+        const keyStatus = await App.getLlmApiKeyStatus()
+        setLlmApiKeyConfigured(Boolean(keyStatus.configured))
       } catch {
-        setByokApiKeyConfigured(false)
+        setLlmApiKeyConfigured(false)
       }
     } catch (error) {
       console.error('加载设置失败:', error)
@@ -304,15 +267,15 @@ export function SettingsPanel() {
         JSON.stringify(normalized)
       )
 
-      if (byokApiKeyDraft.trim()) {
-        const keyResult = await App.setByokApiKey(byokApiKeyDraft.trim())
+      if (llmApiKeyDraft.trim()) {
+        const keyResult = await App.setLlmApiKey(llmApiKeyDraft.trim())
         if (!keyResult.success) {
           setStatusTone('error')
           setStatus(`设置已保存，但 API Key 写入失败: ${keyResult.error ?? ''}`)
           return
         }
-        setByokApiKeyDraft('')
-        setByokApiKeyConfigured(true)
+        setLlmApiKeyDraft('')
+        setLlmApiKeyConfigured(true)
       }
 
       setStatusTone('ok')
@@ -325,80 +288,6 @@ export function SettingsPanel() {
     }
   }
 
-  const checkOllamaStatus = async () => {
-    try {
-      setOllamaStatus(prev => ({ ...prev, loading: true }))
-      const result = await App.checkOllamaStatus()
-      setOllamaStatus({
-        isRunning: result.isRunning,
-        loading: false,
-        error: result.success ? undefined : '检查状态失败',
-      })
-    } catch (error) {
-      console.error('检查 Ollama 状态失败:', error)
-      setOllamaStatus({
-        isRunning: false,
-        loading: false,
-        error: '无法连接到 Ollama 服务',
-      })
-    }
-  }
-
-  const loadOllamaModels = async () => {
-    try {
-      const result = await App.getOllamaModels()
-      if (result.success) {
-        const installedModels = result.models.map((model: OllamaModel) => ({
-          name: model.name,
-          size: formatBytes(model.size),
-          description: getModelDescription(model.name),
-          installed: true,
-        }))
-
-        const installedNames = new Set(installedModels.map(m => m.name))
-        const notInstalledModels = recommendedModels
-          .filter(model => !installedNames.has(model.name))
-          .map(model => ({ ...model, installed: false }))
-
-        const models = [...installedModels, ...notInstalledModels]
-        setOllamaModels(models)
-
-        // 当前选中模型不在列表 / 未安装时，自动切到默认或第一个已安装模型
-        setSettings(prev => {
-          const current = normalizeOllamaModel(prev.ollamaModel)
-          const installed = models.filter(m => m.installed).map(m => m.name)
-          let next = current
-          if (!installed.includes(current)) {
-            next = installed.includes(DEFAULT_OLLAMA_MODEL)
-              ? DEFAULT_OLLAMA_MODEL
-              : installed[0] || DEFAULT_OLLAMA_MODEL
-          }
-          if (next !== prev.ollamaModel) {
-            const updated = { ...prev, ollamaModel: next }
-            localStorage.setItem(
-              'video-translate-settings',
-              JSON.stringify(updated)
-            )
-            return updated
-          }
-          return prev.ollamaModel === current
-            ? prev
-            : { ...prev, ollamaModel: current }
-        })
-      } else {
-        console.error('获取 Ollama 模型失败:', result.error)
-        setOllamaModels(
-          recommendedModels.map(model => ({ ...model, installed: false }))
-        )
-      }
-    } catch (error) {
-      console.error('加载 Ollama 模型失败:', error)
-      setOllamaModels(
-        recommendedModels.map(model => ({ ...model, installed: false }))
-      )
-    }
-  }
-
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 B'
     const k = 1024
@@ -407,46 +296,53 @@ export function SettingsPanel() {
     return `${Number.parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`
   }
 
-  const getModelDescription = (modelName: string): string => {
-    const recommended = recommendedModels.find(m => m.name === modelName)
-    return recommended?.description || `${modelName} 模型`
-  }
-
-  const downloadModel = async (modelName: string) => {
-    setDownloadingModels(prev => new Set(prev).add(modelName))
-    setLoading(true)
-    setStatusTone('ok')
-    setStatus(`正在下载 ${modelName} 模型...`)
-
+  const testLlmConnection = async () => {
+    const baseUrl = settings.llmBaseUrl.trim()
+    if (!baseUrl) {
+      setLlmTestResult({ ok: false, message: '请先填写 API Endpoint' })
+      return
+    }
+    setLlmTesting(true)
+    setLlmTestResult(null)
     try {
-      const result = await App.pullOllamaModel(modelName)
+      const result = await App.listLlmModels(
+        baseUrl,
+        llmApiKeyDraft.trim() || undefined
+      )
       if (result.success) {
-        setStatusTone('ok')
-        setStatus(`${modelName} 模型下载完成`)
-        await loadOllamaModels()
+        setLlmModels(result.models)
+        setLlmTestResult({
+          ok: true,
+          message: `已连接 · ${result.models.length} 个模型`,
+        })
       } else {
-        setStatusTone('error')
-        setStatus(`下载失败: ${result.error}`)
+        setLlmTestResult({ ok: false, message: result.error || '连接失败' })
       }
     } catch (error) {
-      console.error('下载模型失败:', error)
-      setStatusTone('error')
-      setStatus('下载失败')
+      setLlmTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      })
     } finally {
-      setDownloadingModels(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(modelName)
-        return newSet
-      })
-      setDownloadProgress(prev => {
-        const newProgress = { ...prev }
-        delete newProgress[modelName]
-        return newProgress
-      })
-      setLoading(false)
-      setTimeout(() => setStatus(''), 5000)
+      setLlmTesting(false)
     }
   }
+
+  // 拉到的模型列表 ∪ 已保存的值（保证保存过的模型在拉取前也能显示）
+  const translateModelItems = useMemo(() => {
+    const items: Record<string, string> = {}
+    if (settings.translateModel)
+      items[settings.translateModel] = settings.translateModel
+    for (const model of llmModels) items[model] = model
+    return items
+  }, [llmModels, settings.translateModel])
+
+  const polishModelItems = useMemo(() => {
+    const items: Record<string, string> = { '': '跟随翻译模型' }
+    if (settings.polishModel) items[settings.polishModel] = settings.polishModel
+    for (const model of llmModels) items[model] = model
+    return items
+  }, [llmModels, settings.polishModel])
 
   const sourceLanguages = languages
   const targetLanguages = languages.filter(lang => lang.code !== 'auto')
@@ -461,11 +357,12 @@ export function SettingsPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          改完后点保存生效。目标语言与输出格式会用于新任务。
-        </p>
-        <div className="flex items-center gap-2">
+      {/* 分类标题 + 保存；同时是窗口拖动区（macOS 隐藏标题栏） */}
+      <div className="window-drag sticky top-0 z-10 -mx-8 flex items-center justify-between gap-3 border-b bg-background/95 px-8 py-3 backdrop-blur-sm">
+        <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+          {title}
+        </h1>
+        <div className="flex shrink-0 items-center gap-2">
           {status && (
             <div
               className={
@@ -489,566 +386,156 @@ export function SettingsPanel() {
         </div>
       </div>
 
-      {!ollamaStatus.isRunning && !ollamaStatus.loading && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span>本地翻译服务未运行。请安装并启动 Ollama 后再翻译。</span>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="outline" size="sm" onClick={checkOllamaStatus}>
-                重新检查
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  void App.openExternalUrl('https://ollama.com/download')
-                }
-              >
-                安装 Ollama
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* —— 常规 —— */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">
-          常规
-        </h2>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">外观</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <Label>主题</Label>
-              <p className="text-xs text-muted-foreground">
-                浅色工作台为默认；也可切换暗色或跟随系统
-              </p>
-            </div>
-            <ThemeToggle variant="segmented" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">语言与输出</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="target-language">目标语言</Label>
-              <Select
-                value={settings.targetLanguage}
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({ ...prev, targetLanguage: value }))
-                }}
-                items={Object.fromEntries(
-                  orderedTarget.map(lang => [lang.code, lang.name])
-                )}
-              >
-                <SelectTrigger id="target-language" className="w-full min-w-0">
-                  <SelectValue placeholder="选择目标语言" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orderedTarget.map(lang => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="source-language">源语言</Label>
-              <Select
-                value={settings.sourceLanguage}
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({ ...prev, sourceLanguage: value }))
-                }}
-                items={Object.fromEntries(
-                  orderedSource.map(lang => [lang.code, lang.name])
-                )}
-              >
-                <SelectTrigger id="source-language" className="w-full min-w-0">
-                  <SelectValue placeholder="选择源语言" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orderedSource.map(lang => (
-                    <SelectItem key={lang.code} value={lang.code}>
-                      {lang.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                不确定时选「自动检测」即可
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="output-format">字幕格式</Label>
-              <Select
-                value={settings.outputFormat}
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({
-                    ...prev,
-                    outputFormat: value as 'srt' | 'vtt' | 'txt',
-                  }))
-                }}
-                items={{
-                  srt: 'SRT（推荐）',
-                  vtt: 'VTT',
-                  txt: 'TXT 纯文本',
-                }}
-              >
-                <SelectTrigger id="output-format" className="w-full min-w-0">
-                  <SelectValue placeholder="选择字幕格式" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="srt">SRT（推荐）</SelectItem>
-                  <SelectItem value="vtt">VTT</SelectItem>
-                  <SelectItem value="txt">TXT 纯文本</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="subtitle-output-location">字幕输出位置</Label>
-              <Select
-                value={settings.subtitleOutputLocation}
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({
-                    ...prev,
-                    subtitleOutputLocation: value as SubtitleOutputLocation,
-                  }))
-                }}
-                items={{
-                  'output-subdirectory': 'output 子目录（默认）',
-                  'source-directory': '源视频同目录',
-                }}
-              >
-                <SelectTrigger
-                  id="subtitle-output-location"
-                  className="w-full min-w-0"
-                >
-                  <SelectValue placeholder="选择字幕输出位置" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="output-subdirectory">
-                    output 子目录（默认）
-                  </SelectItem>
-                  <SelectItem value="source-directory">源视频同目录</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                同时应用于字幕文件和烧录后的视频；文稿仍保存在 output 子目录。
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* —— 模型 —— */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">
-          模型与翻译
-        </h2>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">语音识别</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="asr-engine">ASR 引擎</Label>
-              <Select
-                value={settings.asrEngine}
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({
-                    ...prev,
-                    asrEngine: value as AsrEngineId,
-                  }))
-                }}
-                items={Object.fromEntries(
-                  asrEngines.map(model => [model.name, model.name])
-                )}
-              >
-                <SelectTrigger className="w-full min-w-0">
-                  <SelectValue placeholder="选择 ASR 引擎" />
-                </SelectTrigger>
-                <SelectContent>
-                  {asrEngines.map(model => {
-                    const state = asrStatus.find(s => s.engine === model.name)
-                    return (
-                      <SelectItem
-                        key={model.name}
-                        value={model.name}
-                        disabled={
-                          state
-                            ? !state.available
-                            : model.name === 'funasr-nano'
-                        }
-                      >
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span>{model.name}</span>
-                          <Badge variant="outline">{model.size}</Badge>
-                          {state?.available ? (
-                            <Check className="h-3 w-3 text-brand-ink" />
-                          ) : null}
-                        </div>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {
-                  asrEngines.find(m => m.name === settings.asrEngine)
-                    ?.description
-                }
-              </p>
-              {asrStatus.length > 0 && (
-                <div className="space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
-                  {asrStatus.map(item => (
-                    <div
-                      key={item.engine}
-                      className="flex justify-between gap-2"
-                    >
-                      <span>
-                        {item.engine}: {item.available ? '已就绪' : '未安装'}
-                      </span>
-                      <span
-                        className="max-w-[60%] truncate"
-                        title={item.detail}
-                      >
-                        {item.detail}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between gap-2 text-base">
-              翻译模型
-              <Badge
-                variant={
-                  ollamaStatus.isRunning
-                    ? 'brand-soft'
-                    : ollamaStatus.loading
-                      ? 'secondary'
-                      : 'destructive'
-                }
-              >
-                {ollamaStatus.loading
-                  ? '检查中…'
-                  : ollamaStatus.isRunning
-                    ? '运行中'
-                    : '未运行'}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="ollama-model">翻译模型（Ollama）</Label>
-              <Select
-                value={
-                  ollamaModels.some(
-                    m => m.name === settings.ollamaModel && m.installed
-                  )
-                    ? settings.ollamaModel
-                    : null
-                }
-                onValueChange={value => {
-                  if (value == null) return
-                  setSettings(prev => ({
-                    ...prev,
-                    ollamaModel: normalizeOllamaModel(value),
-                  }))
-                }}
-                disabled={!ollamaStatus.isRunning || ollamaModels.length === 0}
-                items={Object.fromEntries(
-                  ollamaModels.map(model => [model.name, model.name])
-                )}
-              >
-                <SelectTrigger className="w-full min-w-0">
-                  <SelectValue placeholder="选择翻译模型" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ollamaModels.map(model => (
-                    <SelectItem
-                      key={model.name}
-                      value={model.name}
-                      disabled={!model.installed}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <span
-                          className={
-                            !model.installed ? 'text-muted-foreground' : ''
-                          }
-                        >
-                          {model.name}
-                        </span>
-                        <div className="flex items-center space-x-2 ml-2">
-                          <Badge variant="outline">{model.size}</Badge>
-                          {model.installed ? (
-                            <Check className="h-3 w-3 text-brand-ink" />
-                          ) : downloadingModels.has(model.name) ? (
-                            <div className="flex items-center space-x-1">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              {downloadProgress[model.name] && (
-                                <span className="text-xs">
-                                  {downloadProgress[model.name]}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={e => {
-                                e.stopPropagation()
-                                downloadModel(model.name)
-                              }}
-                              disabled={loading || !ollamaStatus.isRunning}
-                            >
-                              <Download className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {
-                  ollamaModels.find(m => m.name === settings.ollamaModel)
-                    ?.description
-                }
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* —— 高级（折叠） —— */}
-      <section className="space-y-3">
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 text-left text-sm font-semibold tracking-tight text-foreground"
-          onClick={() => setShowAdvanced(v => !v)}
-          aria-expanded={showAdvanced}
-        >
-          {showAdvanced ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-          高级
-          <span className="font-normal text-muted-foreground">
-            润色 · 硬字幕 · 颜色
-          </span>
-        </button>
-
-        {showAdvanced && (
+      {category === 'general' && (
+        <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">润色与硬字幕</CardTitle>
+              <CardTitle className="text-base">外观</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <Label>主题</Label>
+                <p className="text-xs text-muted-foreground">
+                  浅色工作台为默认；也可切换暗色或跟随系统
+                </p>
+              </div>
+              <ThemeToggle variant="segmented" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">语言与输出</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="polish-transcript"
-                  checked={settings.polishTranscript}
-                  onChange={e =>
+              <div className="space-y-2">
+                <Label htmlFor="target-language">目标语言</Label>
+                <Select
+                  value={settings.targetLanguage}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({ ...prev, targetLanguage: value }))
+                  }}
+                  items={Object.fromEntries(
+                    orderedTarget.map(lang => [lang.code, lang.name])
+                  )}
+                >
+                  <SelectTrigger
+                    id="target-language"
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue placeholder="选择目标语言" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {orderedTarget.map(lang => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="source-language">源语言</Label>
+                <Select
+                  value={settings.sourceLanguage}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({ ...prev, sourceLanguage: value }))
+                  }}
+                  items={Object.fromEntries(
+                    orderedSource.map(lang => [lang.code, lang.name])
+                  )}
+                >
+                  <SelectTrigger
+                    id="source-language"
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue placeholder="选择源语言" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {orderedSource.map(lang => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  不确定时选「自动检测」即可
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="output-format">字幕格式</Label>
+                <Select
+                  value={settings.outputFormat}
+                  onValueChange={value => {
+                    if (value == null) return
                     setSettings(prev => ({
                       ...prev,
-                      polishTranscript: e.target.checked,
+                      outputFormat: value as 'srt' | 'vtt' | 'txt',
                     }))
-                  }
-                  className="rounded"
-                />
-                <Label htmlFor="polish-transcript">识别结果先润色再翻译</Label>
+                  }}
+                  items={{
+                    srt: 'SRT（推荐）',
+                    vtt: 'VTT',
+                    txt: 'TXT 纯文本',
+                  }}
+                >
+                  <SelectTrigger id="output-format" className="w-full min-w-0">
+                    <SelectValue placeholder="选择字幕格式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="srt">SRT（推荐）</SelectItem>
+                    <SelectItem value="vtt">VTT</SelectItem>
+                    <SelectItem value="txt">TXT 纯文本</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <p className="text-xs text-muted-foreground">
-                ASR/OCR
-                文本可能有错字或缺标点；开启后由大模型校对，再进入翻译。仅发送字幕文本段，不上传音视频。
-              </p>
+              <div className="space-y-2">
+                <Label htmlFor="subtitle-output-location">字幕输出位置</Label>
+                <Select
+                  value={settings.subtitleOutputLocation}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({
+                      ...prev,
+                      subtitleOutputLocation: value as SubtitleOutputLocation,
+                    }))
+                  }}
+                  items={{
+                    'output-subdirectory': 'output 子目录（默认）',
+                    'source-directory': '源视频同目录',
+                  }}
+                >
+                  <SelectTrigger
+                    id="subtitle-output-location"
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue placeholder="选择字幕输出位置" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="output-subdirectory">
+                      output 子目录（默认）
+                    </SelectItem>
+                    <SelectItem value="source-directory">
+                      源视频同目录
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  同时应用于字幕文件和烧录后的视频；文稿仍保存在 output 子目录。
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-              {settings.polishTranscript && (
-                <div className="space-y-3 rounded-md border p-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="polish-provider">润色后端</Label>
-                    <Select
-                      value={settings.polishProvider}
-                      onValueChange={value => {
-                        if (value == null) return
-                        setSettings(prev => ({
-                          ...prev,
-                          polishProvider: value as PolishProvider,
-                        }))
-                      }}
-                      items={{
-                        ollama: '本地 Ollama（OpenAI 兼容 /v1）',
-                        byok: '在线 BYOK（自备 Base URL + Key）',
-                      }}
-                    >
-                      <SelectTrigger
-                        id="polish-provider"
-                        className="w-full min-w-0"
-                      >
-                        <SelectValue placeholder="选择润色后端" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ollama">
-                          本地 Ollama（OpenAI 兼容 /v1）
-                        </SelectItem>
-                        <SelectItem value="byok">
-                          在线 BYOK（自备 Base URL + Key）
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {settings.polishProvider === 'ollama' ? (
-                    <div className="space-y-2">
-                      <Label htmlFor="polish-ollama-model">本地润色模型</Label>
-                      <Select
-                        value={
-                          polishCapableModels.some(
-                            m => m.name === settings.polishOllamaModel
-                          )
-                            ? settings.polishOllamaModel
-                            : null
-                        }
-                        onValueChange={value => {
-                          if (value == null) return
-                          setSettings(prev => ({
-                            ...prev,
-                            polishOllamaModel: value,
-                          }))
-                        }}
-                        disabled={
-                          !ollamaStatus.isRunning ||
-                          polishCapableModels.length === 0
-                        }
-                        items={Object.fromEntries(
-                          polishCapableModels.map(model => [
-                            model.name,
-                            model.name,
-                          ])
-                        )}
-                      >
-                        <SelectTrigger
-                          id="polish-ollama-model"
-                          className="w-full min-w-0"
-                        >
-                          <SelectValue placeholder="选择通用对话/校对模型（勿用 hy-mt）" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {polishCapableModels.map(model => (
-                            <SelectItem key={model.name} value={model.name}>
-                              {model.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        与翻译模型分离；hy-mt 等翻译专用模型不会出现在列表中
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="byok-base-url">Base URL</Label>
-                        <input
-                          id="byok-base-url"
-                          type="url"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                          placeholder="https://api.openai.com/v1"
-                          value={settings.byokBaseUrl}
-                          onChange={e =>
-                            setSettings(prev => ({
-                              ...prev,
-                              byokBaseUrl: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="byok-model-id">Model ID</Label>
-                        <input
-                          id="byok-model-id"
-                          type="text"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                          placeholder="gpt-4o-mini"
-                          value={settings.byokModelId}
-                          onChange={e =>
-                            setSettings(prev => ({
-                              ...prev,
-                              byokModelId: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="byok-api-key">API Key</Label>
-                        <input
-                          id="byok-api-key"
-                          type="password"
-                          autoComplete="off"
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                          placeholder={
-                            byokApiKeyConfigured
-                              ? '已配置（输入新 Key 可覆盖）'
-                              : 'sk-...'
-                          }
-                          value={byokApiKeyDraft}
-                          onChange={e => setByokApiKeyDraft(e.target.value)}
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            使用系统密钥库加密存储，不会写入 localStorage
-                            或任务日志
-                          </p>
-                          {byokApiKeyConfigured && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={async () => {
-                                const result = await App.clearByokApiKey()
-                                if (result.success) {
-                                  setByokApiKeyConfigured(false)
-                                  setByokApiKeyDraft('')
-                                  setStatus('已清除 BYOK API Key')
-                                  setTimeout(() => setStatus(''), 3000)
-                                }
-                              }}
-                            >
-                              清除 Key
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-3 pt-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">字幕颜色</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
                 <Label>字幕颜色（ASS / 硬字幕）</Label>
                 <p className="text-xs text-muted-foreground">
                   用于双语 ASS 与首页任务选择的硬字幕烧录；默认白 / 黄。
@@ -1174,149 +661,388 @@ export function SettingsPanel() {
               </div>
             </CardContent>
           </Card>
-        )}
-      </section>
+        </div>
+      )}
 
-      {/* —— 系统（折叠） —— */}
-      <section className="space-y-3">
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 text-left text-sm font-semibold tracking-tight text-foreground"
-          onClick={() => setShowSystem(v => !v)}
-          aria-expanded={showSystem}
-        >
-          {showSystem ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-          系统
-          <span className="font-normal text-muted-foreground">
-            依赖 · 缓存 · 重置
-          </span>
-        </button>
-
-        {showSystem && (
-          <>
-            <DependencyChecker
-              title="系统依赖"
-              description="本机环境检查结果"
-              compactPaths
-            />
-
-            <UpdateSettingsCard />
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">临时缓存</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  音频提取、分段识别等中间文件存放于此。任务结束后会自动删除；异常退出时可能残留，可在此清理。
+      {category === 'models' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">语音识别</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="asr-engine">ASR 引擎</Label>
+                <Select
+                  value={settings.asrEngine}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({
+                      ...prev,
+                      asrEngine: value as AsrEngineId,
+                    }))
+                  }}
+                  items={Object.fromEntries(
+                    asrEngines.map(model => [model.name, model.name])
+                  )}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="选择 ASR 引擎" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {asrEngines.map(model => {
+                      const state = asrStatus.find(s => s.engine === model.name)
+                      return (
+                        <SelectItem
+                          key={model.name}
+                          value={model.name}
+                          disabled={
+                            state
+                              ? !state.available
+                              : model.name === 'funasr-nano'
+                          }
+                        >
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span>{model.name}</span>
+                            <Badge variant="outline">{model.size}</Badge>
+                            {state?.available ? (
+                              <Check className="h-3 w-3 text-brand-ink" />
+                            ) : null}
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {
+                    asrEngines.find(m => m.name === settings.asrEngine)
+                      ?.description
+                  }
                 </p>
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">占用空间</span>
-                    <span className="font-medium">
-                      {tempCache.loading
-                        ? '计算中...'
-                        : formatBytes(tempCache.totalBytes)}
-                    </span>
+                {asrStatus.length > 0 && (
+                  <div className="space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
+                    {asrStatus.map(item => (
+                      <div
+                        key={item.engine}
+                        className="flex justify-between gap-2"
+                      >
+                        <span>
+                          {item.engine}: {item.available ? '已就绪' : '未安装'}
+                        </span>
+                        <span
+                          className="max-w-[60%] truncate"
+                          title={item.detail}
+                        >
+                          {item.detail}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">文件数</span>
-                    <span className="font-medium">
-                      {tempCache.loading ? '-' : tempCache.fileCount}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-muted-foreground">缓存目录</span>
-                    <p className="break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
-                      {tempCache.path || '—'}
-                    </p>
-                  </div>
-                </div>
-                {tempCache.message && (
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{tempCache.message}</AlertDescription>
-                  </Alert>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void loadTempCacheStats()}
-                    disabled={tempCache.loading || tempCache.clearing}
-                  >
-                    {tempCache.loading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    刷新
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void App.openTempCacheDir()}
-                    disabled={!tempCache.path}
-                  >
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    打开目录
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => void clearTempCache()}
-                    disabled={tempCache.loading || tempCache.clearing}
-                  >
-                    {tempCache.clearing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
-                    )}
-                    清理缓存
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base text-destructive">
-                  危险操作
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">重置应用设置</h3>
-                  <p className="text-sm text-muted-foreground">
-                    清除本地配置并重新走环境检查（不会删除已生成的字幕文件）
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">模型服务</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="llm-base-url">API Endpoint</Label>
+                <input
+                  id="llm-base-url"
+                  type="url"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  placeholder="http://127.0.0.1:11434 或 https://api.deepseek.com"
+                  value={settings.llmBaseUrl}
+                  onChange={e =>
+                    setSettings(prev => ({
+                      ...prev,
+                      llmBaseUrl: e.target.value,
+                    }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  任何 OpenAI 兼容服务均可：本地 Ollama / LM Studio /
+                  vLLM，或在线 API。本地地址通常无需 API Key。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="llm-api-key">API Key（可选）</Label>
+                <input
+                  id="llm-api-key"
+                  type="password"
+                  autoComplete="off"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  placeholder={
+                    llmApiKeyConfigured
+                      ? '已配置（输入新 Key 可覆盖）'
+                      : '在线服务才需要，sk-...'
+                  }
+                  value={llmApiKeyDraft}
+                  onChange={e => setLlmApiKeyDraft(e.target.value)}
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    使用系统密钥库加密存储，不会写入 localStorage 或任务日志
                   </p>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          '确定重置应用设置？将清除配置并重新检查环境。'
-                        )
-                      ) {
-                        navigate('/')
-                        localStorage.removeItem('setup-completed')
-                        localStorage.removeItem('video-translate-settings')
-                        void App.clearByokApiKey()
-                        window.location.reload()
-                      }
-                    }}
-                  >
-                    重置设置
-                  </Button>
+                  {llmApiKeyConfigured && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        const result = await App.clearLlmApiKey()
+                        if (result.success) {
+                          setLlmApiKeyConfigured(false)
+                          setLlmApiKeyDraft('')
+                          setStatus('已清除 API Key')
+                          setTimeout(() => setStatus(''), 3000)
+                        }
+                      }}
+                    >
+                      清除 Key
+                    </Button>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </section>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void testLlmConnection()}
+                  disabled={llmTesting || !settings.llmBaseUrl.trim()}
+                >
+                  {llmTesting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  测试连接
+                </Button>
+                {llmTestResult && (
+                  <span
+                    className={
+                      llmTestResult.ok
+                        ? 'flex items-center gap-1 text-xs text-brand-ink'
+                        : 'flex items-center gap-1 text-xs text-destructive'
+                    }
+                    role="status"
+                  >
+                    {llmTestResult.ok ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5" />
+                    )}
+                    <span>{llmTestResult.message}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="translate-model">翻译模型</Label>
+                <Select
+                  value={settings.translateModel || null}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({ ...prev, translateModel: value }))
+                  }}
+                  items={translateModelItems}
+                >
+                  <SelectTrigger
+                    id="translate-model"
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue placeholder="先测试连接拉取模型列表" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(translateModelItems).map(model => (
+                      <SelectItem key={model} value={model}>
+                        {translateModelItems[model]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  翻译建议使用响应快、指令遵循好的模型。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="polish-model">润色模型</Label>
+                <Select
+                  value={settings.polishModel}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({ ...prev, polishModel: value }))
+                  }}
+                  items={polishModelItems}
+                >
+                  <SelectTrigger id="polish-model" className="w-full min-w-0">
+                    <SelectValue placeholder="跟随翻译模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(polishModelItems).map(model => (
+                      <SelectItem key={model} value={model}>
+                        {polishModelItems[model]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  润色要保持原文语言，建议通用对话模型；hy-mt
+                  等翻译专用模型不适合润色。
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="polish-transcript"
+                  checked={settings.polishTranscript}
+                  onChange={e =>
+                    setSettings(prev => ({
+                      ...prev,
+                      polishTranscript: e.target.checked,
+                    }))
+                  }
+                  className="rounded"
+                />
+                <Label htmlFor="polish-transcript">识别结果先润色再翻译</Label>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                ASR
+                文本可能有错字或缺标点；开启后由润色模型校对，再进入翻译。仅发送字幕文本段，不上传音视频。
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {category === 'system' && (
+        <div className="space-y-4">
+          <DependencyChecker
+            title="系统依赖"
+            description="本机环境检查结果"
+            compactPaths
+          />
+
+          <UpdateSettingsCard />
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">临时缓存</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                音频提取、分段识别等中间文件存放于此。任务结束后会自动删除；异常退出时可能残留，可在此清理。
+              </p>
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">占用空间</span>
+                  <span className="font-medium">
+                    {tempCache.loading
+                      ? '计算中...'
+                      : formatBytes(tempCache.totalBytes)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">文件数</span>
+                  <span className="font-medium">
+                    {tempCache.loading ? '-' : tempCache.fileCount}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-muted-foreground">缓存目录</span>
+                  <p className="break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
+                    {tempCache.path || '—'}
+                  </p>
+                </div>
+              </div>
+              {tempCache.message && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{tempCache.message}</AlertDescription>
+                </Alert>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadTempCacheStats()}
+                  disabled={tempCache.loading || tempCache.clearing}
+                >
+                  {tempCache.loading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  刷新
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void App.openTempCacheDir()}
+                  disabled={!tempCache.path}
+                >
+                  <FolderOpen className="mr-2 h-4 w-4" />
+                  打开目录
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => void clearTempCache()}
+                  disabled={tempCache.loading || tempCache.clearing}
+                >
+                  {tempCache.clearing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  清理缓存
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base text-destructive">
+                危险操作
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">重置应用设置</h3>
+                <p className="text-sm text-muted-foreground">
+                  清除本地配置并重新走环境检查（不会删除已生成的字幕文件）
+                </p>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        '确定重置应用设置？将清除配置并重新检查环境。'
+                      )
+                    ) {
+                      navigate('/')
+                      localStorage.removeItem('setup-completed')
+                      localStorage.removeItem('video-translate-settings')
+                      void App.clearLlmApiKey()
+                      window.location.reload()
+                    }
+                  }}
+                >
+                  重置设置
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

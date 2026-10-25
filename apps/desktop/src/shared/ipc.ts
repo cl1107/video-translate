@@ -9,7 +9,6 @@ import type {
   TaskCreationSettings,
 } from './settings'
 import type {
-  OllamaModel,
   TaskKind,
   TaskLog,
   TaskOutputArtifacts,
@@ -36,15 +35,13 @@ export const IpcChannels = {
   burnTaskSubtitles: 'burn-task-subtitles',
   getTaskLogs: 'get-task-logs',
 
-  // BYOK
-  byokApiKeyStatus: 'byok-api-key-status',
-  setByokApiKey: 'set-byok-api-key',
-  clearByokApiKey: 'clear-byok-api-key',
+  // BYOK → 模型服务 API Key（OpenAI 兼容 Endpoint，本地或在线均可）
+  llmApiKeyStatus: 'llm-api-key-status',
+  setLlmApiKey: 'set-llm-api-key',
+  clearLlmApiKey: 'clear-llm-api-key',
 
-  // Ollama
-  getOllamaModels: 'get-ollama-models',
-  checkOllamaStatus: 'check-ollama-status',
-  pullOllamaModel: 'pull-ollama-model',
+  // 模型服务：拉取 /models 列表（同时充当连接测试）
+  listLlmModels: 'list-llm-models',
 
   // ASR / 系统
   getAsrStatus: 'get-asr-status',
@@ -69,7 +66,6 @@ export const IpcChannels = {
   // 主 → 渲染事件
   taskUpdated: 'task-updated',
   taskDeleted: 'task-deleted',
-  ollamaPullProgress: 'ollama-pull-progress',
   systemCheckProgress: 'system-check-progress',
   updateStatusChanged: 'update-status-changed',
 } as const
@@ -126,20 +122,16 @@ export interface BurnTaskSubtitlesResult {
   error?: string
 }
 
-export interface ByokStatusResult {
+export interface LlmApiKeyStatusResult {
   success: boolean
   configured: boolean
 }
 
-export interface OllamaModelsResult {
+export interface LlmModelsResult {
   success: boolean
-  models: OllamaModel[]
+  /** 模型 ID 列表（来自 endpoint GET /models，已排序去重） */
+  models: string[]
   error?: string
-}
-
-export interface OllamaStatusResult {
-  success: boolean
-  isRunning: boolean
 }
 
 export interface AsrStatusResult {

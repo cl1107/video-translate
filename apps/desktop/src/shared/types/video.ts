@@ -3,7 +3,6 @@
 import type { AsrEngineId } from '../constants'
 import type { DetectedLanguage } from '../language'
 import type {
-  PolishProvider,
   SubtitleBurnMode,
   SubtitleOutputLocation,
   SubtitleProcessingMode,
@@ -42,20 +41,20 @@ export interface TaskLog {
 
 /**
  * 任务运行时配置（一等持久化字段，不依赖内存 Map / 日志）。
- * 注意：BYOK API Key 不在此结构中，仅存主进程 secure store。
+ * 注意：模型服务 API Key 不在此结构中，仅存主进程 secure store。
  */
 export interface TaskRuntimeOptions {
-  ollamaModel: string
+  /** 模型服务 Endpoint（OpenAI 兼容） */
+  llmBaseUrl: string
+  translateModel: string
+  /** 润色模型；空 = 跟随翻译模型 */
+  polishModel: string
   asrEngine: AsrEngineId
   burnSubtitles: boolean
   burnSubtitleMode: SubtitleBurnMode
   subtitleProcessingMode: SubtitleProcessingMode
   subtitleOutputLocation: SubtitleOutputLocation
   polishTranscript: boolean
-  polishProvider: PolishProvider
-  polishOllamaModel: string
-  byokBaseUrl: string
-  byokModelId: string
   originalSubtitleColor: string
   translatedSubtitleColor: string
 }
@@ -164,14 +163,6 @@ export interface SubtitleEntry {
   start: string // SRT 时间格式: "00:00:01,000"
   end: string
   text: string
-}
-
-export interface OllamaModel {
-  name: string
-  /** 字节数（Ollama /api/tags 返回 number） */
-  size: number
-  digest: string
-  modified_at: string
 }
 
 export type AsrEngine = AsrEngineId

@@ -98,11 +98,6 @@ export function getCommonBinaryDirectories(): string[] {
     path.join(home, 'Library', 'pnpm')
   )
 
-  // Ollama macOS App 内置 CLI
-  if (process.platform === 'darwin') {
-    directories.push('/Applications/Ollama.app/Contents/Resources')
-  }
-
   return [...new Set(directories.filter(dir => existsSync(dir)))]
 }
 
@@ -131,7 +126,7 @@ export function ensureGuiCommandPath(): string {
 
 /**
  * 解析系统命令路径。macOS 图形应用不会读取 shell 配置，因此额外检查
- * Homebrew 目录、常见用户 bin，以及 Ollama App 内置二进制。
+ * Homebrew 目录与常见用户 bin。
  */
 export function resolveCommandPath(command: string): string {
   if (path.isAbsolute(command)) return command
@@ -156,12 +151,6 @@ export function resolveCommandPath(command: string): string {
         if (isExecutable(candidate)) return candidate
       }
     }
-  }
-
-  // Ollama 官方 macOS 安装路径
-  if (command === 'ollama' && process.platform === 'darwin') {
-    const appBinary = '/Applications/Ollama.app/Contents/Resources/ollama'
-    if (isExecutable(appBinary)) return appBinary
   }
 
   // 保留原命令，让 child_process 返回明确的 ENOENT 或权限错误。

@@ -3,19 +3,15 @@ import type { CompleteOptions, TextCompletionPort } from './completion-port'
 
 export type { CompleteOptions }
 
-/** OpenAI 兼容 chat completion 配置（本地 Ollama /v1 与在线 BYOK 共用） */
+/** OpenAI 兼容 chat completion 配置（本地推理服务与在线 API 共用） */
 export interface CompletionClientConfig {
   /** API 根路径，需含 /v1，例如 http://127.0.0.1:11434/v1 */
   baseUrl: string
-  /** API Key；本地 Ollama 可填任意非空值 */
+  /** API Key；本地推理服务可填任意非空值 */
   apiKey: string
   /** 模型 ID */
   model: string
 }
-
-export const OLLAMA_OPENAI_BASE_URL = 'http://127.0.0.1:11434/v1'
-/** SDK 要求 apiKey 非空；Ollama 本地忽略该字段 */
-export const OLLAMA_OPENAI_DUMMY_KEY = 'ollama'
 
 /**
  * 规范化 OpenAI 兼容 baseURL：去掉尾斜杠，无 /v1 时自动补上。

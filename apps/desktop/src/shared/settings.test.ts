@@ -2,41 +2,81 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 import {
   DEFAULT_APP_SETTINGS,
+  migrateLegacyLlmFields,
   normalizeAppSettings,
   normalizeTaskSubmissionOptions,
   parseStoredAppSettings,
 } from './settings'
 
-test('normalizeAppSettings 提供润色 BYOK 字段默认值', () => {
+test('normalizeAppSettings 提供模型服务字段默认值', () => {
   const settings = normalizeAppSettings({})
-  assert.equal(settings.polishProvider, 'ollama')
-  assert.equal(settings.polishOllamaModel, '')
-  assert.equal(settings.byokBaseUrl, '')
-  assert.equal(settings.byokModelId, '')
+  assert.equal(settings.llmBaseUrl, '')
+  assert.equal(settings.translateModel, '')
+  assert.equal(settings.polishModel, '')
   assert.equal(settings.polishTranscript, DEFAULT_APP_SETTINGS.polishTranscript)
 })
 
-test('normalizeAppSettings 清洗 polish 相关字段', () => {
+test('normalizeAppSettings 保留已配置的模型服务字段', () => {
   const settings = normalizeAppSettings({
-    polishProvider: 'byok' as const,
-    polishOllamaModel: '  qwen2.5:7b  ',
-    byokBaseUrl: ' https://api.openai.com/v1 ',
-    byokModelId: ' gpt-4o-mini ',
+    llmBaseUrl: ' http://127.0.0.1:11434 ',
+    translateModel: ' qwen3:4b ',
+    polishModel: ' qwen3:8b ',
     polishTranscript: false,
   })
 
-  assert.equal(settings.polishProvider, 'byok')
-  assert.equal(settings.polishOllamaModel, 'qwen2.5:7b')
-  assert.equal(settings.byokBaseUrl, 'https://api.openai.com/v1')
-  assert.equal(settings.byokModelId, 'gpt-4o-mini')
+  assert.equal(settings.llmBaseUrl, 'http://127.0.0.1:11434')
+  assert.equal(settings.translateModel, 'qwen3:4b')
+  assert.equal(settings.polishModel, 'qwen3:8b')
   assert.equal(settings.polishTranscript, false)
 })
 
-test('normalizeAppSettings 忽略非法 polishProvider', () => {
-  const settings = normalizeAppSettings({
-    polishProvider: 'unknown' as never,
+test('migrateLegacyLlmFields：Ollama 旧配置迁移到本地端点', () => {
+  const migrated = migrateLegacyLlmFields({
+    ollamaModel: 'qwen2.5:7b',
+    polishProvider: 'ollama',
+    polishOllamaModel: 'qwen3:8b',
   })
-  assert.equal(settings.polishProvider, 'ollama')
+  assert.equal(migrated.llmBaseUrl, 'http://127.0.0.1:11434')
+  assert.equal(migrated.translateModel, 'qwen2.5:7b')
+  assert.equal(migrated.polishModel, 'qwen3:8b')
+})
+
+test('migrateLegacyLlmFields：BYOK 旧配置迁移到自备端点', () => {
+  const migrated = migrateLegacyLlmFields({
+    polishProvider: 'byok',
+    byokBaseUrl: 'https://api.example.com/v1',
+    byokModelId: 'gpt-4o-mini',
+    ollamaModel: 'qwen2.5:7b',
+  })
+  assert.equal(migrated.llmBaseUrl, 'https://api.example.com/v1')
+  assert.equal(migrated.translateModel, 'gpt-4o-mini')
+  assert.equal(migrated.polishModel, 'gpt-4o-mini')
+})
+
+test('migrateLegacyLlmFields：新字段优先，不回读旧字段', () => {
+  const migrated = migrateLegacyLlmFields({
+    llmBaseUrl: 'https://api.new.example.com',
+    translateModel: 'new-model',
+    ollamaModel: 'old-model',
+  })
+  assert.equal(migrated.llmBaseUrl, 'https://api.new.example.com')
+  assert.equal(migrated.translateModel, 'new-model')
+  assert.equal(migrated.polishModel, '')
+})
+
+test('migrateLegacyLlmFields：润色模型缺省跟随翻译模型落点', () => {
+  const migrated = migrateLegacyLlmFields({ ollamaModel: 'qwen2.5:7b' })
+  assert.equal(migrated.polishModel, 'qwen2.5:7b')
+})
+
+test('normalizeAppSettings 自动迁移旧 localStorage 设置', () => {
+  const settings = normalizeAppSettings({
+    ollamaModel: 'qwen2.5:7b',
+    polishProvider: 'ollama',
+  } as never)
+  assert.equal(settings.llmBaseUrl, 'http://127.0.0.1:11434')
+  assert.equal(settings.translateModel, 'qwen2.5:7b')
+  assert.equal(settings.polishModel, 'qwen2.5:7b')
 })
 
 test('normalizeAppSettings 规范化字幕输出位置', () => {
@@ -65,11 +105,11 @@ test('parseStoredAppSettings 从损坏 JSON 恢复默认设置', () => {
 test('parseStoredAppSettings 拒绝非对象 JSON 并规范化合法设置', () => {
   assert.equal(parseStoredAppSettings('[]').recovered, true)
   const result = parseStoredAppSettings(
-    JSON.stringify({ sourceLanguage: 'ja', polishProvider: 'invalid' })
+    JSON.stringify({ sourceLanguage: 'ja', translateModel: 'qwen3:4b' })
   )
   assert.equal(result.recovered, false)
   assert.equal(result.settings.sourceLanguage, 'ja')
-  assert.equal(result.settings.polishProvider, 'ollama')
+  assert.equal(result.settings.translateModel, 'qwen3:4b')
 })
 
 test('全局设置忽略单次任务的处理方式和烧录选项', () => {

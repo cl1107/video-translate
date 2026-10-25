@@ -196,6 +196,7 @@ components:
 ### Navigation
 
 - **Top bar:** sticky，`h-14`，底部分割线，`bg-card`
+- **Window chrome:** macOS 隐藏原生标题栏，顶栏即标题栏；红绿灯内嵌在顶栏左侧（`x 20 / y 22`，与 56px 行高垂直居中），顶栏 `window-drag` 是拖动区，其中按钮 / 链接 / 输入自动 `no-drag`。无顶栏页面（首次运行、启动加载）保留 36px 拖动条。窗口顶边始终是应用自己的表面，不出现与主题无关的系统色条。
 - **Segmented tabs:** `bg-muted` 容器 + 选中 `default` 按钮
 - **Settings:** outline 次级入口，不与主任务抢视觉
 

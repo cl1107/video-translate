@@ -25,8 +25,7 @@ import { databaseManager } from './database/manager'
 import { ffmpegProcessor } from './ffmpeg/processor'
 import { throwIfAborted } from './llm/completion-port'
 import { polishDocumentToMarkdown } from './llm/document-polish-service'
-import { resolvePolishCompletionConfig } from './llm/polish-service'
-import { ollamaClient } from './ollama/client'
+import { resolveLlmCompletionConfig } from './llm/llm-config'
 import { tempWorkspace } from './temp-workspace'
 import type { PipelineHooks } from './translation-pipeline'
 
@@ -104,8 +103,8 @@ async function ensureDocumentDependencies(
   options: TaskRuntimeOptions,
   hooks: PipelineHooks,
   signal: AbortSignal | undefined,
-  opts: { requireAsr: boolean; byokApiKey?: string }
-): Promise<ReturnType<typeof resolvePolishCompletionConfig> & { ok: true }> {
+  opts: { requireAsr: boolean; llmApiKey?: string }
+): Promise<ReturnType<typeof resolveLlmCompletionConfig> & { ok: true }> {
   throwIfAborted(signal)
 
   hooks.onLog('info', '检查 FFmpeg 可用性...')
@@ -134,25 +133,18 @@ async function ensureDocumentDependencies(
     hooks.onLog('success', 'ASR 可用性检查通过')
   }
 
-  const polishResolved = resolvePolishCompletionConfig({
-    polishProvider: options.polishProvider ?? 'ollama',
-    polishOllamaModel: options.polishOllamaModel,
-    byokBaseUrl: options.byokBaseUrl,
-    byokModelId: options.byokModelId,
-    byokApiKey: opts.byokApiKey,
-  })
+  const polishResolved = resolveLlmCompletionConfig(
+    {
+      llmBaseUrl: options.llmBaseUrl,
+      model: options.polishModel || options.translateModel,
+      apiKey: opts.llmApiKey,
+    },
+    '润色'
+  )
   if (!polishResolved.ok) {
     throw new Error(
-      `文稿润色未就绪：${polishResolved.reason}。请到设置配置润色模型（Ollama 或 BYOK）。`
+      `文稿润色未就绪：${polishResolved.reason}。请到 设置 › 模型服务 配置。`
     )
-  }
-
-  if ((options.polishProvider ?? 'ollama') === 'ollama') {
-    hooks.onLog('info', '检查 Ollama 服务状态...')
-    if (!(await ollamaClient.isAvailable())) {
-      throw new Error('Ollama 服务不可用，请先启动 Ollama 或改用 BYOK 润色')
-    }
-    hooks.onLog('success', 'Ollama 可用性检查通过')
   }
 
   hooks.onLog('info', '文稿润色后端', polishResolved.label)
@@ -184,7 +176,7 @@ export async function runDocumentPipeline(
       signal,
       {
         requireAsr: !usePlatform,
-        byokApiKey: hooks.resolveByokApiKey(),
+        llmApiKey: hooks.resolveLlmApiKey(),
       }
     )
 

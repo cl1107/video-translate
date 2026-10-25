@@ -1,4 +1,5 @@
 import appIcon from 'assets/logo-transparent.png'
+import { WindowDragStrip } from 'renderer/components/chrome/WindowDragStrip'
 import { DependencyChecker } from 'renderer/components/system/DependencyChecker'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 
@@ -13,7 +14,8 @@ interface SetupScreenProps {
 export function SetupScreen({ onSetupComplete }: SetupScreenProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute top-4 right-4">
+      <WindowDragStrip />
+      <div className="window-no-drag absolute top-4 right-4 z-30">
         <ThemeToggle />
       </div>
       <div className="mx-auto w-full max-w-2xl space-y-6">

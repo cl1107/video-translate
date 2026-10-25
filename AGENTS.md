@@ -6,7 +6,7 @@
 
 ## 项目概述
 
-这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，使用 Ollama（及可选 BYOK）进行 LLM 驱动的翻译与润色。应用提供两条独立工作流：**字幕**（翻译并导出 SRT/ASS，可选硬字幕烧录）与**文稿**（整篇润色为 Markdown 并全屏预览）。
+这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，通过统一的「模型服务」（任意 OpenAI 兼容 Endpoint：本地 Ollama / LM Studio / vLLM 或在线 API）进行 LLM 驱动的翻译与润色。应用提供两条独立工作流：**字幕**（翻译并导出 SRT/ASS，可选硬字幕烧录）与**文稿**（整篇润色为 Markdown 并全屏预览）。
 
 ## 关键开发命令
 
@@ -53,7 +53,7 @@ pnpm --filter video-translate rebuild:native  # 重建桌面原生依赖
 管理整个视频翻译流水线的中央协调器：
 
 - 创建和跟踪翻译任务
-- 协调 FFmpeg、sherpa-onnx ASR 和 Ollama 服务
+- 协调 FFmpeg、sherpa-onnx ASR 和模型服务（OpenAI 兼容 Endpoint）
 - 处理任务状态、进度跟踪和错误处理
 - 管理数据库持久化以支持任务恢复
 
@@ -95,7 +95,7 @@ LLM 驱动的翻译：
 2. **音频提取** → FFmpeg 提取音轨
 3. **音频分段** → 分割为可管理的块（约30秒）
 4. **语音识别** → sherpa-onnx 转录每个段落
-5. **翻译** → Ollama 翻译转录的文本
+5. **翻译** → 模型服务翻译转录的文本
 6. **字幕生成** → 创建 SRT、VTT 和 TXT 文件
 7. **清理** → 删除临时文件并完成任务
 
@@ -163,7 +163,7 @@ SQLite 数据库使用以下主要表：
 ### 必需的外部工具
 
 - **FFmpeg** - 音视频处理（必须在系统 PATH 中）
-- **Ollama** - LLM 运行时服务（自动管理）
+- **模型服务** - 任意 OpenAI 兼容 Endpoint（本地 Ollama / LM Studio / vLLM 或在线 API，用户自配）
 - **Node.js 18+** - 运行时环境
 
 ### 管理的依赖
@@ -198,7 +198,7 @@ SQLite 数据库使用以下主要表：
 - 所有处理在本地进行（离线优先）
 - 临时文件自动清理
 - 实施了 Electron 安全最佳实践
-- 除本地 Ollama 服务外无外部 API 调用
+- 仅访问用户配置的模型服务 Endpoint；无其他外部 API 调用
 
 ## Design Context
 

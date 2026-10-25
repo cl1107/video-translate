@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AppRoutes } from './routes'
+import { WindowDragStrip } from './components/chrome/WindowDragStrip'
 import { SetupScreen } from './screens/setup'
 import { UpdateToast } from './components/update/UpdateToast'
 import {
@@ -65,6 +66,7 @@ export function App() {
   if (isSetupComplete === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
+        <WindowDragStrip />
         <div className="w-full max-w-md space-y-4 px-6 text-center">
           <div className="mx-auto size-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
           {checkProgress ? (

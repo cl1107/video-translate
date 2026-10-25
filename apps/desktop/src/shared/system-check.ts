@@ -4,15 +4,12 @@ export interface SystemDependencyReadiness {
   optional?: boolean
 }
 
-/** Ollama 仅用于翻译，不阻止用户进入工作台执行原文提取。 */
+/** 可选依赖（yt-dlp 等）缺失不阻断进入工作台。 */
 export function areRequiredSystemDependenciesReady(
   dependencies: SystemDependencyReadiness[]
 ): boolean {
   return dependencies.every(
-    dependency =>
-      dependency.available ||
-      dependency.optional === true ||
-      dependency.name === 'ollama'
+    dependency => dependency.available || dependency.optional === true
   )
 }
 

@@ -152,7 +152,7 @@ test('系统依赖检查会按实际阶段持续报告进度', async () => {
       {
         stage: 'checking-tools',
         percent: 10,
-        message: '正在检查 FFmpeg、Node.js 和 Ollama...',
+        message: '正在检查 FFmpeg 和 Node.js...',
       },
       {
         stage: 'checking-asr',

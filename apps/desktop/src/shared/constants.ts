@@ -8,9 +8,6 @@ export const PLATFORM = {
   IS_LINUX: process.platform === 'linux',
 }
 
-/** 默认 Ollama 翻译模型 */
-export const DEFAULT_OLLAMA_MODEL = 'kaelri/hy-mt2:1.8b'
-
 /** 默认 ASR 引擎 */
 export const DEFAULT_ASR_ENGINE = 'sensevoice' as const
 

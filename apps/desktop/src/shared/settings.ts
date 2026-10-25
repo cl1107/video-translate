@@ -1,8 +1,4 @@
-import {
-  DEFAULT_ASR_ENGINE,
-  DEFAULT_OLLAMA_MODEL,
-  type AsrEngineId,
-} from './constants'
+import { DEFAULT_ASR_ENGINE, type AsrEngineId } from './constants'
 
 export type SubtitleBurnMode = 'bilingual' | 'translated' | 'original'
 
@@ -19,8 +15,7 @@ export interface TaskSubmissionOptions {
   burnSubtitleMode: SubtitleBurnMode
 }
 
-/** 识别文本润色后端：本地 Ollama 或用户自备 OpenAI 兼容 API */
-export type PolishProvider = 'ollama' | 'byok'
+/** 识别文本润色后端：与翻译共用同一「模型服务」连接（OpenAI 兼容） */
 
 /** 硬字幕 / ASS 默认色：原文白、译文黄（与历史 ASS 硬编码一致） */
 export const DEFAULT_ORIGINAL_SUBTITLE_COLOR = '#FFFFFF'
@@ -28,22 +23,18 @@ export const DEFAULT_TRANSLATED_SUBTITLE_COLOR = '#FFFF00'
 
 export interface AppSettings {
   asrEngine: AsrEngineId
-  /** 翻译用 Ollama 模型（可与润色模型分离） */
-  ollamaModel: string
+  /** 模型服务 Endpoint（OpenAI 兼容；本地推理如 Ollama / LM Studio / vLLM，或在线 API） */
+  llmBaseUrl: string
+  /** 翻译模型 ID */
+  translateModel: string
+  /** 润色模型 ID；空 = 跟随翻译模型 */
+  polishModel: string
   sourceLanguage: string
   targetLanguage: string
   outputFormat: 'srt' | 'vtt' | 'txt'
   subtitleOutputLocation: SubtitleOutputLocation
   /** 识别结果先经大模型润色再翻译 */
   polishTranscript: boolean
-  /** 润色后端：本地 Ollama 或在线 BYOK */
-  polishProvider: PolishProvider
-  /** 本地润色用 Ollama 模型（勿使用 hy-mt 翻译专用模型） */
-  polishOllamaModel: string
-  /** BYOK OpenAI 兼容 Base URL */
-  byokBaseUrl: string
-  /** BYOK 模型 ID */
-  byokModelId: string
   /** 原文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
   originalSubtitleColor: string
   /** 译文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
@@ -54,16 +45,14 @@ export type TaskCreationSettings = AppSettings & TaskSubmissionOptions
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   asrEngine: DEFAULT_ASR_ENGINE,
-  ollamaModel: DEFAULT_OLLAMA_MODEL,
+  llmBaseUrl: '',
+  translateModel: '',
+  polishModel: '',
   sourceLanguage: 'auto',
   targetLanguage: 'zh',
   outputFormat: 'srt',
   subtitleOutputLocation: 'output-subdirectory',
   polishTranscript: true,
-  polishProvider: 'ollama',
-  polishOllamaModel: '',
-  byokBaseUrl: '',
-  byokModelId: '',
   originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
 }
@@ -93,11 +82,6 @@ function normalizeSubtitleOutputLocation(
   return value === 'source-directory'
     ? 'source-directory'
     : 'output-subdirectory'
-}
-
-function normalizePolishProvider(value?: string | null): PolishProvider {
-  if (value === 'byok' || value === 'ollama') return value
-  return DEFAULT_APP_SETTINGS.polishProvider
 }
 
 /**
@@ -141,24 +125,69 @@ export function hexToAssPrimaryColour(hex: string): string {
   return `&H00${bb}${gg}${rr}`
 }
 
-export function normalizeOllamaModel(name?: string | null): string {
-  const trimmed = (name ?? '').trim()
-  return trimmed || DEFAULT_OLLAMA_MODEL
-}
-
-/** 润色模型允许空（表示未配置）；非空时 trim */
-export function normalizePolishOllamaModel(name?: string | null): string {
-  return (name ?? '').trim()
-}
-
 export function normalizeAsrEngine(value?: string | null): AsrEngineId {
   if (value === 'funasr-nano' || value === 'sensevoice') return value
   return DEFAULT_ASR_ENGINE
 }
 
+function legacyString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/** 旧版默认 Ollama 翻译模型；仅用于旧设置迁移（v0.8.x 及以前） */
+export const LEGACY_DEFAULT_OLLAMA_MODEL = 'kaelri/hy-mt2:1.8b'
+
+/**
+ * 旧版「Ollama 翻译 + Ollama/BYOK 润色」分离配置 → 统一「模型服务」字段的迁移。
+ * 新字段有值时优先，缺失才回读旧字段；AppSettings 与 TaskRuntimeOptions 共用。
+ *
+ * 迁移落点（按旧 provider 决定）：
+ * - byok：endpoint ← byokBaseUrl，翻译/润色模型 ← byokModelId
+ *   （其 Ollama 侧翻译模型属另一端点，无法跨端点迁移）
+ * - ollama（或缺省）：endpoint ← 127.0.0.1:11434，翻译模型 ← ollamaModel，
+ *   润色模型 ← polishOllamaModel || ollamaModel
+ */
+export function migrateLegacyLlmFields(raw: Record<string, unknown>): {
+  llmBaseUrl: string
+  translateModel: string
+  polishModel: string
+} {
+  const read = (key: string) => legacyString(raw[key])
+
+  const llmBaseUrl = read('llmBaseUrl')
+  const translateModel = read('translateModel')
+  const polishModel = read('polishModel')
+
+  const legacyProvider = read('polishProvider')
+  const legacyByokBaseUrl = read('byokBaseUrl')
+  const legacyByokModelId = read('byokModelId')
+  const legacyOllamaModel = read('ollamaModel')
+  const legacyPolishOllamaModel = read('polishOllamaModel')
+  const hasLegacyOllama = Boolean(legacyOllamaModel || legacyPolishOllamaModel)
+  const hasLegacyByok = Boolean(legacyByokBaseUrl || legacyByokModelId)
+
+  let baseUrl = llmBaseUrl
+  let model = translateModel
+  let polish = polishModel
+
+  if (!baseUrl || !model) {
+    if (legacyProvider === 'byok' || (hasLegacyByok && !hasLegacyOllama)) {
+      baseUrl = baseUrl || legacyByokBaseUrl
+      model = model || legacyByokModelId
+      polish = polish || legacyByokModelId
+    } else if (hasLegacyOllama) {
+      baseUrl = baseUrl || 'http://127.0.0.1:11434'
+      model = model || legacyOllamaModel
+      polish = polish || legacyPolishOllamaModel || legacyOllamaModel
+    }
+  }
+
+  return { llmBaseUrl: baseUrl, translateModel: model, polishModel: polish }
+}
+
 /**
  * 合并并清洗 localStorage / 上传用的设置，保证有合法默认值。
- * 注意：BYOK API Key 不落 localStorage，由主进程 secure store 保管。
+ * 注意：模型服务 API Key 不落 localStorage，由主进程 secure store 保管。
  */
 export function normalizeAppSettings(
   raw?: Partial<AppSettings> | null
@@ -168,10 +197,13 @@ export function normalizeAppSettings(
   }
 
   const asrEngine = normalizeAsrEngine(raw.asrEngine)
+  const llm = migrateLegacyLlmFields(raw as Record<string, unknown>)
 
   return {
     asrEngine,
-    ollamaModel: normalizeOllamaModel(raw.ollamaModel),
+    llmBaseUrl: llm.llmBaseUrl,
+    translateModel: llm.translateModel,
+    polishModel: llm.polishModel,
     sourceLanguage: raw.sourceLanguage || DEFAULT_APP_SETTINGS.sourceLanguage,
     targetLanguage: raw.targetLanguage || DEFAULT_APP_SETTINGS.targetLanguage,
     outputFormat: raw.outputFormat || DEFAULT_APP_SETTINGS.outputFormat,
@@ -182,10 +214,6 @@ export function normalizeAppSettings(
       raw.polishTranscript === undefined
         ? DEFAULT_APP_SETTINGS.polishTranscript
         : Boolean(raw.polishTranscript),
-    polishProvider: normalizePolishProvider(raw.polishProvider),
-    polishOllamaModel: normalizePolishOllamaModel(raw.polishOllamaModel),
-    byokBaseUrl: (raw.byokBaseUrl ?? '').trim(),
-    byokModelId: (raw.byokModelId ?? '').trim(),
     originalSubtitleColor: normalizeHexColor(
       raw.originalSubtitleColor,
       DEFAULT_ORIGINAL_SUBTITLE_COLOR

@@ -134,39 +134,6 @@ function checkElectronNode(): SystemCheckResult {
 }
 
 /**
- * 检查 Ollama：优先 CLI，失败时回退 HTTP API（用户可能只开了 App）。
- */
-async function checkOllama(): Promise<SystemCheckResult> {
-  const cliResult = await checkCommand('ollama', ['--version'])
-  if (cliResult.available) {
-    return cliResult
-  }
-
-  // CLI 不在 PATH 时，尝试探测本地服务是否已在运行
-  try {
-    const { ollamaClient } = await import('../services/ollama/client')
-    const running = await ollamaClient.isRunning()
-    if (running) {
-      return {
-        name: 'ollama',
-        available: true,
-        version: 'service',
-        resolvedPath: 'http://127.0.0.1:11434',
-      }
-    }
-  } catch {
-    // ignore and fall through
-  }
-
-  return {
-    name: 'ollama',
-    available: false,
-    error: cliResult.error || 'spawn ollama ENOENT',
-    resolvedPath: cliResult.resolvedPath,
-  }
-}
-
-/**
  * 检查 sherpa-onnx ASR；若默认 SenseVoice 缺失则自动下载。
  */
 async function checkSherpaAsr(
@@ -262,12 +229,11 @@ export async function checkSystemDependencies(options?: {
   onProgress?.({
     stage: 'checking-tools',
     percent: 10,
-    message: '正在检查 FFmpeg、Node.js 和 Ollama...',
+    message: '正在检查 FFmpeg 和 Node.js...',
   })
-  const [ffmpeg, ffprobe, ollama, ytdlpRaw] = await Promise.all([
+  const [ffmpeg, ffprobe, ytdlpRaw] = await Promise.all([
     checkCommand('ffmpeg'),
     checkCommand('ffprobe'),
-    checkOllama(),
     checkCommand('yt-dlp', ['--version']),
   ])
   const ytdlp: SystemCheckResult = { ...ytdlpRaw, optional: true }
@@ -280,7 +246,7 @@ export async function checkSystemDependencies(options?: {
   })
   const asr = await checkSherpaAsr(autoDownloadAsr, onProgress)
   // yt-dlp 为在线下载可选依赖：缺失不阻断本地文件翻译，但会出现在检查结果中
-  const results = [ffmpeg, ffprobe, node, ollama, ytdlp, asr]
+  const results = [ffmpeg, ffprobe, node, ytdlp, asr]
 
   if (writeLog) {
     writeSystemCheckDiagnostic({
@@ -327,15 +293,6 @@ export function getInstallationSuggestions(
               '  （若需烧录硬字幕，请安装完整版: brew install ffmpeg-full）\n' +
               '- Ubuntu/Debian: sudo apt install ffmpeg libass9\n' +
               '- Windows: 从 https://ffmpeg.org/download.html 下载完整构建并添加到 PATH'
-          )
-          break
-        case 'ollama':
-          suggestions.push(
-            '安装 Ollama:\n' +
-              '- 访问 https://ollama.ai 下载并安装\n' +
-              '- macOS 也可: brew install ollama\n' +
-              '- 安装后运行: ollama serve\n' +
-              '- 或打开 Ollama App，确保菜单栏图标显示已启动'
           )
           break
         case 'node':
