@@ -4,7 +4,6 @@ import {
   Clock,
   FileText,
   FolderOpen,
-  Github,
   Languages,
   Link2,
   LockKeyhole,
@@ -19,6 +18,7 @@ import {
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 
+import { GithubIcon } from '../components/GithubIcon'
 import { DownloadCta } from '../components/DownloadCta'
 import { SiteFooter } from '../components/SiteFooter'
 import { SiteHeader } from '../components/SiteHeader'
@@ -474,7 +474,7 @@ export function HomePage() {
                 阅读安装文档
               </AppLink>
               <a className="button button-outline" href={repositoryUrl}>
-                <Github size={19} />
+                <GithubIcon size={19} />
                 查看源代码
               </a>
             </>

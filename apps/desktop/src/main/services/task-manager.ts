@@ -6,7 +6,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { app, type BrowserWindow } from 'electron'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc'
 import type {
   SubtitleBurnMode,
@@ -153,7 +153,7 @@ export class TaskManager {
       message,
       details,
     }
-    const log: TaskLog = { id: uuidv4(), ...baseLog }
+    const log: TaskLog = { id: randomUUID(), ...baseLog }
 
     try {
       databaseManager.addTaskLog(taskId, baseLog)
@@ -184,7 +184,7 @@ export class TaskManager {
   }
 
   async createTask(options: CreateTaskOptions): Promise<string> {
-    const taskId = uuidv4()
+    const taskId = randomUUID()
     const runtime = taskOptionsFromAppSettings(options)
     const kind = normalizeTaskKind(options.kind)
     const isDocument = kind === 'document'
@@ -204,7 +204,7 @@ export class TaskManager {
 
       const videoInfo = await ffmpegProcessor.getVideoInfo(options.filePath)
       const videoFile: VideoFile = {
-        id: uuidv4(),
+        id: randomUUID(),
         name: path.basename(options.filePath),
         path: options.filePath,
         size: stats.size,
@@ -262,7 +262,7 @@ export class TaskManager {
    * 从在线视频链接创建任务：先 yt-dlp 下载，再走同一套 ASR → 翻译 → 字幕流水线。
    */
   async createTaskFromUrl(options: CreateUrlTaskOptions): Promise<string> {
-    const taskId = uuidv4()
+    const taskId = randomUUID()
     const runtime = taskOptionsFromAppSettings(options)
     const url = validateVideoUrl(options.url)
     const kind = normalizeTaskKind(options.kind)
@@ -282,7 +282,7 @@ export class TaskManager {
       // 占位路径：下载完成后会更新为真实文件
       const placeholderPath = path.join(downloadDir, '.pending')
       const videoFile: VideoFile = {
-        id: uuidv4(),
+        id: randomUUID(),
         name: derivePlaceholderName(url),
         path: placeholderPath,
         size: 0,

@@ -1,9 +1,13 @@
 packages:
   - 'apps/*'
 
+overrides:
+  react-router: ^7.18.4
+
 allowBuilds:
   '@parcel/watcher': true
   better-sqlite3: true
   electron: true
   electron-winstaller: true
   esbuild: true
+  node-pty: true

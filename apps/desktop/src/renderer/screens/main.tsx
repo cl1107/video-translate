@@ -1,7 +1,7 @@
 import appLogo from 'assets/logo-transparent.png'
 import { Captions, FileText, ListTodo, Settings, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { DocumentTaskList } from 'renderer/components/task/DocumentTaskList'
 import { TaskList } from 'renderer/components/task/TaskList'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'

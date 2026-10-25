@@ -1,4 +1,4 @@
-import { Github } from 'lucide-react'
+import { GithubIcon } from './GithubIcon'
 
 import { AppLink } from '../router'
 import { repositoryUrl } from '../site'
@@ -20,7 +20,7 @@ export function SiteFooter() {
       </AppLink>
       <p>把复杂的本地模型，变成一条清晰的字幕工作流。</p>
       <a href={repositoryUrl} aria-label="GitHub 仓库">
-        <Github size={20} />
+        <GithubIcon size={20} />
       </a>
     </footer>
   )

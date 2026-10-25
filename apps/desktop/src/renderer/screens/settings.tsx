@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { SettingsPanel } from 'renderer/components/settings/SettingsPanel'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 import { Button } from 'renderer/components/ui/button'

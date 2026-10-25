@@ -63,7 +63,8 @@ function detectOs(): OsId {
   if (
     /iPhone|iPad|iPod/.test(ua) ||
     /iPhone|iPad|iPod/.test(platform) ||
-    (uaDataPlatform.includes('android') || /Android/.test(ua))
+    uaDataPlatform.includes('android') ||
+    /Android/.test(ua)
   ) {
     return 'unknown'
   }
@@ -117,7 +118,10 @@ function detectArch(os: OsId): ArchId {
   return 'unknown'
 }
 
-function buildLabel(os: OsId, arch: ArchId): { label: string; shortLabel: string } {
+function buildLabel(
+  os: OsId,
+  arch: ArchId
+): { label: string; shortLabel: string } {
   if (os === 'mac') {
     const chip =
       arch === 'x64' ? 'Intel' : arch === 'arm64' ? 'Apple Silicon' : 'macOS'

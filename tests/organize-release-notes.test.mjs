@@ -96,7 +96,7 @@ test('organize drops empty category headings from re-run input', () => {
   assert.doesNotMatch(output, /### Other Changes/)
 })
 
-test('hasChangeItems detects bullets under What\'s Changed', () => {
+test("hasChangeItems detects bullets under What's Changed", () => {
   assert.equal(
     hasChangeItems(`## What's Changed
 * feat: x
@@ -160,7 +160,9 @@ test('injectWhatsChanged places section before Full Changelog', () => {
     ['* feat: one', '* fix: two']
   )
   assert.match(output, /## What's Changed/)
-  assert.ok(output.indexOf('* feat: one') < output.indexOf('**Full Changelog**'))
+  assert.ok(
+    output.indexOf('* feat: one') < output.indexOf('**Full Changelog**')
+  )
 })
 
 test('prepareAndOrganize falls back to commits when GitHub notes are empty', () => {
@@ -218,7 +220,7 @@ test('prepareAndOrganize uses gitExec when notes empty and tag given', () => {
 
   const output = prepareAndOrganize(input, {
     tag: 'v0.5.0',
-    gitExec: (range) => {
+    gitExec: range => {
       ranges.push(range)
       return [
         'chore(release): 发布 v0.5.0',
@@ -238,7 +240,9 @@ test('prepareAndOrganize uses gitExec when notes empty and tag given', () => {
   assert.match(output, /slim/)
   assert.match(output, /未签名/)
   assert.match(output, /cl1107\.github\.io\/video-translate\/docs/)
-  assert.ok(output.indexOf(PREAMBLE_START) < output.indexOf("## What's Changed"))
+  assert.ok(
+    output.indexOf(PREAMBLE_START) < output.indexOf("## What's Changed")
+  )
 })
 
 test('release preamble is applied idempotently', () => {
@@ -272,7 +276,6 @@ test('release preamble is applied idempotently', () => {
   assert.match(stripped, /## What's Changed/)
   assert.ok(once.includes(PREAMBLE_END))
 })
-
 
 test('prepareAndOrganize can skip preamble when requested', () => {
   const input = `## What's Changed

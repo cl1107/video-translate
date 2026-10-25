@@ -1,6 +1,6 @@
 import { AlertCircle, FileVideo, Link2, Upload, Video } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
 import { Button } from 'renderer/components/ui/button'
 import { Card, CardContent } from 'renderer/components/ui/card'

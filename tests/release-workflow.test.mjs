@@ -13,10 +13,10 @@ test('发布工作流通过桌面包脚本执行 electron-builder', () => {
 })
 
 test('发布工作流使用固定版本的 GitHub Actions', () => {
-  assert.match(workflow, /uses: actions\/checkout@v5/)
-  assert.match(workflow, /uses: actions\/setup-node@v5/)
-  assert.match(workflow, /uses: actions\/upload-artifact@v6/)
-  assert.match(workflow, /uses: actions\/download-artifact@v6/)
+  assert.match(workflow, /uses: actions\/checkout@v7/)
+  assert.match(workflow, /uses: actions\/setup-node@v7/)
+  assert.match(workflow, /uses: actions\/upload-artifact@v7/)
+  assert.match(workflow, /uses: actions\/download-artifact@v8/)
 })
 
 test('发布工作流按 Conventional Commit 类型整理 release notes', () => {
@@ -33,10 +33,7 @@ test('发布工作流按 Conventional Commit 类型整理 release notes', () => 
 })
 
 test('固定 Release 前言精简说明 bundled/slim，并链到官网文档', async () => {
-  const preamble = await readFile(
-    'scripts/release-notes-preamble.md',
-    'utf8'
-  )
+  const preamble = await readFile('scripts/release-notes-preamble.md', 'utf8')
   assert.match(preamble, /bundled-ffmpeg/)
   assert.match(preamble, /slim/)
   assert.match(preamble, /xattr -cr/)
@@ -47,7 +44,6 @@ test('固定 Release 前言精简说明 bundled/slim，并链到官网文档', a
   assert.doesNotMatch(preamble, /chmod \+x/)
   assert.doesNotMatch(preamble, /## 非签名构建注意事项/)
 })
-
 
 test('桌面包明确禁用 electron-builder 隐式发布', async () => {
   const desktopPackage = JSON.parse(

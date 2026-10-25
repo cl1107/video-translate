@@ -30,7 +30,7 @@ test('Pages 工作流在安装 pnpm 后缓存 store，且不启用 setup-node �
     pagesWorkflow,
     /- name: Set up pnpm\n\s+run: npm install --global pnpm@11\.17\.0/
   )
-  assert.match(pagesWorkflow, /uses: actions\/cache@v4/)
+  assert.match(pagesWorkflow, /uses: actions\/cache@v6/)
   assert.match(pagesWorkflow, /pnpm store path --silent/)
   assert.match(pagesWorkflow, /hashFiles\('pnpm-lock\.yaml'\)/)
   // 顺序：先装 pnpm，再取 store 路径，再 cache，再 install

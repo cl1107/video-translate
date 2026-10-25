@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'node:crypto'
 import type { TranscriptionSegment } from '../../shared/types/video'
 import { displayWidth } from './subtitle-layout'
 
@@ -144,7 +144,7 @@ export function cloneAsDisplaySegments(
 ): DisplaySegment[] {
   return segments.map(segment => ({
     ...segment,
-    id: segment.id || uuidv4(),
+    id: segment.id || randomUUID(),
     sourceSegmentIds: [segment.id],
   }))
 }

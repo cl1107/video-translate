@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'node:crypto'
 import type { AsrEngineId } from '../../../shared/constants'
 import { DEFAULT_ASR_ENGINE } from '../../../shared/constants'
 import { normalizeDetectedLanguage } from '../../../shared/language'
@@ -362,7 +362,7 @@ export class SherpaTranscriber {
     if (segments.length === 0 && rawText.trim()) {
       segments = [
         {
-          id: uuidv4(),
+          id: randomUUID(),
           start: 0,
           end: Math.max(duration, 1),
           originalText: rawText.trim(),

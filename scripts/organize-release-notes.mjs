@@ -180,8 +180,8 @@ export function hasChangeItems(markdown) {
  */
 export function filterCommitSubjects(subjects) {
   return subjects
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !releaseCommitRE.test(line))
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !releaseCommitRE.test(line))
 }
 
 /**
@@ -191,7 +191,7 @@ export function filterCommitSubjects(subjects) {
  * @returns {string[]}
  */
 export function commitsToBullets(subjects) {
-  return filterCommitSubjects(subjects).map((subject) => `* ${subject}`)
+  return filterCommitSubjects(subjects).map(subject => `* ${subject}`)
 }
 
 /**
@@ -204,8 +204,7 @@ export function parseCompareTags(markdown) {
   const match =
     /\*\*Full Changelog\*\*:\s*https?:\/\/\S+\/compare\/([^\s/]+?)\.\.\.([^\s)/]+)/.exec(
       markdown
-    ) ||
-    /\*\*Full Changelog\*\*:\s*([^\s/]+?)\.\.\.([^\s\n]+)/.exec(markdown)
+    ) || /\*\*Full Changelog\*\*:\s*([^\s/]+?)\.\.\.([^\s\n]+)/.exec(markdown)
 
   if (!match) {
     return null
@@ -412,7 +411,7 @@ export function organize(markdown) {
     }
   }
 
-  const lines = preserved.filter((line) => line.trim())
+  const lines = preserved.filter(line => line.trim())
 
   for (const [key, title] of categories) {
     if (grouped[key].length > 0) {
@@ -446,20 +445,26 @@ export function parseCliArgs(args) {
     if (arg === '--tag') {
       const value = args[i + 1]
       if (!value || value.startsWith('-')) {
-        throw new Error('Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]')
+        throw new Error(
+          'Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]'
+        )
       }
       result.tag = value
       i += 1
       continue
     }
     if (arg.startsWith('-')) {
-      throw new Error('Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]')
+      throw new Error(
+        'Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]'
+      )
     }
     positional.push(arg)
   }
 
   if (positional.length > 1) {
-    throw new Error('Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]')
+    throw new Error(
+      'Usage: organize-release-notes.mjs [--tag vX.Y.Z] [release-notes.md]'
+    )
   }
 
   if (positional[0]) {

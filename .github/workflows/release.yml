@@ -45,10 +45,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           package-manager-cache: false
@@ -86,7 +86,7 @@ jobs:
         run: pnpm --filter video-translate run build:ci
 
       - name: Upload release packages
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}-${{ matrix.variant }}
           path: |
@@ -105,14 +105,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # Need full history + tags so commit-based notes fallback can git log
           # previous_tag..RELEASE_TAG when GitHub --generate-notes has no PRs.
           fetch-depth: 0
 
       - name: Download release packages
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-assets

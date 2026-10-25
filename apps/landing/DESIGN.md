@@ -2,81 +2,81 @@
 name: 视频翻译助手 · Landing
 description: 创作者的本地字幕工作台 — 锋利深色营销页
 colors:
-  ink: "#0b0d0c"
-  paper: "#f0efe7"
-  acid: "#d9ff65"
-  acid-hover: "#e5ff91"
-  orange: "#ff6b3d"
-  text: "#f4f4ef"
-  muted: "#aaa9a2"
-  muted-soft: "#a09f98"
-  muted-dim: "#777872"
-  line: "rgba(255, 255, 255, 0.14)"
-  studio: "#161917"
-  studio-canvas: "#0e100f"
+  ink: '#0b0d0c'
+  paper: '#f0efe7'
+  acid: '#d9ff65'
+  acid-hover: '#e5ff91'
+  orange: '#ff6b3d'
+  text: '#f4f4ef'
+  muted: '#aaa9a2'
+  muted-soft: '#a09f98'
+  muted-dim: '#777872'
+  line: 'rgba(255, 255, 255, 0.14)'
+  studio: '#161917'
+  studio-canvas: '#0e100f'
 typography:
   display:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "clamp(52px, 5.8vw, 96px)"
+    fontSize: 'clamp(52px, 5.8vw, 96px)'
     fontWeight: 820
     lineHeight: 0.98
-    letterSpacing: "-0.04em"
+    letterSpacing: '-0.04em'
   headline:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "clamp(40px, 5vw, 72px)"
+    fontSize: 'clamp(40px, 5vw, 72px)'
     fontWeight: 800
     lineHeight: 1.05
-    letterSpacing: "-0.04em"
+    letterSpacing: '-0.04em'
   body:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "17px"
+    fontSize: '17px'
     fontWeight: 400
     lineHeight: 1.85
   label:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "11px"
+    fontSize: '11px'
     fontWeight: 670
-    letterSpacing: "0.15em"
+    letterSpacing: '0.15em'
   button:
     fontFamily: "'Noto Sans SC Variable', sans-serif"
-    fontSize: "13px"
+    fontSize: '13px'
     fontWeight: 740
 rounded:
-  pill: "99px"
-  brand-mark: "9px"
-  studio: "24px"
-  studio-inner: "16px"
-  frame: "11px"
+  pill: '99px'
+  brand-mark: '9px'
+  studio: '24px'
+  studio-inner: '16px'
+  frame: '11px'
 spacing:
-  page-gutter: "48px"
-  hero-gap: "clamp(50px, 7vw, 112px)"
-  section-y: "150px"
-  header-h: "84px"
+  page-gutter: '48px'
+  hero-gap: 'clamp(50px, 7vw, 112px)'
+  section-y: '150px'
+  header-h: '84px'
 components:
   button-primary:
-    backgroundColor: "{colors.acid}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.pill}"
-    padding: "0 23px"
-    height: "52px"
+    backgroundColor: '{colors.acid}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.pill}'
+    padding: '0 23px'
+    height: '52px'
   button-primary-hover:
-    backgroundColor: "{colors.acid-hover}"
+    backgroundColor: '{colors.acid-hover}'
   button-ghost:
-    backgroundColor: "transparent"
-    textColor: "{colors.text}"
-    rounded: "{rounded.pill}"
-    padding: "0 23px"
-    height: "52px"
+    backgroundColor: 'transparent'
+    textColor: '{colors.text}'
+    rounded: '{rounded.pill}'
+    padding: '0 23px'
+    height: '52px'
   header-download:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.pill}"
-    padding: "11px 16px"
+    backgroundColor: '{colors.paper}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.pill}'
+    padding: '11px 16px'
   chip:
-    backgroundColor: "rgba(255, 255, 255, 0.04)"
-    textColor: "#c5c6bf"
-    rounded: "{rounded.pill}"
-    padding: "7px 11px"
+    backgroundColor: 'rgba(255, 255, 255, 0.04)'
+    textColor: '#c5c6bf'
+    rounded: '{rounded.pill}'
+    padding: '7px 11px'
 ---
 
 # Design System: 视频翻译助手 · Landing

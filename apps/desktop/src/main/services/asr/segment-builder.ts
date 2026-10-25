@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'node:crypto'
 import type { TranscriptionSegment } from '../../../shared/types/video'
 
 export interface RawAsrResult {
@@ -57,7 +57,7 @@ export function buildSegmentsFromAsrResult(
     const start = timeOffset + segStart
     const endTime = timeOffset + Math.max(end, segStart + 0.25)
     segments.push({
-      id: uuidv4(),
+      id: randomUUID(),
       start,
       end: endTime,
       originalText: text,
@@ -118,7 +118,7 @@ function splitTextFallback(
   if (parts.length <= 1) {
     return [
       {
-        id: uuidv4(),
+        id: randomUUID(),
         start: timeOffset,
         end: timeOffset + Math.max(1, maxDuration / 2),
         originalText: fullText,
@@ -129,7 +129,7 @@ function splitTextFallback(
 
   const slice = maxDuration / parts.length
   return parts.map((text, i) => ({
-    id: uuidv4(),
+    id: randomUUID(),
     start: timeOffset + i * slice,
     end: timeOffset + (i + 1) * slice,
     originalText: text,
