@@ -21,6 +21,12 @@ export function buildSegmentsFromAsrResult(
     timeOffset?: number
     maxDuration?: number
     silenceGap?: number
+    /**
+     * 块内语音区间（静音检测的补集，end 已按块时长钳为有限值）。
+     * 仅在模型没有 token 时间戳时用于把句子分布到真实语音段上；
+     * 缺省或为空时回退按句均分。
+     */
+    speechSpans?: Array<{ start: number; end: number }>
   } = {}
 ): TranscriptionSegment[] {
   const timeOffset = options.timeOffset ?? 0
@@ -33,6 +39,15 @@ export function buildSegmentsFromAsrResult(
 
   if (tokens.length === 0 || timestamps.length === 0) {
     if (!fullText) return []
+    const speechSpans = options.speechSpans ?? []
+    if (speechSpans.length > 0) {
+      const distributed = distributeTextAcrossSpans(
+        fullText,
+        speechSpans,
+        timeOffset
+      )
+      if (distributed.length > 0) return mergeTinySegments(distributed)
+    }
     return splitTextFallback(fullText, timeOffset, maxDuration)
   }
 
@@ -102,6 +117,71 @@ function normalizeSubtitleText(text: string): string {
     .replace(/\s+/g, ' ')
     .replace(/\s+([。！？!?；;…、，,])/g, '$1')
     .trim()
+}
+
+/**
+ * 按语音区间加权分布句子：句长占比 × 总语音时长 = 该句耗时，
+ * 在「语音时间轴」上顺次消费（跳过静音），再映射回真实时间。
+ * 时间戳缺省模型（Fun-ASR-Nano 等）的时间轴精度由此从「均匀切分」
+ * 提升到「跟随实际说话位置」。
+ */
+export function distributeTextAcrossSpans(
+  fullText: string,
+  spans: Array<{ start: number; end: number }>,
+  timeOffset: number
+): TranscriptionSegment[] {
+  const parts = fullText
+    .split(/(?<=[。！？!?])/)
+    .map(p => p.trim())
+    .filter(Boolean)
+  const usable = spans.filter(span => span.end > span.start)
+  if (parts.length === 0 || usable.length === 0) return []
+
+  const totalChars = parts.reduce((sum, part) => sum + part.length, 0) || 1
+  const cumulative: number[] = [0]
+  for (const span of usable) {
+    cumulative.push(cumulative[cumulative.length - 1] + (span.end - span.start))
+  }
+  const totalSpeech = cumulative[cumulative.length - 1] || 1
+  const timelineEnd = usable[usable.length - 1].end
+  // 长静音（>0.6s）：句子墙钟区间跨过它时，视为这句话在停顿之后说的
+  const longGaps = usable
+    .slice(0, -1)
+    .map((span, i) => ({ start: span.end, end: usable[i + 1].start }))
+    .filter(gap => gap.end - gap.start > 0.6)
+
+  // 语音时间轴坐标 → 真实时间
+  const speechToWall = (t: number): number => {
+    for (let i = 0; i < usable.length; i++) {
+      if (t <= cumulative[i + 1]) {
+        return usable[i].start + (t - cumulative[i])
+      }
+    }
+    return timelineEnd
+  }
+
+  const segments: TranscriptionSegment[] = []
+  let cursorSpeech = 0
+  for (const part of parts) {
+    const durationSpeech = (part.length / totalChars) * totalSpeech
+    let start = speechToWall(cursorSpeech)
+    let end = speechToWall(cursorSpeech + durationSpeech)
+    const crossed = longGaps.find(gap => gap.start > start && gap.end < end)
+    if (crossed) {
+      // 不让字幕横跨长静音：吸附到静音后的语音段起点
+      start = crossed.end
+      end = Math.min(start + durationSpeech, timelineEnd)
+    }
+    segments.push({
+      id: randomUUID(),
+      start: timeOffset + start,
+      end: timeOffset + Math.max(end, start + 0.15),
+      originalText: part,
+      confidence: 0.85,
+    })
+    cursorSpeech += durationSpeech
+  }
+  return segments
 }
 
 function splitTextFallback(

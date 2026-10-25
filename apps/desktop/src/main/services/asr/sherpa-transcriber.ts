@@ -143,11 +143,17 @@ export class SherpaTranscriber {
       }
     }
 
+    const hasTokenTimestamps = (result: RawAsrResult): boolean =>
+      (result.tokens?.length ?? 0) > 0 && (result.timestamps?.length ?? 0) > 0
+
     if (duration <= chunkThresholdSec) {
       onProgress?.(30)
       const result = await this.recognizeFile(recognizeRequest, audioPath)
       onProgress?.(80)
-      const built = buildSegmentsFromAsrResult(result)
+      const speechSpans = hasTokenTimestamps(result)
+        ? undefined
+        : await this.getChunkSpeechSpans(audioPath, duration)
+      const built = buildSegmentsFromAsrResult(result, { speechSpans })
       emitPartial(built)
       rawText = result.text ?? ''
       detectedLang = result.lang
@@ -194,8 +200,12 @@ export class SherpaTranscriber {
           }
 
           const result = await this.recognizeFile(recognizeRequest, chunk.path)
+          const speechSpans = hasTokenTimestamps(result)
+            ? undefined
+            : await this.getChunkSpeechSpans(chunk.path, chunk.duration)
           const part = buildSegmentsFromAsrResult(result, {
             timeOffset: chunk.startTime,
+            speechSpans,
           })
           emitPartial(part)
           if (result.text) {
@@ -251,6 +261,21 @@ export class SherpaTranscriber {
           : undefined,
       rawText: rawText.trim(),
     }
+  }
+
+  /**
+   * 块内语音区间（无 token 时间戳的模型用）：静音检测的补集，
+   * end 钳到块时长；失败返回 undefined，分段器回退均匀切分。
+   */
+  private async getChunkSpeechSpans(
+    audioPath: string,
+    durationSec: number
+  ): Promise<Array<{ start: number; end: number }>> {
+    const spans = await ffmpegProcessor.detectSpeechSpans(audioPath)
+    return spans.map(span => ({
+      start: span.start,
+      end: Math.min(span.end, durationSec),
+    }))
   }
 
   private normalizeSenseVoiceLanguage(language: string): string {

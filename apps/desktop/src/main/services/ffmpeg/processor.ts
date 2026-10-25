@@ -556,6 +556,39 @@ export class FFmpegProcessor {
    * @param threshold - 静音阈值（dB）
    * @returns 返回静音区间数组，每个区间包含开始和结束时间
    */
+  /**
+   * 检测语音区间（静音的补集），供无时间戳 ASR 结果做时间轴精修。
+   * 区间相对该音频文件起点；末段 end 为 Infinity，由调用方按实际时长钳制。
+   * 任何失败返回空数组，调用方回退均匀切分。
+   */
+  async detectSpeechSpans(
+    audioPath: string,
+    threshold = -35
+  ): Promise<Array<{ start: number; end: number }>> {
+    try {
+      const silences = await this.detectSilence(audioPath, threshold)
+      if (silences.length === 0) {
+        return [{ start: 0, end: Number.POSITIVE_INFINITY }]
+      }
+
+      const spans: Array<{ start: number; end: number }> = []
+      let cursor = 0
+      for (const silence of silences) {
+        if (silence.start > cursor) {
+          spans.push({ start: cursor, end: silence.start })
+        }
+        cursor = Math.max(cursor, silence.end)
+      }
+      if (cursor < Number.POSITIVE_INFINITY) {
+        spans.push({ start: cursor, end: Number.POSITIVE_INFINITY })
+      }
+      return spans.filter(span => span.end > span.start)
+    } catch (error) {
+      console.warn('Speech span detection failed:', error)
+      return []
+    }
+  }
+
   private async detectSilence(
     audioPath: string,
     threshold: number
