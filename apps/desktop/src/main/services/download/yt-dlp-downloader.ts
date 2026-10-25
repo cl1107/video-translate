@@ -1,37 +1,102 @@
 /**
- * 基于系统 yt-dlp 的在线视频下载。
- * 流程参考 JZSub：最高画质合流 + 可选进度回调 + 协作式取消。
+ * 在线视频下载：解析元数据 → 选择格式 / 字幕轨 → 下载到暂存目录 → 发布。
+ *
+ * 相比早期版本：
+ * - 下载前先解析标题、时长、平台字幕，失败时给出可操作的中文说明；
+ * - 只下载选中的一条字幕轨，不再一次性抓取 all；
+ * - 优先 MP4/M4A 合流，保留中文标题；文稿任务可只下载音频；
+ * - 取消时结束整个进程组，失败后保留 `.part` 供重试续传。
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { resolveCommandPath } from '../../utils/command-path'
 import {
-  buildYtDlpSubLangs,
+  checkVideoLink,
+  redactUrl,
+  redactUrlsInText,
+  VideoLinkError,
+} from './link-url'
+import {
   findBestPlatformSubtitle,
   type SelectedPlatformSubtitle,
 } from './platform-subtitles'
+import {
+  AUDIO_EXTENSIONS,
+  buildDownloadArgs,
+  buildOutputBaseName,
+  buildResolveArgs,
+  classifyFailure,
+  createAbortError,
+  isAbortError,
+  isProcessingLine,
+  parseProgressLine,
+  parseVideoInfo,
+  ProgressTracker,
+  runYtDlp,
+  selectSubtitleTrack,
+  SUBTITLE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  YT_DLP_VIDEO_FORMAT,
+  YtDlpError,
+  toolNotInstalledError,
+  worthAnotherCookieBrowser,
+  type CookieAttempt,
+  type CookieBrowser,
+  type ParsedVideoInfo,
+  type SelectedSubtitleTrack,
+} from './yt-dlp'
 
-/** 与 JZSub 一致：最佳视频 + 最佳音频，回退到整体最佳 */
-export const YT_DLP_FORMAT_SELECTOR = 'bv*+ba/b'
+export { YtDlpError }
+export {
+  COOKIE_BROWSERS,
+  type CookieBrowser,
+  type CookieAttempt,
+} from './yt-dlp'
 
-const URL_CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+/** 最佳视频 + 最佳音频，优先浏览器可直接播放的 MP4 / M4A。 */
+export const YT_DLP_FORMAT_SELECTOR = YT_DLP_VIDEO_FORMAT
+
+const ALL_EXTENSIONS = new Set<string>([
+  ...VIDEO_EXTENSIONS,
+  ...AUDIO_EXTENSIONS,
+])
+const SUBTITLE_EXTENSION_SET = new Set<string>(SUBTITLE_EXTENSIONS)
 
 export interface DownloadProgress {
+  stage?: 'resolving' | 'downloading' | 'processing' | 'publishing'
   /** 0–100；未知时为 undefined */
   percent?: number
-  /** 原始进度行摘要 */
+  downloadedBytes?: number
+  totalBytes?: number
+  /** 字节/秒 */
+  speedBps?: number
+  /** 剩余秒数 */
+  etaSec?: number
+  /** 可直接展示的一行摘要 */
   message: string
+}
+
+export interface VideoInfo extends ParsedVideoInfo {
+  /** 规范化后的页面链接 */
+  url: string
+  /** 解析成功时实际使用的浏览器 Cookie；匿名时为 null */
+  cookieBrowser: CookieBrowser | null
+  selectedSubtitle: SelectedSubtitleTrack | null
 }
 
 export interface DownloadResult {
   videoPath: string
   title: string
-  /** 平台公开定位 URL（已剥离敏感 query） */
+  uploader?: string
+  durationSec?: number
+  /** 平台公开定位 URL（已规范化） */
   webpageUrl: string
   /** 文件大小（字节） */
   size: number
   format: string
+  /** 是否为仅音频下载 */
+  audioOnly: boolean
   /**
    * 平台原生/自动字幕（若有）。
    * 有值时流水线可跳过 ASR，直接翻译该字幕。
@@ -39,44 +104,49 @@ export interface DownloadResult {
   platformSubtitle?: SelectedPlatformSubtitle
 }
 
-export class YtDlpError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'YtDlpError'
-  }
+export interface ResolveVideoOptions {
+  signal?: AbortSignal
+  /** 依次尝试的登录态来源；`null` 表示匿名。默认只尝试匿名。 */
+  cookieAttempts?: CookieAttempt[]
+  proxy?: string
+  sourceLanguage?: string
+  targetLanguage?: string
+  onProgress?: (progress: DownloadProgress) => void
+}
+
+export interface DownloadVideoOptions extends ResolveVideoOptions {
+  url: string
+  /** 下载输出目录（会自动创建） */
+  outputDir: string
+  /** 已解析的元数据；不给时先解析一次。 */
+  info?: VideoInfo
+  /** 只下载音频（文稿任务通常只需要音轨）。 */
+  audioOnly?: boolean
+  /**
+   * 是否尝试下载平台字幕（默认 true）。
+   * 有可用字幕时流水线可跳过 ASR。
+   */
+  writeSubtitles?: boolean
 }
 
 /**
  * 校验并规范化用户粘贴的视频链接。
  */
 export function validateVideoUrl(raw: string): string {
-  const url = raw.trim()
-  if (!url) {
-    throw new YtDlpError('请输入视频链接')
-  }
-  if (URL_CONTROL_CHARS.test(url)) {
-    throw new YtDlpError('链接包含非法控制字符')
-  }
-
-  let parsed: URL
   try {
-    parsed = new URL(url)
-  } catch {
-    throw new YtDlpError('链接格式无效，请使用完整的 http(s) 地址')
+    return checkVideoLink(raw).canonical
+  } catch (error) {
+    if (error instanceof VideoLinkError) {
+      throw new YtDlpError('UNSUPPORTED', error.message, {
+        remedy: '请粘贴浏览器地址栏里的完整 http(s) 视频链接。',
+      })
+    }
+    throw error
   }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new YtDlpError('仅支持 http:// 或 https:// 链接')
-  }
-  if (!parsed.hostname) {
-    throw new YtDlpError('链接缺少主机名')
-  }
-
-  return parsed.toString()
 }
 
 /**
- * 诊断用展示 URL：去掉 query/hash，避免泄露 token。
+ * 诊断用展示 URL：只显示来源，避免泄露路径与 query。
  */
 export function displayUrl(url: string): string {
   try {
@@ -109,35 +179,6 @@ export function derivePlaceholderName(url: string): string {
   }
 }
 
-/**
- * 解析 yt-dlp 进度行，例如：
- * `[download]  45.2% of  100.00MiB at  2.50MiB/s ETA 00:22`
- */
-export function parseYtDlpProgressLine(line: string): DownloadProgress | null {
-  const trimmed = line.trim()
-  if (!trimmed) return null
-
-  // 合并 / 后处理阶段（无百分比）
-  if (
-    trimmed.includes('[Merger]') ||
-    trimmed.includes('[ExtractAudio]') ||
-    /\[download\].*(Destination:|Merging|Extracting|Deleting)/i.test(trimmed)
-  ) {
-    return { message: trimmed.replace(/^\[.*?\]\s*/, '').slice(0, 120) }
-  }
-
-  if (!trimmed.includes('[download]')) return null
-
-  const percentMatch = trimmed.match(/(\d+(?:\.\d+)?)%/)
-  if (!percentMatch) return null
-
-  const percent = Math.min(100, Math.max(0, Number.parseFloat(percentMatch[1])))
-  return {
-    percent: Number.isFinite(percent) ? percent : undefined,
-    message: trimmed.replace(/^\[download\]\s*/, '').slice(0, 120),
-  }
-}
-
 export async function isYtDlpAvailable(): Promise<{
   available: boolean
   version?: string
@@ -146,9 +187,20 @@ export async function isYtDlpAvailable(): Promise<{
 }> {
   const binary = resolveCommandPath('yt-dlp')
   return new Promise(resolve => {
-    const child = spawn(binary, ['--version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    let child: ChildProcess
+    try {
+      child = spawn(binary, ['--version'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      resolve({
+        available: false,
+        path: binary,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return
+    }
+
     let stdout = ''
     let stderr = ''
     let settled = false
@@ -165,10 +217,10 @@ export async function isYtDlpAvailable(): Promise<{
       resolve(result)
     }
 
-    child.stdout.on('data', chunk => {
+    child.stdout?.on('data', chunk => {
       stdout += chunk.toString()
     })
-    child.stderr.on('data', chunk => {
+    child.stderr?.on('data', chunk => {
       stderr += chunk.toString()
     })
     child.on('error', err => {
@@ -202,396 +254,410 @@ export async function isYtDlpAvailable(): Promise<{
   })
 }
 
-export interface DownloadVideoOptions {
-  url: string
-  /** 下载输出目录（会自动创建） */
-  outputDir: string
-  onProgress?: (progress: DownloadProgress) => void
-  signal?: AbortSignal
-  /**
-   * 需要登录的站点可指定浏览器读取 cookies。
-   * 例如 'chrome' | 'safari' | 'firefox' | 'edge'
-   */
-  cookiesFromBrowser?: string
-  /** 用于挑选字幕轨的源语言（UI 设置） */
-  sourceLanguage?: string
-  /** 目标语言；选取字幕时降权同语言轨 */
-  targetLanguage?: string
-  /**
-   * 是否尝试下载平台字幕（默认 true）。
-   * 有可用字幕时流水线可跳过 ASR。
-   */
-  writeSubtitles?: boolean
+async function assertYtDlpInstalled(): Promise<string> {
+  const availability = await isYtDlpAvailable()
+  if (!availability.available) {
+    throw toolNotInstalledError(
+      'yt-dlp',
+      availability.error ||
+        '请先安装：brew install yt-dlp（或 pip install -U yt-dlp）'
+    )
+  }
+  return availability.path
+}
+
+const COOKIE_LABELS: Record<CookieBrowser, string> = {
+  chrome: 'Chrome',
+  safari: 'Safari',
+  edge: 'Edge',
+  firefox: 'Firefox',
+}
+
+function cookieLabel(attempt: CookieAttempt): string {
+  return attempt ? COOKIE_LABELS[attempt] : '匿名'
+}
+
+function uniqueAttempts(attempts: CookieAttempt[]): CookieAttempt[] {
+  const seen = new Set<string>()
+  const result: CookieAttempt[] = []
+  for (const attempt of attempts) {
+    const key = attempt ?? 'anonymous'
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(attempt)
+  }
+  return result.length > 0 ? result : [null]
 }
 
 /**
- * 下载单个视频到 outputDir，尽量合并为 mp4。
- * 若站点要求登录/反爬，会自动用本机浏览器 Cookie 重试一次。
+ * 解析单个视频的元数据；需要登录时按顺序换浏览器 Cookie。
+ * 播放列表 / 直播 / 不支持的链接会直接抛出带建议的错误。
  */
+export async function resolveVideo(
+  urlRaw: string,
+  options: ResolveVideoOptions = {}
+): Promise<VideoInfo> {
+  const link = checkVideoLink(urlRaw)
+  const binary = await assertYtDlpInstalled()
+  const signal = options.signal ?? new AbortController().signal
+  const attempts = uniqueAttempts(options.cookieAttempts ?? [null])
+  const failures: Array<{ attempt: CookieAttempt; error: YtDlpError }> = []
+
+  for (const [index, attempt] of attempts.entries()) {
+    if (signal.aborted) throw createAbortError()
+    options.onProgress?.({
+      stage: 'resolving',
+      message: attempt
+        ? `匿名解析失败，尝试 ${cookieLabel(attempt)} Cookie…`
+        : '正在解析视频信息…',
+    })
+
+    const run = await runYtDlp(
+      binary,
+      buildResolveArgs(link.canonical, {
+        cookieBrowser: attempt,
+        proxy: options.proxy,
+      }),
+      { signal, keepStdout: true }
+    )
+
+    if (run.code === 0) {
+      const parsed = parseVideoInfo(run.stdout)
+      let webpageUrl = link.canonical
+      if (parsed.webpageUrl) {
+        try {
+          webpageUrl = checkVideoLink(parsed.webpageUrl).canonical
+        } catch {
+          // 网页地址异常时退回用户提交的链接
+        }
+      }
+      return {
+        ...parsed,
+        url: webpageUrl,
+        cookieBrowser: attempt,
+        selectedSubtitle: selectSubtitleTrack(parsed, {
+          sourceLanguage: options.sourceLanguage,
+          targetLanguage: options.targetLanguage,
+        }),
+      }
+    }
+
+    const error = classifyFailure(run.stderr, run.code)
+    failures.push({ attempt, error })
+    const isLast = index === attempts.length - 1
+    if (isLast || !worthAnotherCookieBrowser(error)) throw error
+  }
+
+  throw combineCookieFailures(failures)
+}
+
+function combineCookieFailures(
+  failures: Array<{ attempt: CookieAttempt; error: YtDlpError }>
+): YtDlpError {
+  const last = failures.at(-1)?.error
+  if (!last) {
+    return new YtDlpError('DOWNLOAD_FAILED', '解析视频失败。', {
+      remedy: '可直接重试；若反复失败，先升级 yt-dlp。',
+    })
+  }
+  if (failures.length === 1) return last
+  const tried = failures.map(item => cookieLabel(item.attempt)).join('、')
+  return new YtDlpError(last.code, `${last.message}\n已尝试：${tried}。`, {
+    remedy: last.remedy,
+    detail: last.detail,
+  })
+}
+
+/** 下载视频；`info` 已解析时跳过解析阶段。 */
 export async function downloadVideo(
   options: DownloadVideoOptions
 ): Promise<DownloadResult> {
-  const url = validateVideoUrl(options.url)
+  const link = checkVideoLink(options.url)
+  const binary = await assertYtDlpInstalled()
+  const signal = options.signal ?? new AbortController().signal
+
+  const info =
+    options.info ??
+    (await resolveVideo(link.canonical, {
+      signal,
+      cookieAttempts: options.cookieAttempts,
+      proxy: options.proxy,
+      sourceLanguage: options.sourceLanguage,
+      targetLanguage: options.targetLanguage,
+      onProgress: options.onProgress,
+    }))
+
+  if (signal.aborted) throw createAbortError()
+
   const outputDir = options.outputDir
-  await fs.mkdir(outputDir, { recursive: true })
+  const staging = path.join(outputDir, '.download')
+  await fs.mkdir(staging, { recursive: true })
 
-  const availability = await isYtDlpAvailable()
-  if (!availability.available) {
-    throw new YtDlpError(
-      `未找到 yt-dlp，请先安装：brew install yt-dlp（或 pip install -U yt-dlp）` +
-        (availability.error ? `\n详情: ${availability.error}` : '')
-    )
-  }
-
-  throwIfAborted(options.signal)
-
-  const explicitCookies = options.cookiesFromBrowser?.trim()
-  try {
-    return await downloadVideoOnce({
-      ...options,
-      url,
-      outputDir,
-      cookiesFromBrowser: explicitCookies,
-    })
-  } catch (error) {
-    if (
-      explicitCookies ||
-      !isAuthOrBotError(error) ||
-      options.signal?.aborted
-    ) {
-      throw error
-    }
-
-    // YouTube 等站点常见：需读取本机浏览器登录态
-    const browsers =
-      process.platform === 'darwin'
-        ? ['chrome', 'safari', 'edge', 'firefox']
-        : ['chrome', 'edge', 'firefox']
-
-    let lastError: unknown = error
-    for (const browser of browsers) {
-      throwIfAborted(options.signal)
-      options.onProgress?.({
-        message: `站点需要登录态，尝试使用 ${browser} Cookie 重试…`,
-      })
-      try {
-        return await downloadVideoOnce({
-          ...options,
-          url,
-          outputDir,
-          cookiesFromBrowser: browser,
-        })
-      } catch (retryError) {
-        lastError = retryError
-        if (!isAuthOrBotError(retryError) && !isCookieAccessError(retryError)) {
-          throw retryError
-        }
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new YtDlpError(String(lastError))
-  }
-}
-
-function isAuthOrBotError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return /sign in|not a bot|cookies?|login required|private video|confirm you/i.test(
-    message
-  )
-}
-
-function isCookieAccessError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return /could not copy|failed to load cookies|no such browser|could not find/i.test(
-    message
-  )
-}
-
-async function downloadVideoOnce(
-  options: DownloadVideoOptions & { url: string; outputDir: string }
-): Promise<DownloadResult> {
-  const { url, outputDir } = options
-
-  // 输出模板：标题 + id，避免重名；ext 由合并格式决定
-  const outputTemplate = path.join(outputDir, '%(title).180B [%(id)s].%(ext)s')
-
+  const audioOnly = options.audioOnly === true
   const writeSubtitles = options.writeSubtitles !== false
-  const args = [
-    '--no-playlist',
-    '--no-mtime',
-    '--newline',
-    '-f',
-    YT_DLP_FORMAT_SELECTOR,
-    '--merge-output-format',
-    'mp4',
-    '-o',
-    outputTemplate,
-    // 限制路径过长 / 特殊字符
-    '--restrict-filenames',
-    '--print',
-    'after_move:filepath',
-    '--print',
-    'after_move:title',
-    '--print',
-    'after_move:webpage_url',
-  ]
+  const subtitle = writeSubtitles ? info.selectedSubtitle : null
 
-  if (writeSubtitles) {
-    // 人工字幕 + 自动字幕；转 srt 便于解析；语言偏好见 buildYtDlpSubLangs
-    args.push(
-      '--write-subs',
-      '--write-auto-subs',
-      '--sub-langs',
-      buildYtDlpSubLangs(options.sourceLanguage, options.targetLanguage),
-      '--convert-subs',
-      'srt'
-    )
-  }
+  options.onProgress?.({
+    stage: 'downloading',
+    percent: 0,
+    message: audioOnly ? '开始下载音频…' : '开始下载视频…',
+  })
 
-  if (options.cookiesFromBrowser?.trim()) {
-    args.push('--cookies-from-browser', options.cookiesFromBrowser.trim())
-  }
-  args.push(url)
+  const args = buildDownloadArgs(link.canonical, {
+    output: path.join(staging, 'media.%(ext)s'),
+    audioOnly,
+    cookieBrowser: info.cookieBrowser,
+    proxy: options.proxy,
+    subtitle,
+    ffmpegLocation: resolveFfmpegLocation(),
+  })
 
-  const binary = resolveCommandPath('yt-dlp')
-  const printLines: string[] = []
-  let lastProgressMessage = ''
+  const tracker = new ProgressTracker()
+  let lastMessage = ''
 
-  await runYtDlp(binary, args, {
-    signal: options.signal,
+  const run = await runYtDlp(binary, args, {
+    signal,
     onLine: line => {
-      const progress = parseYtDlpProgressLine(line)
-      if (progress) {
-        lastProgressMessage = progress.message
-        options.onProgress?.(progress)
+      const sample = parseProgressLine(line)
+      if (sample) {
+        const progress = tracker.update(sample)
+        const percent =
+          progress.total && progress.total > 0
+            ? Math.min(99, (progress.done / progress.total) * 100)
+            : undefined
+        lastMessage = formatProgressMessage(progress)
+        options.onProgress?.({
+          stage: 'downloading',
+          percent,
+          downloadedBytes: progress.done,
+          totalBytes: progress.total ?? undefined,
+          speedBps: progress.speed ?? undefined,
+          etaSec: progress.eta ?? undefined,
+          message: lastMessage,
+        })
         return
       }
-      // after_move 打印的行通常是纯路径/标题/URL
-      if (
-        line &&
-        !line.startsWith('[') &&
-        !line.startsWith('WARNING:') &&
-        !line.startsWith('ERROR:')
-      ) {
-        printLines.push(line)
+
+      if (isProcessingLine(line)) {
+        lastMessage = line.trim().slice(0, 160)
+        options.onProgress?.({
+          stage: 'processing',
+          message: lastMessage,
+        })
       }
     },
   })
 
-  throwIfAborted(options.signal)
-
-  // 优先使用 after_move 打印的路径；否则扫描目录取最新视频
-  let videoPath = printLines.find(line =>
-    /\.(mp4|mkv|webm|mov|m4v)$/i.test(line)
-  )
-  let title = ''
-  let webpageUrl = displayUrl(url)
-
-  if (videoPath) {
-    const idx = printLines.indexOf(videoPath)
-    title =
-      printLines[idx + 1] || path.basename(videoPath, path.extname(videoPath))
-    const maybeUrl = printLines[idx + 2]
-    if (maybeUrl?.startsWith('http')) {
-      webpageUrl = maybeUrl
-    }
-  } else {
-    videoPath = await findNewestVideoFile(outputDir)
-    title = path.basename(videoPath, path.extname(videoPath))
-  }
-
-  // 规范化路径（yt-dlp 在 Windows 可能给相对路径）
-  if (!path.isAbsolute(videoPath)) {
-    videoPath = path.resolve(outputDir, videoPath)
-  }
-
-  const stat = await fs.stat(videoPath)
-  if (!stat.isFile() || stat.size <= 0) {
-    throw new YtDlpError('下载完成但视频文件为空')
-  }
-
-  const format =
-    path.extname(videoPath).replace(/^\./, '').toLowerCase() || 'mp4'
+  if (signal.aborted) throw createAbortError()
+  if (run.code !== 0) throw classifyFailure(run.stderr, run.code)
 
   options.onProgress?.({
-    percent: 100,
-    message: lastProgressMessage || '下载完成',
+    stage: 'publishing',
+    percent: 99,
+    message: '正在整理下载文件…',
   })
 
-  let platformSubtitle: SelectedPlatformSubtitle | undefined
-  if (writeSubtitles) {
-    const selected = await findBestPlatformSubtitle(outputDir, {
-      sourceLanguage: options.sourceLanguage,
-      targetLanguage: options.targetLanguage,
-    })
-    if (selected) platformSubtitle = selected
+  const mediaPath = await findDownloadedMedia(staging)
+  if (!mediaPath) {
+    throw new YtDlpError(
+      'DOWNLOAD_FAILED',
+      '下载结束但没有找到可用的媒体文件。\n建议：删除任务后重试，或先升级 yt-dlp。',
+      { remedy: '升级 yt-dlp 后重试。' }
+    )
   }
 
+  const extension = path.extname(mediaPath).replace(/^\./, '').toLowerCase()
+  const baseName = buildOutputBaseName(info.title, info.id)
+  const publishedPath = await publishMedia(
+    mediaPath,
+    outputDir,
+    baseName,
+    extension
+  )
+  await publishSubtitles(staging, outputDir, baseName)
+
+  // 成功的这次不再需要暂存目录；失败时保留 .part 以便续传。
+  await fs.rm(staging, { recursive: true, force: true })
+
+  const stat = await fs.stat(publishedPath)
+  if (!stat.isFile() || stat.size <= 0) {
+    throw new YtDlpError('DOWNLOAD_FAILED', '下载完成但视频文件为空。', {
+      remedy: '请重试。',
+    })
+  }
+
+  const platformSubtitle = writeSubtitles
+    ? await findBestPlatformSubtitle(outputDir, {
+        sourceLanguage: options.sourceLanguage,
+        targetLanguage: options.targetLanguage,
+      })
+    : null
+
+  options.onProgress?.({
+    stage: 'publishing',
+    percent: 100,
+    downloadedBytes: stat.size,
+    totalBytes: stat.size,
+    message: '下载完成',
+  })
+
   return {
-    videoPath,
-    title: title || path.basename(videoPath),
-    webpageUrl,
+    videoPath: publishedPath,
+    title: info.title,
+    uploader: info.uploader,
+    durationSec: info.durationSec,
+    webpageUrl: info.url,
     size: stat.size,
-    format,
-    platformSubtitle,
+    format: extension || (audioOnly ? 'm4a' : 'mp4'),
+    audioOnly,
+    ...(platformSubtitle ? { platformSubtitle } : {}),
   }
 }
 
-async function findNewestVideoFile(dir: string): Promise<string> {
-  const entries = await fs.readdir(dir, { withFileTypes: true })
-  const candidates: Array<{ path: string; mtime: number }> = []
+function resolveFfmpegLocation(): string | null {
+  const resolved = resolveCommandPath('ffmpeg')
+  return path.isAbsolute(resolved) ? resolved : null
+}
 
-  for (const entry of entries) {
-    if (!entry.isFile()) continue
-    if (!/\.(mp4|mkv|webm|mov|m4v)$/i.test(entry.name)) continue
-    const full = path.join(dir, entry.name)
-    const stat = await fs.stat(full)
-    if (stat.size > 0) {
-      candidates.push({ path: full, mtime: stat.mtimeMs })
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const index = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(1024))
+  )
+  const value = bytes / 1024 ** index
+  return `${value.toFixed(value >= 100 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function formatEta(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  if (hours > 0)
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  return `${minutes}:${String(secs).padStart(2, '0')}`
+}
+
+function formatProgressMessage(progress: {
+  done: number
+  total: number | null
+  speed: number | null
+  eta: number | null
+}): string {
+  const parts: string[] = []
+  if (progress.total && progress.total > 0) {
+    parts.push(
+      `${Math.min(99, (progress.done / progress.total) * 100).toFixed(0)}%`
+    )
+  }
+  parts.push(
+    progress.total
+      ? `${formatBytes(progress.done)} / ${formatBytes(progress.total)}`
+      : formatBytes(progress.done)
+  )
+  if (progress.speed) parts.push(`${formatBytes(progress.speed)}/s`)
+  if (progress.eta !== null && progress.eta > 0) {
+    parts.push(`剩余 ${formatEta(progress.eta)}`)
+  }
+  return parts.join(' · ') || '正在下载…'
+}
+
+async function findDownloadedMedia(dir: string): Promise<string | null> {
+  let entries: string[]
+  try {
+    entries = await fs.readdir(dir)
+  } catch {
+    return null
+  }
+
+  const candidates: Array<{ path: string; size: number }> = []
+  for (const name of entries) {
+    const extension = path.extname(name).replace(/^\./, '').toLowerCase()
+    if (!ALL_EXTENSIONS.has(extension)) continue
+    const full = path.join(dir, name)
+    try {
+      const stat = await fs.stat(full)
+      if (stat.isFile() && stat.size > 0) {
+        candidates.push({ path: full, size: stat.size })
+      }
+    } catch {
+      // 忽略读不到的文件
     }
   }
 
-  if (candidates.length === 0) {
-    throw new YtDlpError('下载完成但未找到视频文件')
-  }
-
-  candidates.sort((a, b) => b.mtime - a.mtime)
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => b.size - a.size)
   return candidates[0].path
 }
 
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    const error = new Error('下载已取消')
-    error.name = 'AbortError'
-    throw error
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
   }
 }
 
-function runYtDlp(
-  binary: string,
-  args: string[],
-  options: {
-    signal?: AbortSignal
-    onLine?: (line: string) => void
+async function publishMedia(
+  source: string,
+  outputDir: string,
+  baseName: string,
+  extension: string
+): Promise<string> {
+  let target = path.join(outputDir, `${baseName}.${extension}`)
+  let suffix = 2
+  while (await pathExists(target)) {
+    target = path.join(outputDir, `${baseName} (${suffix}).${extension}`)
+    suffix += 1
   }
+  await moveFile(source, target)
+  return target
+}
+
+async function publishSubtitles(
+  staging: string,
+  outputDir: string,
+  baseName: string
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let child: ChildProcess
-    try {
-      child = spawn(binary, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-    } catch (error) {
-      reject(
-        error instanceof Error
-          ? error
-          : new YtDlpError(`无法启动 yt-dlp: ${String(error)}`)
-      )
-      return
-    }
+  let entries: string[]
+  try {
+    entries = await fs.readdir(staging)
+  } catch {
+    return
+  }
 
-    let stdout = ''
-    let stderr = ''
-    let settled = false
-
-    const onAbort = () => {
-      try {
-        child.kill('SIGTERM')
-        setTimeout(() => {
-          if (!child.killed) child.kill('SIGKILL')
-        }, 2000).unref?.()
-      } catch {
-        // ignore
-      }
-    }
-
-    if (options.signal) {
-      if (options.signal.aborted) {
-        onAbort()
-      } else {
-        options.signal.addEventListener('abort', onAbort, { once: true })
-      }
-    }
-
-    const finish = (err?: Error) => {
-      if (settled) return
-      settled = true
-      options.signal?.removeEventListener('abort', onAbort)
-      if (err) reject(err)
-      else resolve()
-    }
-
-    const handleChunk = (chunk: Buffer, stream: 'out' | 'err') => {
-      const text = chunk.toString()
-      if (stream === 'out') stdout += text
-      else stderr += text
-
-      const combined = stream === 'out' ? stdout : stderr
-      const lines = combined.split(/\r?\n/)
-      // 保留最后一行不完整片段
-      if (stream === 'out') {
-        stdout = lines.pop() ?? ''
-      } else {
-        stderr = lines.pop() ?? ''
-      }
-      for (const line of lines) {
-        if (line.trim()) options.onLine?.(line)
-      }
-    }
-
-    child.stdout?.on('data', (c: Buffer) => handleChunk(c, 'out'))
-    child.stderr?.on('data', (c: Buffer) => handleChunk(c, 'err'))
-
-    child.on('error', err => {
-      finish(
-        new YtDlpError(
-          `无法启动 yt-dlp: ${err.message}。请确认已安装并在 PATH 中。`
-        )
-      )
-    })
-
-    child.on('close', code => {
-      // 冲刷残留行
-      if (stdout.trim()) options.onLine?.(stdout)
-      if (stderr.trim()) options.onLine?.(stderr)
-
-      if (options.signal?.aborted) {
-        const error = new Error('下载已取消')
-        error.name = 'AbortError'
-        finish(error)
-        return
-      }
-
-      if (code === 0) {
-        finish()
-        return
-      }
-
-      const detail = (stderr || stdout).trim().slice(-800)
-      finish(
-        new YtDlpError(
-          `yt-dlp 下载失败（退出码 ${code}）` +
-            (detail ? `\n${sanitizeDiagnostic(detail)}` : '')
-        )
-      )
-    })
-  })
+  for (const name of entries) {
+    const extension = path.extname(name).replace(/^\./, '').toLowerCase()
+    if (!SUBTITLE_EXTENSION_SET.has(extension)) continue
+    const match = /^media(?:\.([^.]+))?\.(srt|vtt|ass|ssa|ttml)$/i.exec(name)
+    if (!match) continue
+    const language = match[1] ? `.${match[1]}` : ''
+    const target = path.join(outputDir, `${baseName}${language}.${extension}`)
+    await moveFile(path.join(staging, name), target)
+  }
 }
 
-/** 去掉可能的 cookie/token 片段，避免写入任务日志 */
-function sanitizeDiagnostic(text: string): string {
-  return text
-    .replace(/https?:\/\/[^\s'"]+/g, match => {
-      try {
-        return displayUrl(match)
-      } catch {
-        return '<url>'
-      }
-    })
-    .replace(
-      /(cookie|authorization|token|password|sessdata)\s*[:=]\s*\S+/gi,
-      '$1=<redacted>'
-    )
+async function moveFile(source: string, target: string): Promise<void> {
+  try {
+    await fs.rename(source, target)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EXDEV') throw error
+    await fs.copyFile(source, target)
+    await fs.unlink(source)
+  }
 }
+
+/** 供任务日志使用：把 yt-dlp 报错里的链接脱敏。 */
+export function sanitizeDownloadDiagnostic(text: string): string {
+  return redactUrlsInText(text).replace(
+    /(cookie|authorization|token|password|sessdata)\s*[:=]\s*\S+/gi,
+    '$1=<redacted>'
+  )
+}
+
+// 保留旧导出名，避免外部调用点与测试失效。
+export { isAbortError, redactUrl }
