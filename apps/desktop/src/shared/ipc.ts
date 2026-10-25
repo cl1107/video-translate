@@ -60,11 +60,18 @@ export const IpcChannels = {
   clearTempCache: 'clear-temp-cache',
   openTempCacheDir: 'open-temp-cache-dir',
 
+  // 更新提醒（只提醒不自动安装）
+  getUpdateStatus: 'get-update-status',
+  checkForUpdates: 'check-for-updates',
+  dismissUpdate: 'dismiss-update',
+  setUpdateAutoCheck: 'set-update-auto-check',
+
   // 主 → 渲染事件
   taskUpdated: 'task-updated',
   taskDeleted: 'task-deleted',
   ollamaPullProgress: 'ollama-pull-progress',
   systemCheckProgress: 'system-check-progress',
+  updateStatusChanged: 'update-status-changed',
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]

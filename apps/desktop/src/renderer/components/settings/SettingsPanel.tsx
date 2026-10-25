@@ -10,9 +10,10 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { DependencyChecker } from 'renderer/components/system/DependencyChecker'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
+import { UpdateSettingsCard } from 'renderer/components/update/UpdateSettingsCard'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
 import { Badge } from 'renderer/components/ui/badge'
 import { Button } from 'renderer/components/ui/button'
@@ -1202,6 +1203,8 @@ export function SettingsPanel() {
               description="本机环境检查结果"
               compactPaths
             />
+
+            <UpdateSettingsCard />
 
             <Card>
               <CardHeader className="pb-3">

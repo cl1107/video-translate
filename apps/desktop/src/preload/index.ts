@@ -14,6 +14,7 @@ import type {
   TaskLog,
   TranslationTask,
 } from '../shared/types/video'
+import type { UpdateCheckerStatus } from '../shared/update-checker'
 
 declare global {
   interface Window {
@@ -147,6 +148,21 @@ declare global {
         error?: string
       }>
 
+      getUpdateStatus: () => Promise<{
+        success: boolean
+        status: UpdateCheckerStatus
+      }>
+      checkForUpdates: () => Promise<{
+        success: boolean
+        status: UpdateCheckerStatus
+        error?: string
+      }>
+      dismissUpdate: (version: string) => Promise<{ success: boolean }>
+      setUpdateAutoCheck: (enabled: boolean) => Promise<{
+        success: boolean
+        status: UpdateCheckerStatus
+      }>
+
       onTaskUpdated: (callback: (task: TranslationTask) => void) => () => void
       onTaskDeleted: (callback: (taskId: string) => void) => () => void
       onOllamaPullProgress: (
@@ -154,6 +170,9 @@ declare global {
       ) => () => void
       onSystemCheckProgress: (
         callback: (progress: SystemCheckProgress) => void
+      ) => () => void
+      onUpdateStatusChanged: (
+        callback: (status: UpdateCheckerStatus) => void
       ) => () => void
     }
   }
@@ -232,6 +251,13 @@ const api = {
   clearTempCache: () => ipcRenderer.invoke(IpcChannels.clearTempCache),
   openTempCacheDir: () => ipcRenderer.invoke(IpcChannels.openTempCacheDir),
 
+  getUpdateStatus: () => ipcRenderer.invoke(IpcChannels.getUpdateStatus),
+  checkForUpdates: () => ipcRenderer.invoke(IpcChannels.checkForUpdates),
+  dismissUpdate: (version: string) =>
+    ipcRenderer.invoke(IpcChannels.dismissUpdate, version),
+  setUpdateAutoCheck: (enabled: boolean) =>
+    ipcRenderer.invoke(IpcChannels.setUpdateAutoCheck, enabled),
+
   onTaskUpdated: (callback: (task: TranslationTask) => void) => {
     const listener = (_event: unknown, task: TranslationTask) => callback(task)
     ipcRenderer.on(IpcChannels.taskUpdated, listener)
@@ -264,6 +290,14 @@ const api = {
     ipcRenderer.on(IpcChannels.systemCheckProgress, listener)
     return () =>
       ipcRenderer.removeListener(IpcChannels.systemCheckProgress, listener)
+  },
+
+  onUpdateStatusChanged: (callback: (status: UpdateCheckerStatus) => void) => {
+    const listener = (_event: unknown, status: UpdateCheckerStatus) =>
+      callback(status)
+    ipcRenderer.on(IpcChannels.updateStatusChanged, listener)
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.updateStatusChanged, listener)
   },
 }
 

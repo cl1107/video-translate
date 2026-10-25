@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AppRoutes } from './routes'
 import { SetupScreen } from './screens/setup'
+import { UpdateToast } from './components/update/UpdateToast'
 import {
   areRequiredSystemDependenciesReady,
   type SystemCheckProgress,
@@ -82,5 +83,10 @@ export function App() {
   }
 
   // 主应用
-  return <AppRoutes />
+  return (
+    <>
+      <AppRoutes />
+      <UpdateToast />
+    </>
+  )
 }

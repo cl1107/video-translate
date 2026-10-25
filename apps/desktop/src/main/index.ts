@@ -15,6 +15,7 @@ import {
   setByokApiKey,
 } from './services/secure-store'
 import { taskManager } from './services/task-manager'
+import { updateChecker } from './services/update-checker'
 import { ensureGuiCommandPath } from './utils/command-path'
 import {
   checkSystemDependencies,
@@ -421,6 +422,25 @@ function setupIpcHandlers() {
       return { success: false, error: errorMessage }
     }
   })
+
+  ipcMain.handle(IpcChannels.getUpdateStatus, () => {
+    return { success: true, status: updateChecker.getStatus() }
+  })
+
+  ipcMain.handle(IpcChannels.checkForUpdates, async () => {
+    const status = await updateChecker.checkNow(true)
+    return { success: true, status, error: status.error ?? undefined }
+  })
+
+  ipcMain.handle(IpcChannels.dismissUpdate, (_event, version: string) => {
+    updateChecker.dismiss(version)
+    return { success: true }
+  })
+
+  ipcMain.handle(IpcChannels.setUpdateAutoCheck, (_event, enabled: boolean) => {
+    updateChecker.setAutoCheck(Boolean(enabled))
+    return { success: true, status: updateChecker.getStatus() }
+  })
 }
 
 makeAppWithSingleInstanceLock(async () => {
@@ -431,8 +451,10 @@ makeAppWithSingleInstanceLock(async () => {
 
   const mainWindow = await makeAppSetup(MainWindow)
   taskManager.setMainWindow(mainWindow)
+  updateChecker.start(mainWindow)
 })
 
 app.on('before-quit', () => {
   taskManager.cleanup()
+  updateChecker.dispose()
 })
