@@ -477,7 +477,7 @@ export function VideoUploader({
               <h2 className="text-sm font-semibold">在线视频链接</h2>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {isDocument
-                  ? 'YouTube、B 站等；优先平台字幕，否则本地识别后整理为 Markdown。需 yt-dlp。'
+                  ? 'YouTube、B 站等；文稿任务只下载音轨，优先平台字幕，否则本地识别后整理为 Markdown。需 yt-dlp。'
                   : 'YouTube、B 站等地址；优先用平台字幕，否则本地识别。需本机已安装 yt-dlp。'}
               </p>
             </div>
@@ -499,6 +499,8 @@ export function VideoUploader({
               {isDocument
                 ? '支持多行；下载后走文稿流水线'
                 : '支持多行；与本地文件共用同一翻译流水线'}
+              {' · '}
+              <span>代理与登录态在「设置 › 在线视频」</span>
             </p>
             <Button
               variant="secondary"

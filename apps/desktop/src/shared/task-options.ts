@@ -6,6 +6,8 @@ import {
   DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   DEFAULT_TRANSLATED_SUBTITLE_COLOR,
   migrateLegacyLlmFields,
+  normalizeDownloadCookieBrowser,
+  normalizeDownloadProxy,
   normalizeTaskCreationSettings,
   normalizeAsrEngine,
   normalizeHexColor,
@@ -29,6 +31,8 @@ export function defaultTaskRuntimeOptions(): TaskRuntimeOptions {
     polishTranscript: true,
     originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
     translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
+    downloadProxy: '',
+    downloadCookieBrowser: 'auto',
   }
 }
 
@@ -49,6 +53,8 @@ export function taskOptionsFromAppSettings(
     polishTranscript: app.polishTranscript,
     originalSubtitleColor: app.originalSubtitleColor,
     translatedSubtitleColor: app.translatedSubtitleColor,
+    downloadProxy: app.downloadProxy,
+    downloadCookieBrowser: app.downloadCookieBrowser,
   }
 }
 
@@ -103,6 +109,10 @@ export function normalizeTaskRuntimeOptions(
     translatedSubtitleColor: normalizeHexColor(
       raw.translatedSubtitleColor,
       DEFAULT_TRANSLATED_SUBTITLE_COLOR
+    ),
+    downloadProxy: normalizeDownloadProxy(raw.downloadProxy),
+    downloadCookieBrowser: normalizeDownloadCookieBrowser(
+      raw.downloadCookieBrowser
     ),
   }
 }
