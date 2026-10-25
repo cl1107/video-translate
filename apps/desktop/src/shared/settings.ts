@@ -8,6 +8,18 @@ export type SubtitleProcessingMode = 'translate' | 'extract'
 /** 字幕与烧录视频的输出位置。 */
 export type SubtitleOutputLocation = 'output-subdirectory' | 'source-directory'
 
+/** 在线下载需要登录态时的 Cookie 来源。 */
+export const DOWNLOAD_COOKIE_BROWSERS = [
+  'auto',
+  'none',
+  'chrome',
+  'safari',
+  'edge',
+  'firefox',
+] as const
+
+export type DownloadCookieBrowser = (typeof DOWNLOAD_COOKIE_BROWSERS)[number]
+
 export interface TaskSubmissionOptions {
   subtitleProcessingMode: SubtitleProcessingMode
   burnSubtitles: boolean
@@ -39,6 +51,10 @@ export interface AppSettings {
   originalSubtitleColor: string
   /** 译文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
   translatedSubtitleColor: string
+  /** 在线下载代理；空 = 直连（仍遵循系统环境变量） */
+  downloadProxy: string
+  /** 在线下载的登录态来源 */
+  downloadCookieBrowser: DownloadCookieBrowser
 }
 
 export type TaskCreationSettings = AppSettings & TaskSubmissionOptions
@@ -55,6 +71,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   polishTranscript: true,
   originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
+  downloadProxy: '',
+  downloadCookieBrowser: 'auto',
 }
 
 export const DEFAULT_TASK_SUBMISSION_OPTIONS: TaskSubmissionOptions = {
@@ -82,6 +100,42 @@ function normalizeSubtitleOutputLocation(
   return value === 'source-directory'
     ? 'source-directory'
     : 'output-subdirectory'
+}
+
+export function normalizeDownloadCookieBrowser(
+  value?: string | null
+): DownloadCookieBrowser {
+  return DOWNLOAD_COOKIE_BROWSERS.includes(value as DownloadCookieBrowser)
+    ? (value as DownloadCookieBrowser)
+    : 'auto'
+}
+
+/** 用户常直接粘贴 `127.0.0.1:7890`；补上默认的 http:// 再校验。 */
+function proxyWithScheme(value: string): string {
+  return value.includes('://') ? value : `http://${value}`
+}
+
+/** 代理地址是否合法；空字符串表示不使用代理。 */
+export function isValidDownloadProxy(value?: string | null): boolean {
+  const trimmed = value?.trim()
+  if (!trimmed) return true
+  try {
+    const url = new URL(proxyWithScheme(trimmed))
+    return (
+      ['http:', 'https:', 'socks4:', 'socks5:', 'socks5h:'].includes(
+        url.protocol
+      ) && Boolean(url.hostname)
+    )
+  } catch {
+    return false
+  }
+}
+
+export function normalizeDownloadProxy(value?: string | null): string {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) return ''
+  const candidate = proxyWithScheme(trimmed)
+  return isValidDownloadProxy(candidate) ? candidate : ''
 }
 
 /**
@@ -221,6 +275,10 @@ export function normalizeAppSettings(
     translatedSubtitleColor: normalizeHexColor(
       raw.translatedSubtitleColor,
       DEFAULT_TRANSLATED_SUBTITLE_COLOR
+    ),
+    downloadProxy: normalizeDownloadProxy(raw.downloadProxy),
+    downloadCookieBrowser: normalizeDownloadCookieBrowser(
+      raw.downloadCookieBrowser
     ),
   }
 }

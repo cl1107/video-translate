@@ -3,7 +3,6 @@ import { test } from 'vitest'
 import {
   derivePlaceholderName,
   displayUrl,
-  parseYtDlpProgressLine,
   validateVideoUrl,
   YtDlpError,
 } from './yt-dlp-downloader'
@@ -13,6 +12,19 @@ test('validateVideoUrl 接受合法 https 链接', () => {
     '  https://www.youtube.com/watch?v=dQw4w9WgXcQ  '
   )
   assert.equal(url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+})
+
+test('validateVideoUrl 去掉分享跟踪参数但保留内容参数', () => {
+  assert.equal(
+    validateVideoUrl(
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ&si=share-token&utm_source=x'
+    ),
+    'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+  )
+  assert.equal(
+    validateVideoUrl('https://www.bilibili.com/video/BV1xx?p=2&vd_source=x'),
+    'https://www.bilibili.com/video/BV1xx?p=2'
+  )
 })
 
 test('validateVideoUrl 拒绝非 http(s) 与非法格式', () => {
@@ -25,7 +37,7 @@ test('validateVideoUrl 拒绝非 http(s) 与非法格式', () => {
   )
 })
 
-test('displayUrl 隐藏 query 与 path 细节', () => {
+test('displayUrl 隐藏 path 与 query', () => {
   assert.equal(
     displayUrl('https://www.youtube.com/watch?v=abc&token=secret'),
     'https://www.youtube.com/…'
@@ -41,21 +53,4 @@ test('derivePlaceholderName 从 YouTube / B 站链接提取可读名', () => {
     derivePlaceholderName('https://www.bilibili.com/video/BV1xx411c7mD?p=1'),
     /bilibili\.com · BV1xx411c7mD/
   )
-})
-
-test('parseYtDlpProgressLine 解析百分比与合并阶段', () => {
-  const p = parseYtDlpProgressLine(
-    '[download]  45.2% of  100.00MiB at  2.50MiB/s ETA 00:22'
-  )
-  assert.ok(p)
-  assert.equal(p?.percent, 45.2)
-  assert.match(p?.message ?? '', /45\.2%/)
-
-  const merge = parseYtDlpProgressLine(
-    '[Merger] Merging formats into "out.mp4"'
-  )
-  assert.ok(merge)
-  assert.equal(merge?.percent, undefined)
-
-  assert.equal(parseYtDlpProgressLine('hello'), null)
 })

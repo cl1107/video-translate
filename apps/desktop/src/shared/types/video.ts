@@ -3,6 +3,7 @@
 import type { AsrEngineId } from '../constants'
 import type { DetectedLanguage } from '../language'
 import type {
+  DownloadCookieBrowser,
   SubtitleBurnMode,
   SubtitleOutputLocation,
   SubtitleProcessingMode,
@@ -57,6 +58,10 @@ export interface TaskRuntimeOptions {
   polishTranscript: boolean
   originalSubtitleColor: string
   translatedSubtitleColor: string
+  /** 在线下载代理；空 = 直连 */
+  downloadProxy: string
+  /** 在线下载的登录态来源 */
+  downloadCookieBrowser: DownloadCookieBrowser
 }
 
 /** 任务产物路径（一等持久化字段，不再从 TaskLog 解析） */

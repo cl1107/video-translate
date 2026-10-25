@@ -16,6 +16,8 @@ test('taskOptionsFromAppSettings 从 AppSettings 映射运行配置', () => {
     llmBaseUrl: 'https://api.example.com',
     translateModel: 'gpt-4o-mini',
     polishModel: '',
+    downloadProxy: ' socks5://127.0.0.1:7890 ',
+    downloadCookieBrowser: 'chrome',
   })
   assert.equal(options.burnSubtitles, true)
   assert.equal(options.subtitleProcessingMode, 'extract')
@@ -24,17 +26,24 @@ test('taskOptionsFromAppSettings 从 AppSettings 映射运行配置', () => {
   assert.equal(options.llmBaseUrl, 'https://api.example.com')
   assert.equal(options.translateModel, 'gpt-4o-mini')
   assert.equal(options.polishModel, '')
+  assert.equal(options.downloadProxy, 'socks5://127.0.0.1:7890')
+  assert.equal(options.downloadCookieBrowser, 'chrome')
 })
 
-test('parseTaskRuntimeOptionsJson 往返', () => {
+test('parseTaskRuntimeOptionsJson 往返保留下载设置', () => {
   const options = normalizeTaskRuntimeOptions({
+    llmBaseUrl: 'http://127.0.0.1:11434',
     translateModel: 'qwen2.5:7b',
     asrEngine: 'funasr-nano',
+    downloadProxy: 'http://127.0.0.1:7890',
+    downloadCookieBrowser: 'firefox',
   })
   const json = JSON.stringify(options)
   const parsed = parseTaskRuntimeOptionsJson(json)
   assert.equal(parsed?.translateModel, 'qwen2.5:7b')
   assert.equal(parsed?.asrEngine, 'funasr-nano')
+  assert.equal(parsed?.downloadProxy, 'http://127.0.0.1:7890')
+  assert.equal(parsed?.downloadCookieBrowser, 'firefox')
 })
 
 test('normalizeTaskRuntimeOptions 迁移旧任务的 Ollama/BYOK 字段', () => {
@@ -76,5 +85,23 @@ test('normalizeTaskRuntimeOptions 对旧任务保持 output 子目录', () => {
     normalizeTaskRuntimeOptions({ subtitleOutputLocation: 'source-directory' })
       .subtitleOutputLocation,
     'source-directory'
+  )
+})
+
+test('normalizeTaskRuntimeOptions 给旧任务补上下载默认值', () => {
+  const options = normalizeTaskRuntimeOptions({})
+  assert.equal(options.downloadProxy, '')
+  assert.equal(options.downloadCookieBrowser, 'auto')
+  assert.equal(
+    normalizeTaskRuntimeOptions({
+      downloadCookieBrowser: 'invalid' as never,
+      downloadProxy: 'ftp://example.com',
+    }).downloadCookieBrowser,
+    'auto'
+  )
+  assert.equal(
+    normalizeTaskRuntimeOptions({ downloadProxy: 'ftp://example.com' })
+      .downloadProxy,
+    ''
   )
 })

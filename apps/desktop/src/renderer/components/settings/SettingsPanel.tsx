@@ -32,9 +32,11 @@ import {
 import type { AsrEngineId } from '../../../shared/constants'
 import {
   DEFAULT_APP_SETTINGS,
+  isValidDownloadProxy,
   normalizeAppSettings,
   normalizeHexColor,
   parseStoredAppSettings,
+  type DownloadCookieBrowser,
   type SubtitleOutputLocation,
 } from '../../../shared/settings'
 
@@ -260,6 +262,11 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
 
   const saveSettings = async () => {
     try {
+      if (!isValidDownloadProxy(settings.downloadProxy)) {
+        setStatusTone('error')
+        setStatus('代理地址无效：请填写 http(s):// 或 socks5:// 开头的完整地址')
+        return
+      }
       const normalized = normalizeAppSettings(settings)
       setSettings(normalized)
       localStorage.setItem(
@@ -658,6 +665,80 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
                     译文字幕预览
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {category === 'general' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">在线视频下载</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="download-proxy">代理（可选）</Label>
+                <input
+                  id="download-proxy"
+                  type="text"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  placeholder="http://127.0.0.1:7890"
+                  value={settings.downloadProxy}
+                  onChange={event =>
+                    setSettings(prev => ({
+                      ...prev,
+                      downloadProxy: event.target.value,
+                    }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  YouTube 等站点需要代理时填写，支持 http(s) /
+                  socks5；留空表示直连。
+                  只影响在线链接下载，不影响本地文件与模型服务。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="download-cookie-browser">登录态来源</Label>
+                <Select
+                  value={settings.downloadCookieBrowser}
+                  onValueChange={value => {
+                    if (value == null) return
+                    setSettings(prev => ({
+                      ...prev,
+                      downloadCookieBrowser: value as DownloadCookieBrowser,
+                    }))
+                  }}
+                  items={{
+                    auto: '自动（匿名优先）',
+                    none: '不使用浏览器 Cookie',
+                    chrome: 'Chrome',
+                    safari: 'Safari（macOS）',
+                    edge: 'Edge',
+                    firefox: 'Firefox',
+                  }}
+                >
+                  <SelectTrigger
+                    id="download-cookie-browser"
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue placeholder="选择登录态来源" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">自动（匿名优先）</SelectItem>
+                    <SelectItem value="none">不使用浏览器 Cookie</SelectItem>
+                    <SelectItem value="chrome">Chrome</SelectItem>
+                    <SelectItem value="safari">Safari（macOS）</SelectItem>
+                    <SelectItem value="edge">Edge</SelectItem>
+                    <SelectItem value="firefox">Firefox</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  遇到登录、会员、年龄或机器人校验时，从已登录的浏览器读取
+                  Cookie；自动模式只在匿名解析失败后尝试。文稿任务只下载音轨。
+                </p>
               </div>
             </CardContent>
           </Card>

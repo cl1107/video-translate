@@ -137,3 +137,29 @@ test('仅提取原文任务启用烧录时固定烧录原文', () => {
     burnSubtitleMode: 'original',
   })
 })
+
+test('normalizeAppSettings 规范化下载代理与登录态来源', () => {
+  assert.equal(
+    normalizeAppSettings({ downloadProxy: ' http://127.0.0.1:7890 ' })
+      .downloadProxy,
+    'http://127.0.0.1:7890'
+  )
+  assert.equal(
+    normalizeAppSettings({ downloadProxy: '127.0.0.1:7890' }).downloadProxy,
+    'http://127.0.0.1:7890'
+  )
+  assert.equal(
+    normalizeAppSettings({ downloadProxy: 'ftp://example.com' }).downloadProxy,
+    ''
+  )
+  assert.equal(
+    normalizeAppSettings({ downloadCookieBrowser: 'chrome' })
+      .downloadCookieBrowser,
+    'chrome'
+  )
+  assert.equal(
+    normalizeAppSettings({ downloadCookieBrowser: 'invalid' as never })
+      .downloadCookieBrowser,
+    'auto'
+  )
+})
