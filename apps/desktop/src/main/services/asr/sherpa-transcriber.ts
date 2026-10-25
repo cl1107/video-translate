@@ -6,6 +6,7 @@ import { DEFAULT_ASR_ENGINE } from '../../../shared/constants'
 import { normalizeDetectedLanguage } from '../../../shared/language'
 import type { TranscriptionSegment } from '../../../shared/types/video'
 import { ffmpegProcessor } from '../ffmpeg/processor'
+import { asrWorkerHost } from './asr-worker-host'
 import {
   getAsrModelStatus,
   resolveFunAsrNanoPaths,
@@ -15,10 +16,6 @@ import {
   buildSegmentsFromAsrResult,
   type RawAsrResult,
 } from './segment-builder'
-
-// sherpa-onnx-node 无完整 TS 类型
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sherpaOnnx = require('sherpa-onnx-node')
 
 export interface AsrTranscribeOptions {
   engine?: AsrEngineId
@@ -30,6 +27,11 @@ export interface AsrTranscribeOptions {
   provider?: 'cpu' | 'coreml' | 'cuda'
   /** 任务级临时目录；分段音频将写入此处 */
   workDir?: string
+  /**
+   * 流式回传：每个分段块识别完即回调（只含该块新增的段落），
+   * 供任务层边识别边入库/推送 UI；最终结果仍以 transcribe 返回值为准。
+   */
+  onPartialSegments?: (newSegments: TranscriptionSegment[]) => void
 }
 
 export interface AsrTranscriptionResult {
@@ -39,20 +41,12 @@ export interface AsrTranscriptionResult {
   rawText?: string
 }
 
-type OfflineRecognizer = {
-  createStream: () => {
-    acceptWaveform: (wave: {
-      sampleRate: number
-      samples: Float32Array
-    }) => void
-  }
-  decode: (stream: unknown) => void
-  getResult: (stream: unknown) => RawAsrResult
-}
-
+/**
+ * ASR 客户端门面：分块编排留在主进程（FFmpeg 静音切分、临时文件、进度），
+ * 原生推理全部经 asrWorkerHost 在独立 utilityProcess 中执行——
+ * 原生层崩溃只影响当前任务，不再拖垮整个 Electron。
+ */
 export class SherpaTranscriber {
-  private recognizers = new Map<string, OfflineRecognizer>()
-
   async isAvailable(
     engine: AsrEngineId = DEFAULT_ASR_ENGINE
   ): Promise<boolean> {
@@ -75,165 +69,20 @@ export class SherpaTranscriber {
     return getAsrModelStatus()
   }
 
-  private getRecognizerKey(engine: AsrEngineId, language: string): string {
-    return `${engine}:${language}`
-  }
-
-  private createSenseVoiceRecognizer(
-    language: string,
-    numThreads: number,
-    provider: string
-  ): OfflineRecognizer {
-    const paths = resolveSenseVoicePaths()
-    if (!paths) {
-      throw new Error(
-        'SenseVoice 模型未找到。请将 sherpa-onnx SenseVoice 模型放到 models/asr/ 目录（见 models/asr/README.md）'
-      )
-    }
-
-    const lang = this.normalizeSenseVoiceLanguage(language)
-    const config = {
-      featConfig: {
-        sampleRate: 16000,
-        featureDim: 80,
-      },
-      modelConfig: {
-        senseVoice: {
-          model: paths.model,
-          language: lang,
-          useInverseTextNormalization: 1,
-        },
-        tokens: paths.tokens,
-        numThreads,
-        provider,
-        debug: 0,
-      },
-    }
-
-    return new sherpaOnnx.OfflineRecognizer(config)
-  }
-
-  private createFunAsrNanoRecognizer(
-    numThreads: number,
-    provider: string
-  ): OfflineRecognizer {
-    const paths = resolveFunAsrNanoPaths()
-    if (!paths) {
-      throw new Error(
-        'Fun-ASR-Nano 模型未找到。请下载到 models/asr/ 目录（见 models/asr/README.md）'
-      )
-    }
-
-    const config = {
-      featConfig: {
-        sampleRate: 16000,
-        featureDim: 80,
-      },
-      modelConfig: {
-        funasrNano: {
-          encoderAdaptor: paths.encoderAdaptor,
-          llm: paths.llm,
-          embedding: paths.embedding,
-          tokenizer: paths.tokenizer,
-        },
-        tokens: '',
-        numThreads,
-        provider,
-        debug: 0,
-      },
-    }
-
-    return new sherpaOnnx.OfflineRecognizer(config)
-  }
-
-  private getOrCreateRecognizer(
-    engine: AsrEngineId,
-    language: string,
-    numThreads: number,
-    provider: string
-  ): OfflineRecognizer {
-    const key = this.getRecognizerKey(engine, language)
-    const cached = this.recognizers.get(key)
-    if (cached) return cached
-
-    const recognizer =
-      engine === 'funasr-nano'
-        ? this.createFunAsrNanoRecognizer(numThreads, provider)
-        : this.createSenseVoiceRecognizer(language, numThreads, provider)
-
-    this.recognizers.set(key, recognizer)
-    return recognizer
-  }
-
-  private normalizeSenseVoiceLanguage(language: string): string {
-    const map: Record<string, string> = {
-      auto: 'auto',
-      zh: 'zh',
-      'zh-cn': 'zh',
-      'zh-tw': 'zh',
-      中文: 'zh',
-      chinese: 'zh',
-      en: 'en',
-      english: 'en',
-      ja: 'ja',
-      japanese: 'ja',
-      日本語: 'ja',
-      ko: 'ko',
-      korean: 'ko',
-      한국어: 'ko',
-      yue: 'yue',
-      cantonese: 'yue',
-      粤语: 'yue',
-    }
-    const key = (language || 'auto').toLowerCase()
-    return map[key] || map[language] || 'auto'
-  }
-
-  /**
-   * Electron 禁用了 N-API external buffer。
-   * 1) readWave 第二参 enableExternalBuffer=false，从原生侧直接分配普通 buffer
-   * 2) 再拷贝到全新 ArrayBuffer，彻底避免 external / SharedArrayBuffer
-   */
-  private toOwnedFloat32(
-    samples: Float32Array | ArrayLike<number>
-  ): Float32Array {
-    const length =
-      typeof (samples as Float32Array).length === 'number'
-        ? (samples as Float32Array).length
-        : Array.from(samples as ArrayLike<number>).length
-
-    // 强制走独立 ArrayBuffer，不复用任何可能的 external 内存
-    const ab = new ArrayBuffer(length * 4)
-    const copy = new Float32Array(ab)
-    if (samples instanceof Float32Array) {
-      for (let i = 0; i < length; i++) {
-        copy[i] = samples[i]
-      }
-    } else {
-      for (let i = 0; i < length; i++) {
-        copy[i] = Number((samples as ArrayLike<number>)[i] ?? 0)
-      }
-    }
-    return copy
-  }
-
   private recognizeFile(
-    recognizer: OfflineRecognizer,
+    request: {
+      engine: AsrEngineId
+      language: string
+      numThreads: number
+      provider: string
+    },
     audioPath: string
-  ): RawAsrResult {
-    // enableExternalBuffer=false：关键 Electron 下 "External buffers are not allowed"
-    const wave = sherpaOnnx.readWave(
-      audioPath,
-      /* enableExternalBuffer */ false
-    )
-    const samples = this.toOwnedFloat32(wave.samples)
-    const stream = recognizer.createStream()
-    stream.acceptWaveform({
-      sampleRate: wave.sampleRate,
-      samples,
+  ): Promise<RawAsrResult> {
+    return asrWorkerHost.recognize({
+      type: 'recognize',
+      ...request,
+      wavePath: audioPath,
     })
-    recognizer.decode(stream)
-    return recognizer.getResult(stream) as RawAsrResult
   }
 
   async transcribe(
@@ -247,6 +96,7 @@ export class SherpaTranscriber {
     const maxChunkSec = options.maxChunkSec ?? 45
     const numThreads = options.numThreads ?? Math.min(4, os.cpus().length || 2)
     const provider = options.provider ?? 'cpu'
+    const onPartialSegments = options.onPartialSegments
 
     onProgress?.(5)
 
@@ -272,26 +122,37 @@ export class SherpaTranscriber {
     const duration = await ffmpegProcessor.getMediaDuration(audioPath)
     onProgress?.(15)
 
-    const recognizer = this.getOrCreateRecognizer(
+    const recognizeRequest = {
       engine,
-      language,
+      language: this.normalizeSenseVoiceLanguage(language),
       numThreads,
-      provider
-    )
+      provider,
+    }
 
     let segments: TranscriptionSegment[] = []
     let rawText = ''
     let detectedLang: string | undefined
 
+    const emitPartial = (newSegments: TranscriptionSegment[]) => {
+      if (newSegments.length === 0) return
+      segments.push(...newSegments)
+      try {
+        onPartialSegments?.(newSegments)
+      } catch (error) {
+        console.error('onPartialSegments 回调失败:', error)
+      }
+    }
+
     if (duration <= chunkThresholdSec) {
       onProgress?.(30)
-      const result = this.recognizeFile(recognizer, audioPath)
+      const result = await this.recognizeFile(recognizeRequest, audioPath)
       onProgress?.(80)
-      segments = buildSegmentsFromAsrResult(result)
+      const built = buildSegmentsFromAsrResult(result)
+      emitPartial(built)
       rawText = result.text ?? ''
       detectedLang = result.lang
     } else {
-      // 静音切分 + 强制 maxChunkSec，避免超长段一次送入原生 ASR 导致进程崩溃
+      // 静音切分 + 强制 maxChunkSec，避免超长段一次送入原生 ASR 导致 worker 崩溃
       let chunks = await ffmpegProcessor.segmentAudio(
         audioPath,
         maxChunkSec,
@@ -324,19 +185,19 @@ export class SherpaTranscriber {
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i]
         try {
-          // 极端兜底：单段仍过长则跳过，避免原生层 OOM 拖垮整个 Electron
+          // 极端兜底：单段仍过长则跳过，防止 worker 端内存失控
           if (chunk.duration > maxChunkSec * 2) {
             console.error(
-              `ASR 分段 ${i} 过长 (${chunk.duration.toFixed(1)}s)，跳过以防进程崩溃`
+              `ASR 分段 ${i} 过长 (${chunk.duration.toFixed(1)}s)，跳过`
             )
             continue
           }
 
-          const result = this.recognizeFile(recognizer, chunk.path)
+          const result = await this.recognizeFile(recognizeRequest, chunk.path)
           const part = buildSegmentsFromAsrResult(result, {
             timeOffset: chunk.startTime,
           })
-          segments.push(...part)
+          emitPartial(part)
           if (result.text) {
             rawText += `${result.text} `
           }
@@ -392,8 +253,32 @@ export class SherpaTranscriber {
     }
   }
 
+  private normalizeSenseVoiceLanguage(language: string): string {
+    const map: Record<string, string> = {
+      auto: 'auto',
+      zh: 'zh',
+      'zh-cn': 'zh',
+      'zh-tw': 'zh',
+      中文: 'zh',
+      chinese: 'zh',
+      en: 'en',
+      english: 'en',
+      ja: 'ja',
+      japanese: 'ja',
+      日本語: 'ja',
+      ko: 'ko',
+      korean: 'ko',
+      한국어: 'ko',
+      yue: 'yue',
+      cantonese: 'yue',
+      粤语: 'yue',
+    }
+    const key = (language || 'auto').toLowerCase()
+    return map[key] || map[language] || 'auto'
+  }
+
   cleanup(): void {
-    this.recognizers.clear()
+    asrWorkerHost.dispose()
   }
 }
 

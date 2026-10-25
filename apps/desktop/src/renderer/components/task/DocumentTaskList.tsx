@@ -29,6 +29,7 @@ import {
   type TranslationTask,
 } from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
+import { TranscriptionLivePreview } from './TranscriptionLivePreview'
 import { formatDuration, formatProcessingTime } from './task-time'
 
 const { App } = window
@@ -473,6 +474,10 @@ export function DocumentTaskList({
                   </div>
                   <Progress value={task.progress} className="w-full" />
                 </div>
+              )}
+
+              {task.status === TaskStatus.TRANSCRIBING && (
+                <TranscriptionLivePreview segments={task.segments} />
               )}
 
               {isComplete && (

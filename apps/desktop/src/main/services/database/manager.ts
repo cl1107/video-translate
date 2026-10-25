@@ -554,6 +554,13 @@ export class DatabaseManager {
    * @param taskId - 任务ID
    * @returns 返回按开始时间排序的转录段落数组
    */
+  /** 清空任务既有分段；重试前调用，避免旧识别残留与新结果混存 */
+  deleteTranscriptionSegments(taskId: string): void {
+    this.db
+      .prepare('DELETE FROM transcription_segments WHERE task_id = ?')
+      .run(taskId)
+  }
+
   getTranscriptionSegments(taskId: string): TranscriptionSegment[] {
     const stmt = this.db.prepare(`
       SELECT * FROM transcription_segments

@@ -65,6 +65,8 @@ export interface PipelineHooks {
   ) => Promise<void>
   onArtifacts: (artifacts: TaskOutputArtifacts) => void
   onSegments: (segments: TranscriptionSegment[]) => void
+  /** 转录流式回传：每块识别完的新段落（可选；用于边识别边入库/推送 UI） */
+  onTranscriptionPartial?: (newSegments: TranscriptionSegment[]) => void
   onDetectedLanguage: (language: TranslationTask['detectedLanguage']) => void
   /** 模型服务 API Key（secure store 注入；本地推理服务可为空） */
   resolveLlmApiKey: () => string | undefined
@@ -402,6 +404,10 @@ async function transcribeStage(
       engine: asrEngine,
       language: toLanguageCode(task.sourceLanguage),
       workDir,
+      onPartialSegments: partial => {
+        if (signal?.aborted) return
+        hooks.onTranscriptionPartial?.(partial)
+      },
     },
     progress => {
       if (signal?.aborted) return

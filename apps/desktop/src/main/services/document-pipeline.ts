@@ -226,6 +226,10 @@ export async function runDocumentPipeline(
             engine: asrEngine,
             language: toLanguageCode(task.sourceLanguage),
             workDir: context.workDir,
+            onPartialSegments: partial => {
+              if (signal?.aborted) return
+              hooks.onTranscriptionPartial?.(partial)
+            },
           },
           progress => {
             if (signal?.aborted) return

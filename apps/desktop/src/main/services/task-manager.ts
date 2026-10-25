@@ -413,6 +413,14 @@ export class TaskManager {
           const taskRef = this.activeTasks.get(taskId)
           if (taskRef) taskRef.segments = segments
         },
+        onTranscriptionPartial: (partial: TranscriptionSegment[]) => {
+          const taskRef = this.activeTasks.get(taskId)
+          if (!taskRef) return
+          // 边识别边入库（INSERT OR REPLACE 幂等），节流推送让 UI 看到分段增长
+          taskRef.segments = [...taskRef.segments, ...partial]
+          databaseManager.saveTranscriptionSegments(taskId, partial)
+          this.notifyTranscriptionPartial(taskRef)
+        },
         onDetectedLanguage: (language: TranslationTask['detectedLanguage']) => {
           const taskRef = this.activeTasks.get(taskId)
           if (taskRef) {
@@ -712,6 +720,17 @@ export class TaskManager {
     }
   }
 
+  private lastPartialNotifyAt = new Map<string, number>()
+
+  /** 转录中的流式推送：≥800ms 一次，长视频不会刷屏 */
+  private notifyTranscriptionPartial(task: TranslationTask): void {
+    const now = Date.now()
+    const last = this.lastPartialNotifyAt.get(task.id) ?? 0
+    if (now - last < 800) return
+    this.lastPartialNotifyAt.set(task.id, now)
+    this.notifyTaskUpdate(task)
+  }
+
   private notifyTaskUpdate(task: TranslationTask): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       // 产物以内存 / DB 一等字段为准，不再解析日志
@@ -886,6 +905,7 @@ export class TaskManager {
     task.segments = []
     task.subtitles = []
     this.activeTasks.set(taskId, task)
+    databaseManager.deleteTranscriptionSegments(taskId)
     databaseManager.updateTaskStatus(taskId, TaskStatus.PENDING, 0, '')
     this.addTaskLog(taskId, 'info', '重试任务')
     this.notifyTaskUpdate(task)

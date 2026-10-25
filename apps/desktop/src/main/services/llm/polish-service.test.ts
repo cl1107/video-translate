@@ -5,9 +5,9 @@ import {
   buildPolishUserPrompt,
   cleanPolishedText,
   polishTranscriptBatch,
-  resolvePolishCompletionConfig,
   supportsTranscriptPolish,
 } from './polish-service'
+import { resolveLlmCompletionConfig } from './llm-config'
 
 test('supportsTranscriptPolish 排除 hy-mt 翻译专用模型', () => {
   assert.equal(supportsTranscriptPolish('kaelri/hy-mt2:1.8b'), false)
@@ -115,39 +115,45 @@ test('polishTranscriptBatch 模型返回空文本时明确失败', async () => {
   )
 })
 
-test('resolvePolishCompletionConfig 本地与 BYOK 分支', () => {
-  const hyMt = resolvePolishCompletionConfig({
-    polishProvider: 'ollama',
-    polishOllamaModel: 'kaelri/hy-mt2:1.8b',
-  })
-  assert.equal(hyMt.ok, false)
-
-  const local = resolvePolishCompletionConfig({
-    polishProvider: 'ollama',
-    polishOllamaModel: 'qwen2.5:7b',
-  })
-  assert.equal(local.ok, true)
-  if (local.ok) {
-    assert.match(local.config.baseUrl, /11434\/v1$/)
-    assert.equal(local.config.model, 'qwen2.5:7b')
+test('resolveLlmCompletionConfig 校验 Endpoint 与模型', () => {
+  const missingEndpoint = resolveLlmCompletionConfig(
+    { llmBaseUrl: '', model: 'qwen2.5:7b' },
+    '润色'
+  )
+  assert.equal(missingEndpoint.ok, false)
+  if (!missingEndpoint.ok) {
+    assert.match(missingEndpoint.reason, /Endpoint 未配置/)
   }
 
-  const byokMissingKey = resolvePolishCompletionConfig({
-    polishProvider: 'byok',
-    byokBaseUrl: 'https://api.example.com/v1',
-    byokModelId: 'gpt-4o-mini',
-  })
-  assert.equal(byokMissingKey.ok, false)
+  const missingModel = resolveLlmCompletionConfig(
+    { llmBaseUrl: 'http://127.0.0.1:11434', model: '' },
+    '润色'
+  )
+  assert.equal(missingModel.ok, false)
 
-  const byok = resolvePolishCompletionConfig({
-    polishProvider: 'byok',
-    byokBaseUrl: 'https://api.example.com/v1',
-    byokModelId: 'gpt-4o-mini',
-    byokApiKey: 'sk-test',
-  })
-  assert.equal(byok.ok, true)
-  if (byok.ok) {
-    assert.equal(byok.config.apiKey, 'sk-test')
-    assert.equal(byok.label, 'BYOK gpt-4o-mini')
+  // 本地服务无 Key：使用占位 Key 照常解析
+  const local = resolveLlmCompletionConfig(
+    { llmBaseUrl: 'http://127.0.0.1:11434', model: 'qwen2.5:7b' },
+    '润色'
+  )
+  assert.equal(local.ok, true)
+  if (local.ok) {
+    assert.equal(local.config.model, 'qwen2.5:7b')
+    assert.equal(local.config.apiKey, 'local')
+  }
+
+  // 在线服务带 Key：Key 原样进入配置
+  const online = resolveLlmCompletionConfig(
+    {
+      llmBaseUrl: 'https://api.example.com',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+    },
+    '翻译'
+  )
+  assert.equal(online.ok, true)
+  if (online.ok) {
+    assert.equal(online.config.apiKey, 'sk-test')
+    assert.equal(online.label, 'gpt-4o-mini')
   }
 })

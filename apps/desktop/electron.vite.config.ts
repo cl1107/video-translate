@@ -23,6 +23,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
+          // ASR 独立 worker：utilityProcess.fork 执行 sherpa-onnx 推理，
+          // 原生层崩溃只死 worker 不拖垮主进程；产物随 main/**/* 打包
+          'asr-worker': resolve('src/main/services/asr/asr-worker.ts'),
         },
 
         output: {
