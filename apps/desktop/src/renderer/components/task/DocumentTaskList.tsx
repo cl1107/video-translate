@@ -29,6 +29,7 @@ import {
   type TranslationTask,
 } from 'shared/types/video'
 import { TaskLogs } from './TaskLogs'
+import { TaskErrorMessage } from './TaskErrorMessage'
 import { TranscriptionLivePreview } from './TranscriptionLivePreview'
 import { formatDuration, formatProcessingTime } from './task-time'
 
@@ -494,14 +495,7 @@ export function DocumentTaskList({
               )}
 
               {task.errorMessage && (
-                <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2">
-                  <p className="text-sm text-destructive">
-                    {task.errorMessage}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    可点「重试」；若与润色相关，请到 设置 › 模型服务 检查。
-                  </p>
-                </div>
+                <TaskErrorMessage message={task.errorMessage} />
               )}
 
               {isExpanded && (

@@ -315,6 +315,7 @@ export class FFmpegProcessor {
     onProgress?: (progress: number) => void,
     workDir?: string
   ): Promise<string> {
+    await this.assertHasAudioStream(videoPath)
     const dir = await this.resolveWorkDir(workDir)
     const audioPath = outputPath || path.join(dir, `audio_${Date.now()}.wav`)
 
@@ -328,6 +329,7 @@ export class FFmpegProcessor {
 
     return new Promise((resolve, reject) => {
       const args = [
+        '-hide_banner',
         '-i',
         videoPath,
         '-vn', // 不包含视频
@@ -392,6 +394,82 @@ export class FFmpegProcessor {
             )
           )
         }
+      })
+    })
+  }
+
+  /** 仅检查提取所需的音轨，不限制输入必须包含视频（文稿也支持音频文件）。 */
+  private async assertHasAudioStream(inputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const probe = spawn(this.ffprobePath, [
+        '-v',
+        'error',
+        '-select_streams',
+        'a',
+        '-show_entries',
+        'stream=index',
+        '-of',
+        'json',
+        inputPath,
+      ])
+      let output = ''
+      let stderr = ''
+      probe.stdout.on('data', data => {
+        output += data.toString()
+      })
+      probe.stderr.on('data', data => {
+        stderr += data.toString()
+      })
+      probe.on('error', error =>
+        reject(new Error(`无法检查源文件音轨: ${error.message}`))
+      )
+      probe.on('close', code => {
+        if (code !== 0) {
+          reject(
+            new Error(
+              `无法检查源文件音轨: ${stderr.trim() || `FFprobe 退出码 ${code}`}`
+            )
+          )
+          return
+        }
+        let streams: unknown[]
+        try {
+          const result: unknown = JSON.parse(output)
+          if (
+            !result ||
+            typeof result !== 'object' ||
+            !('streams' in result) ||
+            !Array.isArray(result.streams) ||
+            result.streams.some(
+              stream =>
+                !stream ||
+                typeof stream !== 'object' ||
+                !('index' in stream) ||
+                typeof stream.index !== 'number' ||
+                !Number.isInteger(stream.index) ||
+                stream.index < 0
+            )
+          ) {
+            throw new Error('FFprobe 返回的 streams 格式错误')
+          }
+          streams = result.streams
+        } catch (error) {
+          reject(
+            new Error(
+              `无法解析源文件音轨信息: ${error instanceof Error ? error.message : String(error)}`
+            )
+          )
+          return
+        }
+        if (streams.length === 0) {
+          reject(
+            new Error(
+              '源文件没有音轨，无法提取语音。请使用包含音轨的视频或音频文件；若视频与音频分开下载，请先合并后重试。'
+            )
+          )
+          return
+        }
+        resolve()
       })
     })
   }

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { cn } from 'renderer/lib/utils'
 import type { TaskLog } from 'shared/types/video'
 import { formatLogTime } from './task-time'
+import { CopyTextButton } from './CopyTextButton'
+import { formatTaskLogsForCopy } from './task-log-text'
 
 const { App } = window
 
@@ -86,14 +88,23 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
 
   return (
     <section className="rounded-lg border bg-muted/30" aria-label="处理日志">
-      <header className="flex items-center gap-2 border-b px-3 py-2">
-        <Info className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-xs font-medium text-foreground">
-          处理日志
-          {!loading && (
-            <span className="ml-1 text-muted-foreground">({logs.length})</span>
-          )}
-        </h3>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-foreground">
+            处理日志
+            {!loading && (
+              <span className="ml-1 text-muted-foreground">
+                ({logs.length})
+              </span>
+            )}
+          </h3>
+        </div>
+        <CopyTextButton
+          text={formatTaskLogsForCopy(logs)}
+          label="复制全部日志"
+          disabled={loading || logs.length === 0}
+        />
       </header>
 
       <div className="px-2 py-2">
@@ -107,7 +118,7 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
           </p>
         ) : (
           <ol
-            className="max-h-72 space-y-1.5 overflow-y-auto select-text"
+            className="flex max-h-72 flex-col gap-1.5 overflow-y-auto select-text"
             style={{ userSelect: 'text' }}
           >
             {logs.map(log => (
@@ -124,18 +135,18 @@ export function TaskLogs({ taskId, pollIntervalMs = 2000 }: TaskLogsProps) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-xs font-medium text-foreground select-text">
+                      <p className="min-w-0 whitespace-pre-wrap break-words text-xs font-medium text-foreground select-text">
                         {log.message}
                       </p>
                       <time
-                        className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground"
+                        className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground select-text"
                         dateTime={log.timestamp}
                       >
                         {formatLogTime(log.timestamp)}
                       </time>
                     </div>
                     {log.details ? (
-                      <p className="mt-0.5 break-all font-mono text-[11px] leading-relaxed text-muted-foreground select-text">
+                      <p className="mt-0.5 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground select-text">
                         {log.details}
                       </p>
                     ) : null}
