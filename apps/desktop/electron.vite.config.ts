@@ -62,13 +62,13 @@ export default defineConfig({
 
     plugins: [
       tailwindcss(),
-      reactPlugin(),
-
+      // 需在 @vitejs/plugin-react 之前注册（官方要求）
       codeInspectorPlugin({
         bundler: 'vite',
         hotKeys: ['altKey'],
         hideConsole: true,
       }),
+      reactPlugin(),
     ],
 
     publicDir: resolve(resources, 'public'),
