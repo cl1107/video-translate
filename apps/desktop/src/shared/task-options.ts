@@ -42,6 +42,7 @@ export function taskOptionsFromAppSettings(
 ): TaskRuntimeOptions {
   const app = normalizeTaskCreationSettings(settings)
   return {
+    llmServiceId: app.selectedLlmServiceId,
     llmBaseUrl: app.llmBaseUrl,
     translateModel: app.translateModel,
     polishModel: app.polishModel,
@@ -85,6 +86,9 @@ export function normalizeTaskRuntimeOptions(
   const llm = migrateLegacyLlmFields(raw as Record<string, unknown>)
 
   return {
+    ...(typeof raw.llmServiceId === 'string' && raw.llmServiceId.trim()
+      ? { llmServiceId: raw.llmServiceId.trim() }
+      : {}),
     llmBaseUrl: llm.llmBaseUrl,
     translateModel: llm.translateModel,
     polishModel: llm.polishModel,

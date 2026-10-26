@@ -8,6 +8,7 @@ import { Label } from 'renderer/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -16,6 +17,7 @@ import {
   DEFAULT_TASK_SUBMISSION_OPTIONS,
   normalizeTaskSubmissionOptions,
   parseStoredAppSettings,
+  selectLlmService,
   type SubtitleBurnMode,
   type SubtitleProcessingMode,
   type TaskSubmissionOptions,
@@ -33,6 +35,23 @@ function loadSettings() {
   const { settings } = parseStoredAppSettings(savedSettings)
   localStorage.setItem('video-translate-settings', JSON.stringify(settings))
   return settings
+}
+
+function loadTaskSettings(serviceId: string, options: TaskSubmissionOptions) {
+  return {
+    ...selectLlmService(loadSettings(), serviceId),
+    ...normalizeTaskSubmissionOptions(options),
+  }
+}
+
+function rememberService(serviceId: string) {
+  // 重新读取，避免提交期间覆盖其他已保存的设置。
+  const latest = loadSettings()
+  if (!latest.llmServices.some(service => service.id === serviceId)) return
+  localStorage.setItem(
+    'video-translate-settings',
+    JSON.stringify(selectLlmService(latest, serviceId))
+  )
 }
 
 /** 从多行文本拆出合法 http(s) 链接 */
@@ -91,6 +110,7 @@ export function VideoUploader({
   const [urlText, setUrlText] = useState('')
   const [urlSubmitting, setUrlSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [appSettings, setAppSettings] = useState(loadSettings)
   const [taskOptions, setTaskOptions] = useState<TaskSubmissionOptions>({
     ...DEFAULT_TASK_SUBMISSION_OPTIONS,
   })
@@ -102,12 +122,13 @@ export function VideoUploader({
       if (filePaths.length === 0) return
       setUploading(true)
       try {
-        const settings = {
-          ...loadSettings(),
-          ...normalizeTaskSubmissionOptions(taskOptions),
-        }
+        const settings = loadTaskSettings(
+          appSettings.selectedLlmServiceId,
+          taskOptions
+        )
         const result = await window.App.uploadFiles(filePaths, settings, kind)
         if (result.success) {
+          rememberService(settings.selectedLlmServiceId)
           setError(null)
           setErrorHint(null)
           onUploadSuccess?.()
@@ -120,7 +141,7 @@ export function VideoUploader({
         setUploading(false)
       }
     },
-    [onUploadSuccess, kind, taskOptions]
+    [onUploadSuccess, kind, taskOptions, appSettings.selectedLlmServiceId]
   )
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -247,18 +268,21 @@ export function VideoUploader({
 
     setUrlSubmitting(true)
     try {
-      const settings = {
-        ...loadSettings(),
-        ...normalizeTaskSubmissionOptions(taskOptions),
-      }
+      const settings = loadTaskSettings(
+        appSettings.selectedLlmServiceId,
+        taskOptions
+      )
       const result = await window.App.createTasksFromUrls(urls, settings, kind)
       if (result.success) {
+        rememberService(settings.selectedLlmServiceId)
         setUrlText('')
         onUploadSuccess?.()
       } else {
         const msg = result.error || '未知错误'
         setError(`创建在线任务失败：${msg}`)
-        setErrorHint(/yt-dlp|下载/i.test(msg) ? 'settings' : null)
+        setErrorHint(
+          /yt-dlp|下载|模型|润色|翻译|endpoint/i.test(msg) ? 'settings' : null
+        )
       }
     } catch (err) {
       setError(
@@ -271,6 +295,47 @@ export function VideoUploader({
 
   return (
     <div className="flex flex-col gap-4">
+      {(isDocument || taskOptions.subtitleProcessingMode === 'translate') && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Label htmlFor="task-llm-service" className="shrink-0">
+            模型服务
+          </Label>
+          <Select
+            value={appSettings.selectedLlmServiceId}
+            onValueChange={value => {
+              if (value == null) return
+              setAppSettings(previous => selectLlmService(previous, value))
+            }}
+            items={Object.fromEntries(
+              appSettings.llmServices.map(service => [service.id, service.name])
+            )}
+            disabled={uploading || urlSubmitting}
+          >
+            <SelectTrigger
+              id="task-llm-service"
+              className="min-w-0 flex-1 sm:max-w-72"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {appSettings.llmServices.map(service => (
+                  <SelectItem key={service.id} value={service.id}>
+                    {service.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/settings?category=models')}
+          >
+            管理服务
+          </Button>
+        </div>
+      )}
       {!isDocument && (
         <Card size="sm" className="gap-0 py-0">
           <CardContent className="space-y-2 px-4 py-3">

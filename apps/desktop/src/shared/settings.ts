@@ -33,8 +33,30 @@ export interface TaskSubmissionOptions {
 export const DEFAULT_ORIGINAL_SUBTITLE_COLOR = '#FFFFFF'
 export const DEFAULT_TRANSLATED_SUBTITLE_COLOR = '#FFFF00'
 
+/** 固定标识确保已有单服务配置和加密密钥可一起迁移。 */
+export const LEGACY_LLM_SERVICE_ID = 'legacy'
+
+export interface LlmServiceConfig {
+  id: string
+  name: string
+  llmBaseUrl: string
+  translateModel: string
+  /** 空值跟随翻译模型 */
+  polishModel: string
+}
+
+const DEFAULT_LLM_SERVICE: LlmServiceConfig = {
+  id: LEGACY_LLM_SERVICE_ID,
+  name: '默认服务',
+  llmBaseUrl: '',
+  translateModel: '',
+  polishModel: '',
+}
+
 export interface AppSettings {
   asrEngine: AsrEngineId
+  llmServices: LlmServiceConfig[]
+  selectedLlmServiceId: string
   /** 模型服务 Endpoint（OpenAI 兼容；本地推理如 Ollama / LM Studio / vLLM，或在线 API） */
   llmBaseUrl: string
   /** 翻译模型 ID */
@@ -61,6 +83,8 @@ export type TaskCreationSettings = AppSettings & TaskSubmissionOptions
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   asrEngine: DEFAULT_ASR_ENGINE,
+  llmServices: [{ ...DEFAULT_LLM_SERVICE }],
+  selectedLlmServiceId: LEGACY_LLM_SERVICE_ID,
   llmBaseUrl: '',
   translateModel: '',
   polishModel: '',
@@ -251,13 +275,19 @@ export function normalizeAppSettings(
   }
 
   const asrEngine = normalizeAsrEngine(raw.asrEngine)
-  const llm = migrateLegacyLlmFields(raw as Record<string, unknown>)
+  const llmServices = normalizeLlmServices(raw)
+  const selectedService =
+    llmServices.find(service => service.id === raw.selectedLlmServiceId) ??
+    llmServices[0]
+  if (!selectedService) throw new Error('请至少配置一个模型服务')
 
   return {
     asrEngine,
-    llmBaseUrl: llm.llmBaseUrl,
-    translateModel: llm.translateModel,
-    polishModel: llm.polishModel,
+    llmServices,
+    selectedLlmServiceId: selectedService.id,
+    llmBaseUrl: selectedService.llmBaseUrl,
+    translateModel: selectedService.translateModel,
+    polishModel: selectedService.polishModel,
     sourceLanguage: raw.sourceLanguage || DEFAULT_APP_SETTINGS.sourceLanguage,
     targetLanguage: raw.targetLanguage || DEFAULT_APP_SETTINGS.targetLanguage,
     outputFormat: raw.outputFormat || DEFAULT_APP_SETTINGS.outputFormat,
@@ -280,6 +310,67 @@ export function normalizeAppSettings(
     downloadCookieBrowser: normalizeDownloadCookieBrowser(
       raw.downloadCookieBrowser
     ),
+  }
+}
+
+function normalizeLlmServices(raw: Partial<AppSettings>): LlmServiceConfig[] {
+  if (raw.llmServices === undefined) {
+    return [
+      {
+        ...DEFAULT_LLM_SERVICE,
+        ...migrateLegacyLlmFields(raw as Record<string, unknown>),
+      },
+    ]
+  }
+  if (!Array.isArray(raw.llmServices) || raw.llmServices.length === 0) {
+    throw new Error('请至少配置一个模型服务')
+  }
+  const ids = new Set<string>()
+  return raw.llmServices.map((value: unknown) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('id' in value) ||
+      typeof value.id !== 'string' ||
+      !value.id.trim() ||
+      !('name' in value) ||
+      typeof value.name !== 'string' ||
+      !value.name.trim() ||
+      !('llmBaseUrl' in value) ||
+      typeof value.llmBaseUrl !== 'string' ||
+      !('translateModel' in value) ||
+      typeof value.translateModel !== 'string' ||
+      !('polishModel' in value) ||
+      typeof value.polishModel !== 'string'
+    ) {
+      throw new Error('模型服务配置格式错误，名称和标识不能为空')
+    }
+    const id = value.id.trim()
+    if (ids.has(id)) throw new Error('模型服务标识重复')
+    ids.add(id)
+    return {
+      id,
+      name: value.name.trim(),
+      llmBaseUrl: value.llmBaseUrl.trim(),
+      translateModel: value.translateModel.trim(),
+      polishModel: value.polishModel.trim(),
+    }
+  })
+}
+
+/** 选择服务时同时更新供任务流水线消费的连接快照。 */
+export function selectLlmService(
+  settings: AppSettings,
+  serviceId: string
+): AppSettings {
+  const service = settings.llmServices.find(item => item.id === serviceId)
+  if (!service) throw new Error('所选模型服务已不存在，请重新选择')
+  return {
+    ...settings,
+    selectedLlmServiceId: service.id,
+    llmBaseUrl: service.llmBaseUrl,
+    translateModel: service.translateModel,
+    polishModel: service.polishModel,
   }
 }
 

@@ -39,6 +39,7 @@ export const IpcChannels = {
   llmApiKeyStatus: 'llm-api-key-status',
   setLlmApiKey: 'set-llm-api-key',
   clearLlmApiKey: 'clear-llm-api-key',
+  clearAllLlmApiKeys: 'clear-all-llm-api-keys',
 
   // 模型服务：拉取 /models 列表（同时充当连接测试）
   listLlmModels: 'list-llm-models',

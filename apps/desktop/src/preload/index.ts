@@ -55,18 +55,23 @@ declare global {
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<TaskLog[]>
 
-      getLlmApiKeyStatus: () => Promise<{
+      getLlmApiKeyStatus: (serviceId?: string) => Promise<{
         success: boolean
         configured: boolean
       }>
       setLlmApiKey: (
-        apiKey: string
+        apiKey: string,
+        serviceId?: string
       ) => Promise<{ success: boolean; error?: string }>
-      clearLlmApiKey: () => Promise<{ success: boolean; error?: string }>
+      clearLlmApiKey: (
+        serviceId?: string
+      ) => Promise<{ success: boolean; error?: string }>
+      clearAllLlmApiKeys: () => Promise<{ success: boolean; error?: string }>
       /** 拉取 OpenAI 兼容端点 /models（同时充当连接测试）；apiKey 留空时用已存 Key */
       listLlmModels: (
         baseUrl: string,
-        apiKey?: string
+        apiKey?: string,
+        serviceId?: string
       ) => Promise<{
         success: boolean
         models: string[]
@@ -214,12 +219,15 @@ const api = {
   getTaskLogs: (taskId: string) =>
     ipcRenderer.invoke(IpcChannels.getTaskLogs, taskId),
 
-  getLlmApiKeyStatus: () => ipcRenderer.invoke(IpcChannels.llmApiKeyStatus),
-  setLlmApiKey: (apiKey: string) =>
-    ipcRenderer.invoke(IpcChannels.setLlmApiKey, apiKey),
-  clearLlmApiKey: () => ipcRenderer.invoke(IpcChannels.clearLlmApiKey),
-  listLlmModels: (baseUrl: string, apiKey?: string) =>
-    ipcRenderer.invoke(IpcChannels.listLlmModels, baseUrl, apiKey),
+  getLlmApiKeyStatus: (serviceId?: string) =>
+    ipcRenderer.invoke(IpcChannels.llmApiKeyStatus, serviceId),
+  setLlmApiKey: (apiKey: string, serviceId?: string) =>
+    ipcRenderer.invoke(IpcChannels.setLlmApiKey, apiKey, serviceId),
+  clearLlmApiKey: (serviceId?: string) =>
+    ipcRenderer.invoke(IpcChannels.clearLlmApiKey, serviceId),
+  clearAllLlmApiKeys: () => ipcRenderer.invoke(IpcChannels.clearAllLlmApiKeys),
+  listLlmModels: (baseUrl: string, apiKey?: string, serviceId?: string) =>
+    ipcRenderer.invoke(IpcChannels.listLlmModels, baseUrl, apiKey, serviceId),
 
   getAsrStatus: () => ipcRenderer.invoke(IpcChannels.getAsrStatus),
 

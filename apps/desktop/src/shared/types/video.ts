@@ -45,6 +45,8 @@ export interface TaskLog {
  * 注意：模型服务 API Key 不在此结构中，仅存主进程 secure store。
  */
 export interface TaskRuntimeOptions {
+  /** 密钥所属服务；旧任务缺省时读取迁移前的密钥。 */
+  llmServiceId?: string
   /** 模型服务 Endpoint（OpenAI 兼容） */
   llmBaseUrl: string
   translateModel: string

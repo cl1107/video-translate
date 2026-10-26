@@ -4,7 +4,47 @@ import {
   normalizeTaskRuntimeOptions,
   parseTaskRuntimeOptionsJson,
   taskOptionsFromAppSettings,
+  serializeTaskRuntimeOptions,
 } from './task-options'
+
+test('任务快照保存所选服务，设置切换不改变已创建任务', () => {
+  const services = [
+    {
+      id: 'local',
+      name: '本地',
+      llmBaseUrl: 'http://localhost:11434',
+      translateModel: 'qwen',
+      polishModel: '',
+    },
+    {
+      id: 'cloud',
+      name: '在线',
+      llmBaseUrl: 'https://cloud.example.com',
+      translateModel: 'translator',
+      polishModel: 'editor',
+    },
+  ]
+  const first = taskOptionsFromAppSettings({
+    llmServices: services,
+    selectedLlmServiceId: 'local',
+  })
+  const second = taskOptionsFromAppSettings({
+    llmServices: services,
+    selectedLlmServiceId: 'cloud',
+  })
+  assert.equal(first.llmServiceId, 'local')
+  assert.equal(first.llmBaseUrl, 'http://localhost:11434')
+  assert.equal(second.llmServiceId, 'cloud')
+  assert.equal(second.translateModel, 'translator')
+  assert.deepEqual(
+    parseTaskRuntimeOptionsJson(serializeTaskRuntimeOptions(first)),
+    first
+  )
+  assert.equal(
+    normalizeTaskRuntimeOptions({ translateModel: 'old' }).llmServiceId,
+    undefined
+  )
+})
 
 test('taskOptionsFromAppSettings 从 AppSettings 映射运行配置', () => {
   const options = taskOptionsFromAppSettings({

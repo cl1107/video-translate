@@ -10,7 +10,9 @@ import { normalizeTaskKind, type TaskKind } from '../shared/types/video'
 import { sherpaTranscriber } from './services/asr/sherpa-transcriber'
 import { listEndpointModels } from './services/llm/llm-config'
 import {
+  clearAllLlmApiKeys,
   clearLlmApiKey,
+  getLlmApiKey,
   hasLlmApiKey,
   setLlmApiKey,
 } from './services/secure-store'
@@ -100,31 +102,41 @@ function setupIpcHandlers() {
     }
   )
 
-  ipcMain.handle(IpcChannels.llmApiKeyStatus, () => {
-    return { success: true, configured: hasLlmApiKey() }
-  })
-
-  ipcMain.handle(IpcChannels.setLlmApiKey, (_event, apiKey: string) => {
-    return setLlmApiKey(typeof apiKey === 'string' ? apiKey : '')
-  })
-
-  ipcMain.handle(IpcChannels.clearLlmApiKey, () => {
-    return clearLlmApiKey()
+  ipcMain.handle(IpcChannels.llmApiKeyStatus, (_event, serviceId?: string) => {
+    return { success: true, configured: hasLlmApiKey(serviceId) }
   })
 
   ipcMain.handle(
+    IpcChannels.setLlmApiKey,
+    (_event, apiKey: string, serviceId?: string) => {
+      return setLlmApiKey(typeof apiKey === 'string' ? apiKey : '', serviceId)
+    }
+  )
+
+  ipcMain.handle(IpcChannels.clearLlmApiKey, (_event, serviceId?: string) => {
+    return clearLlmApiKey(serviceId)
+  })
+
+  ipcMain.handle(IpcChannels.clearAllLlmApiKeys, () => clearAllLlmApiKeys())
+
+  ipcMain.handle(
     IpcChannels.listLlmModels,
-    async (_event, baseUrlRaw: unknown, apiKeyRaw?: unknown) => {
+    async (
+      _event,
+      baseUrlRaw: unknown,
+      apiKeyRaw?: unknown,
+      serviceId?: string
+    ) => {
       const baseUrl = typeof baseUrlRaw === 'string' ? baseUrlRaw.trim() : ''
-      // 未显式传入 Key 时回退 secure store（表单里 Key 可后填）
-      const apiKey =
-        typeof apiKeyRaw === 'string' && apiKeyRaw.trim()
-          ? apiKeyRaw
-          : undefined
       if (!baseUrl) {
         return { success: false, models: [], error: 'Endpoint 不能为空' }
       }
       try {
+        // 表单留空时读取当前服务的已保存密钥。
+        const apiKey =
+          typeof apiKeyRaw === 'string' && apiKeyRaw.trim()
+            ? apiKeyRaw.trim()
+            : (getLlmApiKey(serviceId) ?? undefined)
         const result = await listEndpointModels(baseUrl, apiKey)
         return result.ok
           ? { success: true, models: result.models }

@@ -3,13 +3,16 @@ import {
   Check,
   FolderOpen,
   Loader2,
-  RefreshCw,
   Trash2,
   XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { DependencyChecker } from 'renderer/components/system/DependencyChecker'
+import {
+  ModelServicesSettings,
+  useModelServicesSettings,
+} from './ModelServicesSettings'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 import { UpdateSettingsCard } from 'renderer/components/update/UpdateSettingsCard'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
@@ -93,17 +96,6 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
     }>
   >([])
 
-  /** 模型服务：从 endpoint 拉到的模型列表与连接测试状态 */
-  const [llmModels, setLlmModels] = useState<string[]>([])
-  const [llmTesting, setLlmTesting] = useState(false)
-  const [llmTestResult, setLlmTestResult] = useState<{
-    ok: boolean
-    message: string
-  } | null>(null)
-  /** 仅 UI 草稿；落盘走主进程 safeStorage，不进 localStorage */
-  const [llmApiKeyDraft, setLlmApiKeyDraft] = useState('')
-  const [llmApiKeyConfigured, setLlmApiKeyConfigured] = useState(false)
-
   const [tempCache, setTempCache] = useState<{
     path: string
     totalBytes: number
@@ -144,8 +136,10 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
   )
 
   const [settings, setSettings] = useState(DEFAULT_APP_SETTINGS)
+  const modelServices = useModelServicesSettings(settings.llmServices)
 
   const [status, setStatus] = useState<string>('')
+  const [saving, setSaving] = useState(false)
   const [statusTone, setStatusTone] = useState<'ok' | 'error'>('ok')
   // 加载设置
   useEffect(() => {
@@ -237,12 +231,6 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
       } else {
         setSettings({ ...DEFAULT_APP_SETTINGS })
       }
-      try {
-        const keyStatus = await App.getLlmApiKeyStatus()
-        setLlmApiKeyConfigured(Boolean(keyStatus.configured))
-      } catch {
-        setLlmApiKeyConfigured(false)
-      }
     } catch (error) {
       console.error('加载设置失败:', error)
       setSettings({ ...DEFAULT_APP_SETTINGS })
@@ -261,6 +249,8 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
   }
 
   const saveSettings = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       if (!isValidDownloadProxy(settings.downloadProxy)) {
         setStatusTone('error')
@@ -274,16 +264,7 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
         JSON.stringify(normalized)
       )
 
-      if (llmApiKeyDraft.trim()) {
-        const keyResult = await App.setLlmApiKey(llmApiKeyDraft.trim())
-        if (!keyResult.success) {
-          setStatusTone('error')
-          setStatus(`设置已保存，但 API Key 写入失败: ${keyResult.error ?? ''}`)
-          return
-        }
-        setLlmApiKeyDraft('')
-        setLlmApiKeyConfigured(true)
-      }
+      await modelServices.saveKeys()
 
       setStatusTone('ok')
       setStatus('设置已保存')
@@ -291,7 +272,9 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
     } catch (error) {
       console.error('保存设置失败:', error)
       setStatusTone('error')
-      setStatus('保存失败')
+      setStatus(error instanceof Error ? error.message : '保存失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -302,54 +285,6 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return `${Number.parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`
   }
-
-  const testLlmConnection = async () => {
-    const baseUrl = settings.llmBaseUrl.trim()
-    if (!baseUrl) {
-      setLlmTestResult({ ok: false, message: '请先填写 API Endpoint' })
-      return
-    }
-    setLlmTesting(true)
-    setLlmTestResult(null)
-    try {
-      const result = await App.listLlmModels(
-        baseUrl,
-        llmApiKeyDraft.trim() || undefined
-      )
-      if (result.success) {
-        setLlmModels(result.models)
-        setLlmTestResult({
-          ok: true,
-          message: `已连接 · ${result.models.length} 个模型`,
-        })
-      } else {
-        setLlmTestResult({ ok: false, message: result.error || '连接失败' })
-      }
-    } catch (error) {
-      setLlmTestResult({
-        ok: false,
-        message: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      setLlmTesting(false)
-    }
-  }
-
-  // 拉到的模型列表 ∪ 已保存的值（保证保存过的模型在拉取前也能显示）
-  const translateModelItems = useMemo(() => {
-    const items: Record<string, string> = {}
-    if (settings.translateModel)
-      items[settings.translateModel] = settings.translateModel
-    for (const model of llmModels) items[model] = model
-    return items
-  }, [llmModels, settings.translateModel])
-
-  const polishModelItems = useMemo(() => {
-    const items: Record<string, string> = { '': '跟随翻译模型' }
-    if (settings.polishModel) items[settings.polishModel] = settings.polishModel
-    for (const model of llmModels) items[model] = model
-    return items
-  }, [llmModels, settings.polishModel])
 
   const sourceLanguages = languages
   const targetLanguages = languages.filter(lang => lang.code !== 'auto')
@@ -387,8 +322,12 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
               <span>{status}</span>
             </div>
           )}
-          <Button onClick={() => void saveSettings()} size="sm">
-            保存设置
+          <Button
+            onClick={() => void saveSettings()}
+            disabled={saving}
+            size="sm"
+          >
+            {saving ? '保存中…' : '保存设置'}
           </Button>
         </div>
       </div>
@@ -825,182 +764,12 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">模型服务</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="llm-base-url">API Endpoint</Label>
-                <input
-                  id="llm-base-url"
-                  type="url"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  placeholder="http://127.0.0.1:11434 或 https://api.deepseek.com"
-                  value={settings.llmBaseUrl}
-                  onChange={e =>
-                    setSettings(prev => ({
-                      ...prev,
-                      llmBaseUrl: e.target.value,
-                    }))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  任何 OpenAI 兼容服务均可：本地 Ollama / LM Studio /
-                  vLLM，或在线 API。本地地址通常无需 API Key。
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="llm-api-key">API Key（可选）</Label>
-                <input
-                  id="llm-api-key"
-                  type="password"
-                  autoComplete="off"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  placeholder={
-                    llmApiKeyConfigured
-                      ? '已配置（输入新 Key 可覆盖）'
-                      : '在线服务才需要，sk-...'
-                  }
-                  value={llmApiKeyDraft}
-                  onChange={e => setLlmApiKeyDraft(e.target.value)}
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    使用系统密钥库加密存储，不会写入 localStorage 或任务日志
-                  </p>
-                  {llmApiKeyConfigured && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={async () => {
-                        const result = await App.clearLlmApiKey()
-                        if (result.success) {
-                          setLlmApiKeyConfigured(false)
-                          setLlmApiKeyDraft('')
-                          setStatus('已清除 API Key')
-                          setTimeout(() => setStatus(''), 3000)
-                        }
-                      }}
-                    >
-                      清除 Key
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void testLlmConnection()}
-                  disabled={llmTesting || !settings.llmBaseUrl.trim()}
-                >
-                  {llmTesting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  测试连接
-                </Button>
-                {llmTestResult && (
-                  <span
-                    className={
-                      llmTestResult.ok
-                        ? 'flex items-center gap-1 text-xs text-brand-ink'
-                        : 'flex items-center gap-1 text-xs text-destructive'
-                    }
-                    role="status"
-                  >
-                    {llmTestResult.ok ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5" />
-                    )}
-                    <span>{llmTestResult.message}</span>
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="translate-model">翻译模型</Label>
-                <Select
-                  value={settings.translateModel || null}
-                  onValueChange={value => {
-                    if (value == null) return
-                    setSettings(prev => ({ ...prev, translateModel: value }))
-                  }}
-                  items={translateModelItems}
-                >
-                  <SelectTrigger
-                    id="translate-model"
-                    className="w-full min-w-0"
-                  >
-                    <SelectValue placeholder="先测试连接拉取模型列表" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(translateModelItems).map(model => (
-                      <SelectItem key={model} value={model}>
-                        {translateModelItems[model]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  翻译建议使用响应快、指令遵循好的模型。
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="polish-model">润色模型</Label>
-                <Select
-                  value={settings.polishModel}
-                  onValueChange={value => {
-                    if (value == null) return
-                    setSettings(prev => ({ ...prev, polishModel: value }))
-                  }}
-                  items={polishModelItems}
-                >
-                  <SelectTrigger id="polish-model" className="w-full min-w-0">
-                    <SelectValue placeholder="跟随翻译模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(polishModelItems).map(model => (
-                      <SelectItem key={model} value={model}>
-                        {polishModelItems[model]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  润色要保持原文语言，建议通用对话模型；hy-mt
-                  等翻译专用模型不适合润色。
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="polish-transcript"
-                  checked={settings.polishTranscript}
-                  onChange={e =>
-                    setSettings(prev => ({
-                      ...prev,
-                      polishTranscript: e.target.checked,
-                    }))
-                  }
-                  className="rounded"
-                />
-                <Label htmlFor="polish-transcript">识别结果先润色再翻译</Label>
-              </div>
-              <p className="text-xs text-muted-foreground -mt-2">
-                ASR
-                文本可能有错字或缺标点；开启后由润色模型校对，再进入翻译。仅发送字幕文本段，不上传音视频。
-              </p>
-            </CardContent>
-          </Card>
+          <ModelServicesSettings
+            settings={settings}
+            setSettings={setSettings}
+            controller={modelServices}
+            disabled={saving}
+          />
         </div>
       )}
 
@@ -1103,17 +872,26 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => {
+                  onClick={async () => {
                     if (
                       window.confirm(
                         '确定重置应用设置？将清除配置并重新检查环境。'
                       )
                     ) {
-                      navigate('/')
-                      localStorage.removeItem('setup-completed')
-                      localStorage.removeItem('video-translate-settings')
-                      void App.clearLlmApiKey()
-                      window.location.reload()
+                      try {
+                        const result = await App.clearAllLlmApiKeys()
+                        if (!result.success)
+                          throw new Error(result.error || '清除 API Key 失败')
+                        navigate('/')
+                        localStorage.removeItem('setup-completed')
+                        localStorage.removeItem('video-translate-settings')
+                        window.location.reload()
+                      } catch (error) {
+                        setStatusTone('error')
+                        setStatus(
+                          error instanceof Error ? error.message : '重置失败'
+                        )
+                      }
                     }
                   }}
                 >

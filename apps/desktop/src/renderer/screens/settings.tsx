@@ -1,6 +1,5 @@
 import { ArrowLeft, Boxes, SlidersHorizontal, Wrench } from 'lucide-react'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import {
   SettingsPanel,
   type SettingsCategoryId,
@@ -21,7 +20,8 @@ const CATEGORIES: Array<{
 
 export function SettingsScreen() {
   const navigate = useNavigate()
-  const [category, setCategory] = useState<SettingsCategoryId>('general')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const category = searchParams.get('category')
   const current = CATEGORIES.find(item => item.id === category) ?? CATEGORIES[0]
 
   return (
@@ -49,7 +49,9 @@ export function SettingsScreen() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setCategory(item.id)}
+                onClick={() =>
+                  setSearchParams({ category: item.id }, { replace: true })
+                }
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors duration-150',
@@ -72,7 +74,12 @@ export function SettingsScreen() {
 
       {/* 右侧内容区 */}
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-8">
+        <div
+          className={cn(
+            'mx-auto px-8 py-8',
+            current.id === 'models' ? 'max-w-5xl' : 'max-w-3xl'
+          )}
+        >
           <SettingsPanel category={current.id} title={current.label} />
         </div>
       </main>

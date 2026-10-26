@@ -403,6 +403,12 @@ export class TaskManager {
 
     this.activeTasks.set(taskId, task)
     const options = this.resolveOptions(task)
+    const needsLlm =
+      normalizeTaskKind(task.kind) === 'document' ||
+      options.subtitleProcessingMode !== 'extract'
+    const llmApiKey = needsLlm
+      ? (getLlmApiKey(options.llmServiceId) ?? undefined)
+      : undefined
     // 确保 options 已落库（旧任务 resume 时也会补写）
     task.options = options
     databaseManager.saveTaskOptions(taskId, options)
@@ -449,7 +455,7 @@ export class TaskManager {
           }
           databaseManager.saveDetectedLanguage(taskId, language)
         },
-        resolveLlmApiKey: () => getLlmApiKey() ?? undefined,
+        resolveLlmApiKey: () => llmApiKey,
       }
 
       if (normalizeTaskKind(task.kind) === 'document') {
@@ -1112,7 +1118,7 @@ export class TaskManager {
       },
       onSegments: (_segments: TranscriptionSegment[]) => {},
       onDetectedLanguage: () => {},
-      resolveLlmApiKey: () => getLlmApiKey() ?? undefined,
+      resolveLlmApiKey: () => undefined,
     }
 
     try {

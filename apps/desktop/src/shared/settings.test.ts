@@ -30,6 +30,83 @@ test('normalizeAppSettings 保留已配置的模型服务字段', () => {
   assert.equal(settings.polishTranscript, false)
 })
 
+test('旧单服务配置迁移为稳定服务，重复读取不会更换标识', () => {
+  const migrated = normalizeAppSettings({
+    llmBaseUrl: 'https://old.example.com',
+    translateModel: 'old-model',
+  })
+  assert.equal(migrated.selectedLlmServiceId, 'legacy')
+  assert.deepEqual(migrated.llmServices, [
+    {
+      id: 'legacy',
+      name: '默认服务',
+      llmBaseUrl: 'https://old.example.com',
+      translateModel: 'old-model',
+      polishModel: '',
+    },
+  ])
+  assert.deepEqual(normalizeAppSettings(migrated), migrated)
+})
+
+test('多个服务按选择映射任务字段，不使用过期的单服务字段', () => {
+  const settings = normalizeAppSettings({
+    llmServices: [
+      {
+        id: 'local',
+        name: '本地',
+        llmBaseUrl: 'http://localhost:11434',
+        translateModel: 'qwen',
+        polishModel: '',
+      },
+      {
+        id: 'cloud',
+        name: '在线',
+        llmBaseUrl: 'https://cloud.example.com',
+        translateModel: 'translator',
+        polishModel: 'editor',
+      },
+    ],
+    selectedLlmServiceId: 'cloud',
+    llmBaseUrl: 'https://stale.example.com',
+  })
+  assert.equal(settings.llmServices.length, 2)
+  assert.equal(settings.llmBaseUrl, 'https://cloud.example.com')
+  assert.equal(settings.translateModel, 'translator')
+  assert.equal(settings.polishModel, 'editor')
+  const parsed = parseStoredAppSettings(JSON.stringify(settings))
+  assert.deepEqual(parsed.settings, settings)
+})
+
+test('上次选择的服务已删除时使用剩余第一个服务', () => {
+  const settings = normalizeAppSettings({
+    llmServices: [
+      {
+        id: 'remaining',
+        name: '保留',
+        llmBaseUrl: '',
+        translateModel: '',
+        polishModel: '',
+      },
+    ],
+    selectedLlmServiceId: 'deleted',
+  })
+  assert.equal(settings.selectedLlmServiceId, 'remaining')
+})
+
+test('服务标识重复时暴露配置错误，避免混用密钥', () => {
+  const service = {
+    id: 'same',
+    name: '服务',
+    llmBaseUrl: '',
+    translateModel: '',
+    polishModel: '',
+  }
+  assert.throws(
+    () => normalizeAppSettings({ llmServices: [service, service] }),
+    /重复/
+  )
+})
+
 test('migrateLegacyLlmFields：Ollama 旧配置迁移到本地端点', () => {
   const migrated = migrateLegacyLlmFields({
     ollamaModel: 'qwen2.5:7b',
