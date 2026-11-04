@@ -23,7 +23,7 @@ const toc = [
   { id: 'packages', label: 'bundled / slim' },
   { id: 'unsigned', label: '非签名包' },
   { id: 'ffmpeg', label: 'FFmpeg' },
-  { id: 'ollama', label: 'Ollama' },
+  { id: 'ollama', label: '模型服务' },
   { id: 'ytdlp', label: 'yt-dlp' },
   { id: 'asr', label: 'ASR 模型' },
   { id: 'usage', label: '使用教程' },
@@ -142,8 +142,8 @@ export function DocsPage() {
           <em>跑通第一条任务。</em>
         </h1>
         <p className="docs-lead">
-          从系统工具到应用内流程：FFmpeg、Ollama、yt-dlp 怎么装，以及本地文件 /
-          在线链接如何提取原文、翻译字幕或生成 Markdown
+          从系统工具到应用内流程：FFmpeg、模型服务、yt-dlp 怎么配，以及本地文件 /
+          在线链接如何提取原文、翻译字幕、校对或生成 Markdown
           文稿。依赖缺失时应用启动会自检并给出安装提示。
         </p>
         <DownloadCta
@@ -179,10 +179,11 @@ export function DocsPage() {
             <p>
               视频翻译助手是本地优先的字幕与文稿工作台。顶栏可切换两条流水线：
               <strong>字幕</strong>
-              （导入 → 原文/ASR → 仅提取原文或翻译 → 导出字幕 / 可选硬烧录）与
+              （导入或导入 SRT → 原文/ASR → 仅提取原文或翻译 → 导出 / 校对 /
+              可选硬烧录）与
               <strong>文稿</strong>
               （导入音视频 → ASR → 整篇润色 → 导出
-              Markdown）。大部分处理发生在你的电脑上。
+              Markdown）。完整转录可跨工作流复用。视频与 ASR 始终在本机。
             </p>
             <div className="docs-callout">
               <HardDrive size={18} />
@@ -193,10 +194,10 @@ export function DocsPage() {
                     <strong>FFmpeg</strong>：必需。抽音频、分段、可选硬字幕烧录
                   </li>
                   <li>
-                    <strong>Ollama</strong>
-                    ：按需安装。仅提取原文时无需 Ollama；字幕
-                    <strong>翻译</strong>走本地 Ollama。设置中的 BYOK
-                    只用于可选润色，不替代字幕翻译
+                    <strong>模型服务</strong>
+                    ：按需配置。仅提取原文时无需模型服务；字幕翻译、润色与文稿整理使用
+                    OpenAI 兼容 Endpoint（本机 Ollama / LM Studio / vLLM
+                    或在线 API）
                   </li>
                   <li>
                     <strong>yt-dlp</strong>：可选。仅「在线链接」下载视频时需要
@@ -211,10 +212,11 @@ export function DocsPage() {
             <div className="docs-callout docs-callout-soft">
               <Check size={18} />
               <div>
-                <strong>0.8.1 更新</strong>
+                <strong>源码新能力</strong>
                 <p>
-                  字幕翻译单段空结果会自动重试，仍为空则回退该段原文并写入日志，不再因偶发空译中断整条任务；Ollama
-                  服务或模型硬错误在重试耗尽后仍会终止并报告段落位置。
+                  字幕校对工作台、术语库、阶段断点恢复与跨工作流复用已进入当前源码。GitHub
+                  Releases 安装包仍为 v{APP_VERSION}
+                  ；从源码运行可立即使用，下一版本随包发布。
                 </p>
               </div>
             </div>
@@ -267,7 +269,7 @@ export function DocsPage() {
               </li>
               <li>
                 可选依赖缺失<strong>不会</strong>
-                挡住进入主界面：Ollama 只影响翻译与本地润色，yt-dlp
+                挡住进入主界面：模型服务只影响翻译与润色，yt-dlp
                 只影响在线链接下载。
               </li>
               <li>
@@ -283,7 +285,7 @@ export function DocsPage() {
             </h2>
             <p>
               CI 为每个平台打两种包，区别只在于<strong>是否内置 FFmpeg</strong>
-              。Ollama、yt-dlp 与 ASR 模型不随这两种包提供。
+              。模型服务、yt-dlp 与 ASR 模型不随这两种包提供。
             </p>
             <div className="docs-table-wrap">
               <table className="docs-table">
@@ -446,13 +448,20 @@ sudo dnf install ffmpeg`}
           <section id="ollama" className="docs-section">
             <h2>
               <Languages size={22} />
-              安装 Ollama（翻译 / 本地润色）
+              配置模型服务（翻译 / 润色）
             </h2>
             <p>
-              字幕翻译默认通过本机 Ollama
-              完成；仅提取原文时可以跳过本节。需要翻译或使用本地模型润色时，安装后需保证服务在运行（菜单栏
-              App 或 <code>ollama serve</code>），默认 API 地址为{' '}
-              <code>http://127.0.0.1:11434</code>。
+              字幕翻译、字幕润色和文稿整理使用设置中的
+              <strong>OpenAI 兼容 Endpoint</strong>
+              。仅提取原文时可以跳过本节。可以是本机 Ollama、LM Studio、vLLM
+              或在线 API。使用在线服务时，应用只发送识别后的文本，不会上传视频、音频或
+              ASR 模型。
+            </p>
+            <p>
+              以本机 Ollama 为例：安装后需保证服务在运行（菜单栏 App 或{' '}
+              <code>ollama serve</code>），默认地址为{' '}
+              <code>http://127.0.0.1:11434/v1</code>
+              。其他服务请填写其 Base URL、模型 ID，以及服务要求的 API Key。
             </p>
             <PlatformTabs
               mac={`# 官方安装脚本
@@ -474,13 +483,13 @@ curl -fsSL https://ollama.com/install.sh | sh
 # 启动
 ollama serve`}
             />
-            <h3>拉取翻译模型</h3>
+            <h3>拉取翻译模型（Ollama 示例）</h3>
             <p>
-              应用默认模型为 <code>kaelri/hy-mt2:1.8b</code>
-              。你也可以在设置中换成其它已拉取的模型。
+              模型 ID 由你配置的 Endpoint 提供。本机 Ollama 可使用{' '}
+              <code>kaelri/hy-mt2:1.8b</code>，也可换成其它已拉取的模型。
             </p>
             <CodeBlock label="终端">
-              {`# 默认推荐
+              {`# 常用翻译模型
 ollama pull kaelri/hy-mt2:1.8b
 
 # 其它常用选择（按需）
@@ -493,15 +502,11 @@ ollama list`}
             <div className="docs-callout docs-callout-soft">
               <Check size={18} />
               <div>
-                <strong>BYOK 是什么？</strong>
+                <strong>可配置多套模型服务</strong>
                 <p>
-                  设置里的「在线 BYOK」只用于可选步骤：识别结果先
-                  <strong>润色</strong>
-                  再翻译（校对错字、补标点，不翻译语言）。兼容 OpenAI 的 Base
-                  URL + API Key + 模型 ID。
-                  <strong>正式翻译仍由本机 Ollama 完成</strong>
-                  ，目前不能用 BYOK 替代 Ollama 做整段翻译。FFmpeg / ASR /
-                  字幕生成也始终在本地。
+                  设置里可添加多套 OpenAI 兼容服务（名称、Base URL、翻译/润色模型），创建任务时选择其中一套。API
+                  Key 只保存在本机，不会写入任务记录。FFmpeg / ASR /
+                  字幕生成始终在本地。
                 </p>
               </div>
             </div>
@@ -602,15 +607,15 @@ pip install -U yt-dlp
               <li>打开应用，等待系统依赖检查完成。</li>
               <li>若必需依赖缺失，按提示安装后点「重新检查」。</li>
               <li>
-                只提取原文可不安装
-                Ollama；需要翻译时再在设置中确认模型与目标语言。
+                只提取原文可不配置模型服务；需要翻译时再在设置中确认
+                Endpoint、模型与目标语言。
               </li>
             </ol>
 
             <h3>2. 选择工作流并导入素材</h3>
             <p>
               主界面顶栏左侧切换 <strong>字幕</strong> 或 <strong>文稿</strong>
-              ；右侧「添加 / 任务」在当前工作流内切换面板。两条线任务列表独立。
+              ；右侧「添加 / 任务」在当前工作流内切换面板。两条线任务列表独立，完整识别结果可互相复用。
             </p>
             <div className="docs-cards">
               <article>
@@ -627,6 +632,12 @@ pip install -U yt-dlp
                   yt-dlp；应用会下载视频并尽量带上平台字幕。
                 </p>
               </article>
+              <article>
+                <h4>导入字幕</h4>
+                <p>
+                  任务列表可导入 SRT / VTT，直接进入校对，或复用为翻译任务。可关联本地视频同步播放与烧录。
+                </p>
+              </article>
             </div>
 
             <h3>3. 字幕流水线</h3>
@@ -637,8 +648,8 @@ pip install -U yt-dlp
               </li>
               <li>
                 <strong>选择处理方式</strong>
-                ：「仅提取原文」只生成原文 SRT，无需
-                Ollama；「翻译字幕」可先润色原文，再由 Ollama 翻译。
+                ：「仅提取原文」只生成原文 SRT，无需模型服务；「翻译字幕」可先润色原文，再由所选
+                Endpoint 翻译。
               </li>
               <li>
                 <strong>导出</strong>
@@ -650,6 +661,10 @@ pip install -U yt-dlp
                 ：创建任务时选择烧录内容。翻译模式支持原文、译文或双语，原文模式烧录原文（需带
                 libass 的 FFmpeg）。
               </li>
+              <li>
+                <strong>校对</strong>
+                ：完成后在任务列表点「校对」，对照媒体修改原文/译文与时间轴，可单段重译。保存后重新导出。问题清单会标出空译、回退、重叠和过长行。
+              </li>
             </ol>
 
             <h3>4. 文稿流水线</h3>
@@ -660,7 +675,11 @@ pip install -U yt-dlp
               </li>
               <li>
                 <strong>整篇润色</strong>
-                ：用设置中的润色模型（Ollama 或 BYOK）整理为结构化 Markdown。
+                ：用所选模型服务的润色模型整理为结构化 Markdown。
+              </li>
+              <li>
+                <strong>来源索引</strong>
+                ：文末附转录首句时间定位目录，预览可跳到对应媒体时间。这是可追溯来源目录，不是模型生成的语义章节摘要。
               </li>
               <li>
                 <strong>导出与预览</strong>：写入本机 <code>.md</code>
@@ -676,14 +695,14 @@ pip install -U yt-dlp
             <ul className="docs-list">
               <li>
                 在对应工作流的任务列表查看进度、日志、本地创建时间与处理耗时；支持暂停
-                / 恢复。
+                / 恢复。识别、润色、翻译会按阶段保存断点，恢复时只补未完成部分。
               </li>
-              <li>字幕完成：打开字幕或结果文件夹；可补烧硬字幕。</li>
+              <li>字幕完成：打开字幕或结果文件夹；可进入校对、补烧硬字幕，或复用识别结果生成文稿。</li>
               <li>
                 文稿完成：全屏预览 Markdown、复制、打开 .md 或结果文件夹。
               </li>
               <li>
-                完成、失败或取消的任务可批量删除；只清理任务记录与应用缓存，源文件和结果文件保留。
+                完成、失败或取消的任务可批量删除；只清理任务记录、断点缓存与应用缓存，源文件和结果文件保留。
               </li>
               <li>临时音频等中间文件会在流程结束后清理。</li>
             </ul>
@@ -694,8 +713,9 @@ pip install -U yt-dlp
               <li>源语言 / 目标语言（字幕线）</li>
               <li>字幕与烧录视频的输出位置：output 子目录或源视频同目录</li>
               <li>
-                Ollama 翻译模型；润色模型（字幕段润色与文稿整篇共用配置入口）
+                模型服务：可添加多套 OpenAI 兼容 Endpoint，分别指定翻译 / 润色模型
               </li>
+              <li>术语库：翻译时优先采用指定译法</li>
               <li>原文 / 译文字幕颜色；烧录内容在创建字幕任务时选择</li>
             </ul>
           </section>
@@ -730,14 +750,26 @@ pip install -U yt-dlp
                 </p>
               </details>
               <details>
-                <summary>翻译失败或 Ollama 不可用？</summary>
+                <summary>如何校对字幕、导入现成字幕？</summary>
                 <p>
-                  翻译依赖本机 Ollama，BYOK 不能代替。请确认托盘/菜单栏 Ollama
-                  已运行，执行 <code>ollama list</code>{' '}
-                  能列出模型；未拉取默认模型时执行{' '}
-                  <code>ollama pull kaelri/hy-mt2:1.8b</code>
-                  。如果只需要原文 SRT，创建任务时选择「仅提取原文」即可跳过
-                  Ollama。
+                  任务完成后点「校对」，对照视频修改原文、译文和时间轴，可单段重译。任务列表也可导入
+                  SRT / VTT。完整识别结果可复用到字幕或文稿，不必重新跑 ASR。
+                </p>
+              </details>
+              <details>
+                <summary>暂停后恢复会从头再跑吗？</summary>
+                <p>
+                  识别、润色、翻译会按阶段保存断点。恢复时复用匹配的结果；ASR
+                  未完成时仍会重新抽音频，但已成功的识别块不重复推理。旧版中断任务首次恢复时，未能确认完成的阶段可能需要重做。
+                </p>
+              </details>
+              <details>
+                <summary>翻译失败或模型服务不可用？</summary>
+                <p>
+                  翻译依赖设置中的 OpenAI 兼容 Endpoint。请确认 Base URL、模型
+                  ID 与 API Key 正确；使用本机 Ollama 时确认服务已运行，并执行{' '}
+                  <code>ollama list</code> 能列出模型。如果只需要原文
+                  SRT，创建任务时选择「仅提取原文」即可跳过模型服务。
                 </p>
               </details>
               <details>

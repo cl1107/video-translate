@@ -1,14 +1,16 @@
 import {
   ArrowRight,
+  Bookmark,
   Check,
-  Clock,
+  FilePlus2,
   FileText,
-  FolderOpen,
   Languages,
   Link2,
+  ListChecks,
   LockKeyhole,
   NotebookPen,
   Play,
+  RotateCcw,
   ScanLine,
   Sparkles,
   Subtitles,
@@ -36,7 +38,7 @@ const subtitleWorkflow = [
   {
     number: '01',
     label: '导入视频',
-    detail: '本地文件，或粘贴 YouTube / B 站链接',
+    detail: '本地文件、YouTube / B 站链接，或导入 SRT / VTT',
     icon: Link2,
   },
   {
@@ -48,14 +50,14 @@ const subtitleWorkflow = [
   {
     number: '03',
     label: '选择处理方式',
-    detail: '仅提取原文无需 Ollama；也可本地翻译并按需润色',
+    detail: '仅提取原文无需模型服务；也可翻译并按需润色',
     icon: Languages,
   },
   {
     number: '04',
-    label: '导出字幕',
-    detail: 'SRT / ASS，可选双语硬字幕烧录',
-    icon: FileText,
+    label: '导出与校对',
+    detail: 'SRT / ASS / 硬字幕；对照媒体改稿、单段重译',
+    icon: ListChecks,
   },
 ]
 
@@ -82,7 +84,7 @@ const documentWorkflow = [
   {
     number: '04',
     label: '导出 Markdown',
-    detail: '生成 .md 文稿，应用内全屏预览与复制',
+    detail: '生成 .md，文末带来源时间索引，预览可跳转',
     icon: FileText,
   },
 ]
@@ -111,60 +113,60 @@ const features = [
     eyebrow: 'ORIGINAL ONLY',
     title: '只要原文，也能直接开始',
     description:
-      '选择「仅提取原文」后，只生成原文 SRT，不启动翻译流程，也无需安装 Ollama。',
+      '选择「仅提取原文」后，只生成原文 SRT，不启动翻译流程，也无需配置模型服务。',
   },
   {
     icon: NotebookPen,
     eyebrow: 'DOCUMENT MD',
     title: '音视频整理成 Markdown',
     description:
-      '独立「文稿」工作流：识别后整篇 AI 润色为结构化 MD，全屏预览，一键导出。',
+      '独立「文稿」工作流：识别后整篇润色为结构化 MD，文末附时间定位来源索引。',
   },
   {
-    icon: Languages,
-    eyebrow: 'SUBTITLES',
-    title: '翻译、导出与硬烧录',
+    icon: ListChecks,
+    eyebrow: 'REVIEW',
+    title: '校对、术语与硬烧录',
     description:
-      '本地 Ollama 翻译；原文、译文、双语 SRT 与 ASS 导出，可选硬字幕烧录。',
+      '对照媒体改原文/译文与时间轴，术语库固定译法；原文、译文、双语 SRT / ASS，可选硬字幕。',
   },
   {
     icon: LockKeyhole,
     eyebrow: 'LOCAL FIRST',
     title: '素材不离开设备',
     description:
-      '识别、翻译、文稿整理默认在本机完成。视频无需上传到第三方云端。',
+      '视频、音频与 ASR 始终在本机。配置在线模型服务时，只发送识别后的文本。',
   },
 ]
 
 const highlights = [
   '字幕工作台 + 文稿整理',
-  '仅提取原文无需 Ollama',
+  '仅提取原文无需模型服务',
+  '校对 / 导入 / 术语库',
+  '断点恢复与结果复用',
   '在线链接 / 本地文件',
-  '输出目录可配置',
-  '实际语言命名产物',
   '任务批量管理',
 ]
 
 const releaseHighlights = [
   {
-    icon: Languages,
-    title: '空译自动重试',
-    detail: '单段翻译结果为空时自动再试一次，降低 hy-mt 等小模型的偶发空跑。',
+    icon: ListChecks,
+    title: '字幕校对工作台',
+    detail: '同步播放媒体，对照修改原文、译文与时间轴；问题清单标出空译、重叠和过长行。',
   },
   {
-    icon: FileText,
-    title: '失败段回退原文',
-    detail: '仍为空则保留该段原文，整条任务继续完成，不再因一段挂掉全部。',
+    icon: RotateCcw,
+    title: '阶段断点恢复',
+    detail: '识别、润色、翻译按成功块落盘。恢复任务只补未完成部分，成功 ASR 块不重复推理。',
   },
   {
-    icon: Clock,
-    title: '日志可定位',
-    detail: '重试、回退与硬错误均写入处理日志，并带上失败段原文预览。',
+    icon: Bookmark,
+    title: '术语库与上下文',
+    detail: '设置中维护固定译法；翻译时带上相邻原文，但只输出当前段。',
   },
   {
-    icon: FolderOpen,
-    title: '0.8.0 能力保留',
-    detail: '仅提取原文、输出位置可选、批量清理任务与产物命名规则继续可用。',
+    icon: FilePlus2,
+    title: '导入与跨工作流复用',
+    detail: '导入 SRT / VTT 直接校对；完整转录可生成字幕或文稿，换语言重译不必重新识别。',
   },
 ]
 
@@ -187,8 +189,8 @@ export function HomePage() {
             <em>跨越语言。</em>
           </h1>
           <p className="hero-description">
-            本地文件或在线链接：提取原文 SRT、翻译字幕与硬烧录，或把音视频整理成
-            Markdown 文稿。仅提取原文无需 Ollama，素材默认留在你的电脑里。
+            本地文件或在线链接：提取原文 SRT、翻译字幕、校对与硬烧录，或把音视频整理成
+            Markdown 文稿。仅提取原文无需模型服务，素材默认留在你的电脑里。
           </p>
           <DownloadCta
             appearance="primary"
@@ -298,7 +300,7 @@ export function HomePage() {
             <ScanLine size={17} />
             <div>
               <span>原文字幕</span>
-              <strong>无需 Ollama</strong>
+              <strong>无需模型服务</strong>
             </div>
             <i>
               <span />
@@ -319,7 +321,8 @@ export function HomePage() {
         <div>
           在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
           <Sparkles size={16} />
-          本地语音识别 <Sparkles size={16} /> 多语言翻译 <Sparkles size={16} />
+          本地语音识别 <Sparkles size={16} /> 字幕校对 <Sparkles size={16} />
+          术语库 <Sparkles size={16} /> 断点恢复 <Sparkles size={16} />
           Markdown 文稿 <Sparkles size={16} /> 双语硬字幕 <Sparkles size={16} />{' '}
           仅提取原文 <Sparkles size={16} />
           在线链接下载 <Sparkles size={16} /> 平台字幕优先{' '}
@@ -333,11 +336,12 @@ export function HomePage() {
         aria-labelledby="release-title"
       >
         <div className="release-heading">
-          <p>v{APP_VERSION}</p>
-          <h2 id="release-title">翻译更稳，偶发空译不再打断整条任务。</h2>
+          <p>源码新能力 · 安装包仍为 v{APP_VERSION}</p>
+          <h2 id="release-title">校对、断点、术语库，工作台已经齐了。</h2>
           <span>
-            0.8.1
-            单段翻译空结果会自动重试，仍为空则回退原文并写进日志；服务硬错误才终止任务。
+            字幕校对、阶段断点恢复、术语库与跨工作流复用已进入当前源码。GitHub
+            Releases 安装包仍为 v{APP_VERSION}
+            ，下一版本随包发布；从源码运行可立即使用。
           </span>
         </div>
         <div className="release-list">
@@ -377,8 +381,8 @@ export function HomePage() {
         <div className="workflow-intro">
           <h2>两条工作流，各自四步完成。</h2>
           <p>
-            顶栏切换「字幕」或「文稿」：字幕线可仅提取原文，也可翻译与导出；文稿线把识别结果整篇润色为
-            Markdown。两条线共享 ASR 与下载，任务列表彼此独立。
+            顶栏切换「字幕」或「文稿」：字幕线可仅提取原文、翻译、校对与导出；文稿线把识别结果整篇润色为
+            Markdown。完整转录可跨工作流复用，不必重新识别。
           </p>
         </div>
         <div className="workflow-dual">
@@ -444,8 +448,7 @@ export function HomePage() {
           <h2>你的素材，只属于你的设备。</h2>
           <p>
             视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本、字幕与
-            Markdown 文稿都保存在本机路径中。
-            在线润色（BYOK）仅在你主动配置时才会请求你指定的接口。
+            Markdown 文稿都保存在本机路径中。配置在线模型服务时，只发送识别后的文本与必要提示词。
           </p>
           <ul>
             <li>

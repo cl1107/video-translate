@@ -2183,7 +2183,7 @@ footer > a:last-child {
 
 .docs-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin: 14px 0 8px;
 }
