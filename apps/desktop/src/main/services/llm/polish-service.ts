@@ -61,6 +61,18 @@ export function buildPolishSystemPrompt(): string {
   return `你是字幕识别结果校对员。用户给出的是语音/OCR 识别原文，可能有错字、缺标点、语序抖动。可能附带上文/下文仅作语境参考。请只输出「当前段」润色后的同一语言文本：修正明显识别错误，补全必要标点，保持原意与信息量，不要翻译，不要解释，不要添加原文没有的信息，不要复述上下文，不要使用引号包裹全文。`
 }
 
+export interface PolishPartCheckpoint {
+  loadPart?: (part: {
+    index: number
+    input: string
+  }) => Promise<string | undefined>
+  savePart?: (part: {
+    index: number
+    input: string
+    output: string
+  }) => Promise<void>
+}
+
 export interface PolishBatchOptions {
   sourceLanguage: string
   config: CompletionClientConfig
@@ -70,6 +82,9 @@ export interface PolishBatchOptions {
   signal?: AbortSignal
   /** 测试注入用；默认按 config 创建 */
   client?: TextCompletionPort
+  /** 可选的逐段恢复钩子；持久化及配置校验由调用方负责 */
+  loadPart?: PolishPartCheckpoint['loadPart']
+  savePart?: PolishPartCheckpoint['savePart']
 }
 
 /**
@@ -100,17 +115,35 @@ export async function polishTranscriptBatch(
       continue
     }
 
+    const input = buildPolishUserPrompt(
+      texts,
+      i,
+      options.sourceLanguage,
+      radius
+    )
+    const cached = await options.loadPart?.({ index: i, input })
+    throwIfAborted(options.signal)
+    if (cached?.trim()) {
+      results.push(cached)
+      options.onProgress?.(i + 1, texts.length)
+      continue
+    }
+
     try {
       const response = await client.complete({
         system,
-        user: buildPolishUserPrompt(texts, i, options.sourceLanguage, radius),
+        user: input,
         temperature: 0.1,
         maxTokens: 2000,
       })
+      // 完成请求后先检查取消，避免已取消的结果进入缓存或结果集。
+      throwIfAborted(options.signal)
       const polished = cleanModelText(response, 'polish')
       if (!polished) {
         throw new Error('润色结果为空')
       }
+      await options.savePart?.({ index: i, input, output: polished })
+      throwIfAborted(options.signal)
       results.push(polished)
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') throw error

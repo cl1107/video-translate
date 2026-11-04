@@ -1,5 +1,5 @@
 import { Copy, Eye, FileCode2, X } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { MarkdownPreview } from 'renderer/components/markdown/MarkdownPreview'
 import { Button } from 'renderer/components/ui/button'
@@ -15,6 +15,9 @@ export type MarkdownPreviewDialogProps = {
   onClose: () => void
   onCopy?: () => void | Promise<void>
   onOpenFile?: () => void | Promise<void>
+  /** 文稿章节来源对应的媒体；可选，存在时展示同步预览 */
+  mediaUrl?: string | null
+  onMediaSeek?: (seconds: number) => void
 }
 
 /**
@@ -29,7 +32,10 @@ export function MarkdownPreviewDialog({
   onClose,
   onCopy,
   onOpenFile,
+  mediaUrl = null,
+  onMediaSeek,
 }: MarkdownPreviewDialogProps) {
+  const mediaRef = useRef<HTMLVideoElement>(null)
   const titleId = useId()
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
   const [copyHint, setCopyHint] = useState<string | null>(null)
@@ -58,6 +64,11 @@ export function MarkdownPreviewDialog({
   }, [open, onClose])
 
   if (!open) return null
+
+  const handleTimeLink = (seconds: number) => {
+    if (mediaRef.current) mediaRef.current.currentTime = seconds
+    onMediaSeek?.(seconds)
+  }
 
   const handleCopy = async () => {
     try {
@@ -166,6 +177,24 @@ export function MarkdownPreviewDialog({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-8 sm:py-8">
+          {mediaUrl ? (
+            <div className="mb-6 overflow-hidden rounded-xl border bg-black">
+              <video
+                ref={mediaRef}
+                className="max-h-[45vh] w-full"
+                controls
+                preload="metadata"
+                src={mediaUrl}
+              >
+                <track
+                  kind="captions"
+                  src="data:text/vtt,WEBVTT"
+                  srcLang="zh"
+                  label="字幕"
+                />
+              </video>
+            </div>
+          ) : null}
           {loading ? (
             <p className="text-sm text-muted-foreground">加载文稿中…</p>
           ) : error ? (
@@ -180,6 +209,7 @@ export function MarkdownPreviewDialog({
             <MarkdownPreview
               source={source}
               className="prose-base sm:prose-lg"
+              onTimeLink={handleTimeLink}
               emptyFallback={
                 <p className="text-sm text-muted-foreground">暂无文稿内容</p>
               }

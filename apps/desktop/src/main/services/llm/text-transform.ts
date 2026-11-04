@@ -2,7 +2,11 @@
  * 深层文本变换模块：翻译批处理走 Completion 接缝。
  * 润色见 polish-service（同一 TextCompletionPort）。
  */
-import { languageDisplayName } from '../../../shared/settings'
+import {
+  languageDisplayName,
+  normalizeGlossary,
+  type GlossaryEntry,
+} from '../../../shared/settings'
 import {
   type BatchTransformOptions,
   cleanModelText,
@@ -25,6 +29,15 @@ export interface TranslateSegmentIssue {
   maxAttempts: number
 }
 
+export interface TranslateSegmentResult {
+  /** 当前批次中的 0-based 段索引，便于断点代理直接落库。 */
+  index: number
+  total: number
+  source: string
+  translated: string
+  translationStatus: 'translated' | 'fallback'
+}
+
 export interface TranslateBatchOptions extends BatchTransformOptions {
   sourceLanguage: string
   targetLanguage: string
@@ -33,30 +46,61 @@ export interface TranslateBatchOptions extends BatchTransformOptions {
   maxAttempts?: number
   /** 单段重试 / 回退 / 终止时的观测回调 */
   onSegmentIssue?: (issue: TranslateSegmentIssue) => void
+  /** 翻译时采用的术语对照表。 */
+  glossary?: GlossaryEntry[]
+  /** 批次外的前文/后文，数组末尾/开头分别视为最近上下文。 */
+  contextBefore?: string[]
+  contextAfter?: string[]
+  /** 每段使用的前后文数量，默认各 1 段。 */
+  contextRadius?: number
+  /** 与texts等长的完整原文；续跑时空占位仍可作为相邻段上下文。 */
+  contextTexts?: string[]
+  /** 一段完成后调用；支持异步落盘，index 为 0-based。 */
+  onSegmentComplete?: (result: TranslateSegmentResult) => void | Promise<void>
 }
+
+export const TRANSLATE_CONTEXT_RADIUS = 1
 
 function buildTranslateSystemPrompt(
   sourceLanguage: string,
-  targetLanguage: string
+  targetLanguage: string,
+  glossary: GlossaryEntry[]
 ): string {
   const src = languageDisplayName(sourceLanguage)
   const tgt = languageDisplayName(targetLanguage)
-  return `你是专业字幕翻译。把用户给出的文本从${src}翻译成${tgt}。只输出译文，不要解释，不要原文，不要引号。若原文无需翻译（代码、专有名词、已是目标语言），原样输出原文。`
+  const glossaryRule = glossary.length
+    ? '术语表中的源词出现时，必须优先使用对应的指定译法。'
+    : ''
+  return `你是专业字幕翻译。把用户给出的文本从${src}翻译成${tgt}。只输出译文，不要解释，不要原文，不要引号。若原文无需翻译（代码、专有名词、已是目标语言），原样输出原文。${glossaryRule}`
 }
 
 function buildTranslateUserPrompt(
   text: string,
   sourceLanguage: string,
-  targetLanguage: string
+  targetLanguage: string,
+  glossary: GlossaryEntry[],
+  previous: string[],
+  following: string[]
 ): string {
   const src = languageDisplayName(sourceLanguage)
   const tgt = languageDisplayName(targetLanguage)
-  return [
-    `源语言：${src}`,
-    `目标语言：${tgt}`,
-    `待翻译原文：\n${text}`,
-    '译文：',
-  ].join('\n\n')
+  const parts = [`源语言：${src}`, `目标语言：${tgt}`]
+  if (glossary.length) {
+    parts.push(
+      `术语表（源词 → 指定译法）：\n${glossary
+        .map(entry => `${entry.source} → ${entry.target}`)
+        .join('\n')}`
+    )
+  }
+  if (previous.length) {
+    parts.push(`前文参考（只读，不要翻译输出）：\n${previous.join('\n')}`)
+  }
+  parts.push(`待翻译原文：\n${text}`)
+  if (following.length) {
+    parts.push(`后文参考（只读，不要翻译输出）：\n${following.join('\n')}`)
+  }
+  parts.push('译文：')
+  return parts.join('\n\n')
 }
 
 function previewSource(text: string, max = 80): string {
@@ -80,9 +124,15 @@ export async function translateTextBatch(
   options: TranslateBatchOptions
 ): Promise<string[]> {
   const results: string[] = []
+  const glossary = normalizeGlossary(options.glossary)
+  const contextRadius = Math.max(
+    0,
+    options.contextRadius ?? TRANSLATE_CONTEXT_RADIUS
+  )
   const system = buildTranslateSystemPrompt(
     options.sourceLanguage,
-    options.targetLanguage
+    options.targetLanguage,
+    glossary
   )
   const maxAttempts = Math.max(
     1,
@@ -94,23 +144,63 @@ export async function translateTextBatch(
     const trimmed = (texts[i] ?? '').trim()
     if (!trimmed) {
       results.push('')
+      await options.onSegmentComplete?.({
+        index: i,
+        total: texts.length,
+        source: '',
+        translated: '',
+        translationStatus: 'translated',
+      })
       options.onProgress?.(i + 1, texts.length)
       continue
     }
     if (isPunctuationOnly(trimmed)) {
       results.push(trimmed)
+      await options.onSegmentComplete?.({
+        index: i,
+        total: texts.length,
+        source: trimmed,
+        translated: trimmed,
+        translationStatus: 'translated',
+      })
       options.onProgress?.(i + 1, texts.length)
       continue
     }
 
+    const previous = [
+      ...(options.contextBefore ?? []).map(text => text.trim()),
+      ...(options.contextTexts ?? texts)
+        .slice(Math.max(0, i - contextRadius), i)
+        .map(text => text.trim()),
+    ]
+      .filter(Boolean)
+      .slice(-contextRadius)
+    const following = [
+      ...(options.contextTexts ?? texts)
+        .slice(i + 1, i + 1 + contextRadius)
+        .map(text => text.trim()),
+      ...(options.contextAfter ?? []).map(text => text.trim()),
+    ]
+      .filter(Boolean)
+      .slice(0, contextRadius)
     const translated = await translateOneSegment(trimmed, {
       index: i,
       total: texts.length,
       system,
       maxAttempts,
       options,
+      glossary,
+      previous,
+      following,
     })
-    results.push(translated)
+    results.push(translated.translated)
+    await options.onSegmentComplete?.({
+      index: i,
+      total: texts.length,
+      source: trimmed,
+      translated: translated.translated,
+      translationStatus: translated.translationStatus,
+    })
     options.onProgress?.(i + 1, texts.length)
   }
 
@@ -125,9 +215,21 @@ async function translateOneSegment(
     system: string
     maxAttempts: number
     options: TranslateBatchOptions
+    glossary: GlossaryEntry[]
+    previous: string[]
+    following: string[]
   }
-): Promise<string> {
-  const { index, total, system, maxAttempts, options } = args
+): Promise<Pick<TranslateSegmentResult, 'translated' | 'translationStatus'>> {
+  const {
+    index,
+    total,
+    system,
+    maxAttempts,
+    options,
+    glossary,
+    previous,
+    following,
+  } = args
   let lastError: Error | null = null
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -138,14 +240,17 @@ async function translateOneSegment(
         user: buildTranslateUserPrompt(
           source,
           options.sourceLanguage,
-          options.targetLanguage
+          options.targetLanguage,
+          glossary,
+          previous,
+          following
         ),
         temperature: 0.1,
         maxTokens: 2000,
       })
       const translated = cleanModelText(response, 'translation')
       if (translated) {
-        return translated
+        return { translated, translationStatus: 'translated' }
       }
       lastError = new Error('翻译结果为空')
     } catch (error) {
@@ -178,7 +283,7 @@ async function translateOneSegment(
         attempt,
         maxAttempts,
       })
-      return source
+      return { translated: source, translationStatus: 'fallback' }
     }
 
     // 硬错误：终止整批
@@ -198,7 +303,7 @@ async function translateOneSegment(
   }
 
   // 理论上不可达；防御性回退
-  return source
+  return { translated: source, translationStatus: 'fallback' }
 }
 
 export { cleanModelText, isPunctuationOnly }

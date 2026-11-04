@@ -8,7 +8,12 @@ import {
 } from '../shared/ipc'
 import type { SubtitleBurnMode, TaskCreationSettings } from '../shared/settings'
 import type { SystemCheckProgress } from '../shared/system-check'
-import type { TaskKind, TaskLog, TranslationTask } from '../shared/types/video'
+import type {
+  TaskKind,
+  TaskLog,
+  TranscriptionSegment,
+  TranslationTask,
+} from '../shared/types/video'
 import type { UpdateCheckerStatus } from '../shared/update-checker'
 
 declare global {
@@ -54,6 +59,36 @@ declare global {
         colors?: BurnSubtitleColors
       ) => Promise<{ success: boolean; burnedVideo?: string; error?: string }>
       getTaskLogs: (taskId: string) => Promise<TaskLog[]>
+      attachTaskMedia: (
+        taskId: string
+      ) => Promise<{ success: boolean; error?: string }>
+      importSubtitles: (settings?: Partial<TaskCreationSettings>) => Promise<{
+        success: boolean
+        taskId?: string
+        error?: string
+      }>
+      updateTaskSegment: (
+        taskId: string,
+        segment: TranscriptionSegment
+      ) => Promise<{ success: boolean; error?: string }>
+      retranslateTaskSegment: (
+        taskId: string,
+        segmentId: string
+      ) => Promise<{ success: boolean; error?: string }>
+      regenerateTaskSubtitles: (
+        taskId: string
+      ) => Promise<{ success: boolean; error?: string }>
+      reuseTaskTranscript: (
+        taskId: string,
+        options: {
+          kind: TaskKind
+          targetLanguage: string
+          settings?: Partial<TaskCreationSettings>
+        }
+      ) => Promise<{ success: boolean; taskId?: string; error?: string }>
+      getTaskMediaUrl: (
+        taskId: string
+      ) => Promise<{ success: boolean; url?: string; error?: string }>
 
       getLlmApiKeyStatus: (serviceId?: string) => Promise<{
         success: boolean
@@ -218,6 +253,27 @@ const api = {
   ) => ipcRenderer.invoke(IpcChannels.burnTaskSubtitles, taskId, mode, colors),
   getTaskLogs: (taskId: string) =>
     ipcRenderer.invoke(IpcChannels.getTaskLogs, taskId),
+
+  attachTaskMedia: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.attachTaskMedia, taskId),
+  importSubtitles: (settings?: Partial<TaskCreationSettings>) =>
+    ipcRenderer.invoke(IpcChannels.importSubtitles, settings),
+  updateTaskSegment: (taskId: string, segment: TranscriptionSegment) =>
+    ipcRenderer.invoke(IpcChannels.updateTaskSegment, taskId, segment),
+  retranslateTaskSegment: (taskId: string, segmentId: string) =>
+    ipcRenderer.invoke(IpcChannels.retranslateTaskSegment, taskId, segmentId),
+  regenerateTaskSubtitles: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.regenerateTaskSubtitles, taskId),
+  reuseTaskTranscript: (
+    taskId: string,
+    options: {
+      kind: TaskKind
+      targetLanguage: string
+      settings?: Partial<TaskCreationSettings>
+    }
+  ) => ipcRenderer.invoke(IpcChannels.reuseTaskTranscript, taskId, options),
+  getTaskMediaUrl: (taskId: string) =>
+    ipcRenderer.invoke(IpcChannels.getTaskMediaUrl, taskId),
 
   getLlmApiKeyStatus: (serviceId?: string) =>
     ipcRenderer.invoke(IpcChannels.llmApiKeyStatus, serviceId),

@@ -66,8 +66,23 @@ test('taskOptionsFromAppSettings 从 AppSettings 映射运行配置', () => {
   assert.equal(options.llmBaseUrl, 'https://api.example.com')
   assert.equal(options.translateModel, 'gpt-4o-mini')
   assert.equal(options.polishModel, '')
+  assert.deepEqual(options.glossary, [])
   assert.equal(options.downloadProxy, 'socks5://127.0.0.1:7890')
   assert.equal(options.downloadCookieBrowser, 'chrome')
+})
+
+test('TaskRuntimeOptions 往返保留并规范化术语库', () => {
+  const options = normalizeTaskRuntimeOptions({
+    glossary: [
+      { source: ' API ', target: '接口' },
+      { source: 'api', target: '重复' },
+    ],
+  })
+  assert.deepEqual(options.glossary, [{ source: 'API', target: '接口' }])
+  assert.deepEqual(
+    parseTaskRuntimeOptionsJson(serializeTaskRuntimeOptions(options))?.glossary,
+    options.glossary
+  )
 })
 
 test('parseTaskRuntimeOptionsJson 往返保留下载设置', () => {

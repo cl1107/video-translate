@@ -106,6 +106,7 @@ export function DocumentTaskList({
   const [deletingTasks, setDeletingTasks] = useState(false)
   const [previewTaskId, setPreviewTaskId] = useState<string | null>(null)
   const [previewSource, setPreviewSource] = useState('')
+  const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [banner, setBanner] = useState<{
@@ -146,7 +147,10 @@ export function DocumentTaskList({
     setPreviewLoading(true)
     setPreviewError(null)
     setPreviewSource('')
+    setPreviewMediaUrl(null)
     try {
+      const media = await App.getTaskMediaUrl(taskId)
+      if (media.success) setPreviewMediaUrl(media.url ?? null)
       const result = await App.getTaskMarkdownContent(taskId)
       if (result.success && result.content != null) {
         setPreviewSource(result.content)
@@ -163,6 +167,7 @@ export function DocumentTaskList({
   const closePreview = useCallback(() => {
     setPreviewTaskId(null)
     setPreviewSource('')
+    setPreviewMediaUrl(null)
     setPreviewError(null)
     setPreviewLoading(false)
   }, [])
@@ -612,6 +617,7 @@ export function DocumentTaskList({
           if (!previewSource) throw new Error('文稿为空')
           await navigator.clipboard.writeText(previewSource)
         }}
+        mediaUrl={previewMediaUrl}
         onOpenFile={
           previewTaskId
             ? async () => {

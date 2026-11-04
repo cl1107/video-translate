@@ -68,6 +68,52 @@ test('polishTranscriptBatch 在任一段润色失败时报告段落位置并终�
   )
 })
 
+test('polishTranscriptBatch 失败重试时恢复已保存的前段', async () => {
+  const saved = new Map<number, string>()
+  let requests = 0
+  const client = {
+    complete: async ({ user }: { user: string }) => {
+      requests++
+      if (/当前段（请润色并只输出本段）：\nsecond/.test(user)) {
+        throw new Error('temporary failure')
+      }
+      return 'polished first'
+    },
+  } as unknown as OpenAiCompletionClient
+  const options = {
+    sourceLanguage: 'en',
+    config: {
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      apiKey: 'ollama',
+      model: 'qwen2.5:7b',
+    },
+    client,
+    loadPart: async ({ index, input }: { index: number; input: string }) =>
+      saved.get(index) && input ? saved.get(index) : undefined,
+    savePart: async ({ index, output }: { index: number; output: string }) => {
+      saved.set(index, output)
+    },
+  }
+
+  await assert.rejects(() =>
+    polishTranscriptBatch(['first', 'second'], options)
+  )
+  assert.equal(requests, 2)
+
+  const retryClient = {
+    complete: async () => {
+      requests++
+      return 'polished second'
+    },
+  } as unknown as OpenAiCompletionClient
+  const result = await polishTranscriptBatch(['first', 'second'], {
+    ...options,
+    client: retryClient,
+  })
+  assert.deepEqual(result, ['polished first', 'polished second'])
+  assert.equal(requests, 3)
+})
+
 test('polishTranscriptBatch 对中间段附带前后文提示', async () => {
   const users: string[] = []
   const client = {

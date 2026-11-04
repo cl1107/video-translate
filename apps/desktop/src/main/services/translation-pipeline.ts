@@ -3,6 +3,8 @@
  * 接口：run / 协作式 AbortSignal；阶段进度与依赖检查内化。
  */
 import { promises as fs } from 'node:fs'
+import { app } from 'electron'
+import { createTextPartCache } from './text-part-cache'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
@@ -51,7 +53,15 @@ import { createCompletionClient } from './llm/openai-completion-client'
 import { polishTranscriptBatch } from './llm/polish-service'
 import { translateTextBatch } from './llm/text-transform'
 import { tempWorkspace } from './temp-workspace'
-
+import {
+  createCheckpointFingerprint,
+  getTaskCheckpoint,
+  isCheckpointFingerprintValid,
+  markAsrComplete,
+  markPolishComplete,
+  saveTranslationProgress,
+  seedTaskTranscript,
+} from './checkpoint'
 export interface PipelineHooks {
   onLog: (
     level: 'info' | 'warn' | 'error' | 'success',
@@ -111,39 +121,94 @@ export async function runTranslationPipeline(
     await tempWorkspace.removeTaskDir(task.id)
     context.workDir = await tempWorkspace.ensureTaskDir(task.id)
 
-    // 平台原生字幕优先：有可读字幕则跳过 ASR（仍可能烧录硬字幕，需 FFmpeg）
-    const platformSegments = await tryLoadPlatformSubtitleSegments(task, hooks)
+    const checkpoint = getTaskCheckpoint(task.id)
+    const storedSegments = databaseManager.getTranscriptionSegments(task.id)
+    const mediaStat = ['srt', 'vtt'].includes(
+      task.videoFile.format.toLowerCase()
+    )
+      ? null
+      : await getReadableMediaStat(task.videoFile.path)
+    const mediaAvailable = mediaStat !== null
+    const asrFingerprint = createCheckpointFingerprint({
+      engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+      sourceLanguage: task.sourceLanguage,
+      mediaPath: task.videoFile.path,
+      mediaSize: mediaStat?.size,
+      mediaMtimeMs: mediaStat?.mtimeMs,
+      platformSubtitlePath: task.platformSubtitlePath,
+    })
+    const storedTranscriptComplete =
+      storedSegments.length > 0 &&
+      checkpoint.asrComplete &&
+      // 媒体被删除不应让已有完整转录失效；媒体重新存在时才校验 size/mtime。
+      (!mediaStat ||
+        isCheckpointFingerprintValid(checkpoint, 'asr', asrFingerprint))
+    const legacyCompletedTranscript =
+      !mediaAvailable &&
+      task.status === TaskStatus.COMPLETED &&
+      task.segments.length > 0 &&
+      storedSegments.length > 0
+
+    // 平台原生字幕优先；已有完整断点或无媒体的已完成导入任务不再读取媒体。
+    const platformSegments = storedTranscriptComplete
+      ? null
+      : await tryLoadPlatformSubtitleSegments(task, hooks)
     const usePlatformSubtitles = Boolean(
       platformSegments && platformSegments.length > 0
     )
-
     const originalOnly = options.subtitleProcessingMode === 'extract'
+    if (options.burnSubtitles && !mediaAvailable) {
+      throw new Error('媒体文件不存在，无法烧录硬字幕；可关闭烧录后导出字幕')
+    }
     await ensurePipelineDependencies(options, hooks, signal, {
-      requireAsr: !usePlatformSubtitles,
+      requireAsr:
+        !usePlatformSubtitles &&
+        !storedTranscriptComplete &&
+        !legacyCompletedTranscript,
       requireLlm: !originalOnly,
+      requireFfmpeg: mediaAvailable || options.burnSubtitles,
     })
 
-    const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
-    context.videoSize = {
-      width: videoInfo.width,
-      height: videoInfo.height,
+    if (mediaAvailable) {
+      const videoInfo = await ffmpegProcessor.getVideoInfo(task.videoFile.path)
+      context.videoSize = { width: videoInfo.width, height: videoInfo.height }
+    } else {
+      // 导入 SRT/VTT 或仅剩完整转录时没有媒体，字幕仍可导出。
+      context.videoSize = { width: 1920, height: 1080 }
     }
 
-    if (usePlatformSubtitles && platformSegments) {
+    if (storedTranscriptComplete || legacyCompletedTranscript) {
+      const segments = storedTranscriptComplete
+        ? storedSegments
+        : seedTaskTranscript(task.id, task.segments)
       context.transcription = {
-        segments: platformSegments,
+        segments,
+        engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+        language: task.detectedLanguage || toLanguageCode(task.sourceLanguage),
+        rawText: segments.map(s => s.originalText).join('\n'),
+      }
+      hooks.onSegments(segments)
+      hooks.onLog(
+        'info',
+        '已恢复完整转录断点，跳过音频提取与语音识别',
+        `${segments.length} 段`
+      )
+    } else if (usePlatformSubtitles && platformSegments) {
+      const segments = seedTaskTranscript(task.id, platformSegments)
+      markAsrComplete(task.id, asrFingerprint)
+      context.transcription = {
+        segments,
         engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
         language:
           task.platformSubtitleLanguage || toLanguageCode(task.sourceLanguage),
-        rawText: platformSegments.map(s => s.originalText).join('\n'),
+        rawText: segments.map(s => s.originalText).join('\n'),
       }
       await hooks.onStatus(TaskStatus.TRANSCRIBING, 55)
-      databaseManager.saveTranscriptionSegments(task.id, platformSegments)
-      hooks.onSegments(platformSegments)
+      hooks.onSegments(segments)
       hooks.onLog(
         'success',
         '已采用平台字幕作为原文，跳过音频提取与语音识别',
-        `${platformSegments.length} 段` +
+        `${segments.length} 段` +
           (task.platformSubtitleLanguage
             ? ` · 语言 ${task.platformSubtitleLanguage}`
             : '')
@@ -163,8 +228,10 @@ export async function runTranslationPipeline(
         asrEngine,
         context.workDir,
         hooks,
-        signal
+        signal,
+        asrFingerprint
       )
+      markAsrComplete(task.id, asrFingerprint)
     }
 
     const detectedLanguage = normalizeDetectedLanguage(
@@ -175,18 +242,32 @@ export async function runTranslationPipeline(
     if (detectedLanguage) {
       hooks.onLog('info', '检测到原文语言', detectedLanguage)
     }
-    context.displaySegments = buildDisplaySegments(
-      context.transcription.segments,
-      {
-        maxDisplayColumns:
-          context.videoSize.width < context.videoSize.height ? 42 : 68,
-      }
-    )
+    const restoreOneToOneSegments =
+      storedTranscriptComplete &&
+      (checkpoint.polishComplete ||
+        checkpoint.translationComplete ||
+        checkpoint.manualReviewed)
+    context.displaySegments = restoreOneToOneSegments
+      ? context.transcription.segments.map(segment => ({
+          ...segment,
+          sourceSegmentIds: [segment.id],
+        }))
+      : buildDisplaySegments(context.transcription.segments, {
+          maxDisplayColumns:
+            context.videoSize.width < context.videoSize.height ? 42 : 68,
+        })
     hooks.onLog(
       'info',
       '显示段整理完成',
       `${usePlatformSubtitles ? '平台字幕' : '识别'} ${context.transcription.segments.length} 段 → 显示 ${context.displaySegments.length} 段`
     )
+
+    // 显示段成为新的权威集合，必须原子替换，避免合并前的残留段再次出现。
+    databaseManager.replaceTranscriptionSegments(
+      task.id,
+      context.displaySegments
+    )
+    hooks.onSegments(context.displaySegments)
 
     if (originalOnly) {
       hooks.onLog('info', '已选择仅提取原文字幕，跳过润色与翻译')
@@ -258,18 +339,39 @@ export async function runTranslationPipeline(
   }
 }
 
+async function getReadableMediaStat(
+  filePath: string
+): Promise<{ size: number; mtimeMs: number } | null> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.isFile() && stat.size > 0
+      ? { size: stat.size, mtimeMs: stat.mtimeMs }
+      : null
+  } catch {
+    return null
+  }
+}
+
 async function ensurePipelineDependencies(
   options: TaskRuntimeOptions,
   hooks: PipelineHooks,
   signal?: AbortSignal,
-  opts?: { requireAsr?: boolean; requireLlm?: boolean }
+  opts?: {
+    requireAsr?: boolean
+    requireLlm?: boolean
+    requireFfmpeg?: boolean
+  }
 ): Promise<void> {
   throwIfAborted(signal)
-  hooks.onLog('info', '检查 FFmpeg 可用性...')
-  if (!(await ffmpegProcessor.isAvailable())) {
-    throw new Error('FFmpeg 不可用，请先安装 FFmpeg')
+  if (opts?.requireFfmpeg !== false) {
+    hooks.onLog('info', '检查 FFmpeg 可用性...')
+    if (!(await ffmpegProcessor.isAvailable())) {
+      throw new Error('FFmpeg 不可用，请先安装 FFmpeg')
+    }
+    hooks.onLog('success', 'FFmpeg 可用性检查通过')
+  } else {
+    hooks.onLog('info', '无媒体文件，仅使用已保存转录结果')
   }
-  hooks.onLog('success', 'FFmpeg 可用性检查通过')
 
   const requireAsr = opts?.requireAsr !== false
   if (requireAsr) {
@@ -388,7 +490,8 @@ async function transcribeStage(
   asrEngine: TaskRuntimeOptions['asrEngine'],
   workDir: string,
   hooks: PipelineHooks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  checkpointKey?: string
 ): Promise<AsrTranscriptionResult> {
   throwIfAborted(signal)
   await hooks.onStatus(TaskStatus.TRANSCRIBING, 35)
@@ -404,6 +507,13 @@ async function transcribeStage(
       engine: asrEngine,
       language: toLanguageCode(task.sourceLanguage),
       workDir,
+      checkpointDir: path.join(
+        app.getPath('userData'),
+        'asr-checkpoints',
+        task.id
+      ),
+      checkpointKey,
+      signal,
       onPartialSegments: partial => {
         if (signal?.aborted) return
         hooks.onTranscriptionPartial?.(partial)
@@ -421,8 +531,9 @@ async function transcribeStage(
     throw new Error('语音识别未产生任何结果')
   }
 
-  databaseManager.saveTranscriptionSegments(task.id, transcription.segments)
-  hooks.onSegments(transcription.segments)
+  const completeSegments = seedTaskTranscript(task.id, transcription.segments)
+  transcription.segments = completeSegments
+  hooks.onSegments(completeSegments)
   hooks.onLog(
     'success',
     '语音识别完成',
@@ -440,11 +551,39 @@ async function polishStage(
 ): Promise<DisplaySegment[]> {
   throwIfAborted(signal)
   const polishRequested = options.polishTranscript !== false
+  const polishFingerprint = createCheckpointFingerprint({
+    baseUrl: options.llmBaseUrl,
+    model: options.polishModel || options.translateModel,
+    sourceLanguage: task.sourceLanguage,
+    enabled: polishRequested,
+  })
+  const checkpoint = getTaskCheckpoint(task.id)
+  if (checkpoint.manualReviewed) return segments
+  if (isCheckpointFingerprintValid(checkpoint, 'polish', polishFingerprint)) {
+    return segments
+  }
+  if (
+    polishRequested &&
+    checkpoint.polishComplete &&
+    checkpoint.polishFingerprint !== polishFingerprint
+  ) {
+    databaseManager.clearPolishAndTranslation(task.id)
+    for (const segment of segments) {
+      segment.polishedText = undefined
+      segment.translatedText = undefined
+      segment.translationStatus = undefined
+    }
+  }
   if (!polishRequested) {
-    return segments.map(segment => ({
+    const result = segments.map(segment => ({
       ...segment,
       polishedText: getAsrOrSelf(segment),
+      translatedText: undefined,
+      translationStatus: undefined,
     }))
+    databaseManager.replaceTranscriptionSegments(task.id, result)
+    markPolishComplete(task.id, polishFingerprint)
+    return result
   }
 
   // 润色模型为空 = 跟随翻译模型
@@ -459,10 +598,13 @@ async function polishStage(
 
   if (!polishResolved.ok) {
     hooks.onLog('warn', '已跳过识别文本润色', polishResolved.reason)
-    return segments.map(segment => ({
+    const result = segments.map(segment => ({
       ...segment,
       polishedText: getAsrOrSelf(segment),
     }))
+    databaseManager.saveTranscriptionSegments(task.id, result)
+    markPolishComplete(task.id, polishFingerprint)
+    return result
   }
 
   await hooks.onStatus(TaskStatus.POLISHING, 60)
@@ -477,6 +619,15 @@ async function polishStage(
     sourceLanguage: task.sourceLanguage,
     config: polishResolved.config,
     signal,
+    ...createTextPartCache(
+      path.join(
+        app.getPath('userData'),
+        'text-checkpoints',
+        task.id,
+        'subtitle-polish'
+      ),
+      { polishFingerprint, texts }
+    ),
     onProgress: (completed, total) => {
       const normalized = 60 + (completed / total) * 5
       void hooks.onStatus(TaskStatus.POLISHING, normalized)
@@ -488,6 +639,19 @@ async function polishStage(
     polishedText: polished[index] || getAsrOrSelf(segment),
   }))
 
+  databaseManager.saveTranscriptionSegments(
+    task.id,
+    merged.map(segment => ({
+      id: segment.id,
+      start: segment.start,
+      end: segment.end,
+      originalText: segment.originalText,
+      polishedText: segment.polishedText,
+      translatedText: segment.translatedText,
+      confidence: segment.confidence,
+    }))
+  )
+  markPolishComplete(task.id, polishFingerprint)
   hooks.onLog('success', '识别文本润色完成', `润色 ${merged.length} 个显示段`)
   return merged
 }
@@ -504,6 +668,35 @@ async function translateStage(
   signal?: AbortSignal
 ): Promise<DisplaySegment[]> {
   throwIfAborted(signal)
+  const translationFingerprint = createCheckpointFingerprint({
+    baseUrl: options.llmBaseUrl,
+    model: options.translateModel,
+    sourceLanguage: task.sourceLanguage,
+    targetLanguage: task.targetLanguage,
+    glossary: options.glossary || [],
+  })
+  const checkpoint = getTaskCheckpoint(task.id)
+  if (checkpoint.manualReviewed && checkpoint.translationComplete)
+    return segments
+  if (
+    isCheckpointFingerprintValid(
+      checkpoint,
+      'translation',
+      translationFingerprint
+    )
+  ) {
+    return segments
+  }
+  if (
+    checkpoint.translationFingerprint &&
+    checkpoint.translationFingerprint !== translationFingerprint
+  ) {
+    databaseManager.clearTranslationResults(task.id)
+    for (const segment of segments) {
+      segment.translatedText = undefined
+      segment.translationStatus = undefined
+    }
+  }
   await hooks.onStatus(TaskStatus.TRANSLATING, 65)
 
   const resolved = resolveLlmCompletionConfig(
@@ -525,47 +718,118 @@ async function translateStage(
   )
 
   const texts = segments.map(segment => getTranslateInput(segment))
-  let fallbackCount = 0
-  const translated = await translateTextBatch(texts, {
+  const translated = segments.map(segment => segment.translatedText)
+  const statuses: Array<TranscriptionSegment['translationStatus']> =
+    segments.map(
+      segment =>
+        segment.translationStatus ||
+        (segment.translatedText ? 'translated' : undefined)
+    )
+  const requestTexts = texts.map((text, index) => (statuses[index] ? '' : text))
+  let completedCount = statuses.filter(Boolean).length
+  let fallbackCount = statuses.filter(status => status === 'fallback').length
+  const persistResult = (
+    index: number,
+    value: string,
+    status: 'translated' | 'fallback'
+  ) => {
+    const segment = segments[index]
+    if (!segment) return
+    translated[index] = value
+    statuses[index] = status
+    completedCount += 1
+    const saved: TranscriptionSegment = {
+      id: segment.id,
+      start: segment.start,
+      end: segment.end,
+      originalText: segment.originalText,
+      polishedText: segment.polishedText,
+      translatedText: value,
+      translationStatus: status,
+      confidence: segment.confidence,
+    }
+    databaseManager.saveTranscriptionSegments(task.id, [saved])
+    saveTranslationProgress(
+      task.id,
+      translationFingerprint,
+      completedCount,
+      false
+    )
+  }
+
+  // 使用 translateTextBatch 的真实逐段回调；兼容旧实现时在批次返回后补齐落盘。
+  const translateOptions = {
     client,
     sourceLanguage: task.sourceLanguage,
     targetLanguage: task.targetLanguage,
+    glossary: options.glossary || [],
+    contextTexts: texts,
     signal,
-    onProgress: (completed, total) => {
+    onSegmentComplete: async (result: {
+      index: number
+      total: number
+      source: string
+      translated: string
+      translationStatus: 'translated' | 'fallback'
+    }) => {
+      if (result.index < 0 || result.index >= segments.length) return
+      if (statuses[result.index]) return
+      if (result.translationStatus === 'fallback') fallbackCount += 1
+      persistResult(result.index, result.translated, result.translationStatus)
+    },
+    onProgress: (completed: number, total: number) => {
       const normalized = 65 + (completed / total) * 20
       void hooks.onStatus(TaskStatus.TRANSLATING, normalized)
     },
-    onSegmentIssue: issue => {
+    onSegmentIssue: (issue: {
+      action: 'retry' | 'fallback' | 'error'
+      index: number
+      total: number
+      reason: string
+      attempt: number
+      maxAttempts: number
+      source: string
+    }) => {
       if (issue.action === 'retry') {
         hooks.onLog(
           'warn',
           `翻译第 ${issue.index}/${issue.total} 段将重试`,
           `${issue.reason}（第 ${issue.attempt}/${issue.maxAttempts} 次）原文：${issue.source}`
         )
-        return
-      }
-      if (issue.action === 'fallback') {
-        fallbackCount += 1
+      } else if (issue.action === 'fallback') {
         hooks.onLog(
           'warn',
           `翻译第 ${issue.index}/${issue.total} 段回退原文`,
           `${issue.reason}；已保留原文：${issue.source}`
         )
-        return
+      } else {
+        hooks.onLog(
+          'error',
+          `翻译第 ${issue.index}/${issue.total} 段失败`,
+          `${issue.reason}；原文：${issue.source}`
+        )
       }
-      hooks.onLog(
-        'error',
-        `翻译第 ${issue.index}/${issue.total} 段失败`,
-        `${issue.reason}；原文：${issue.source}`
-      )
     },
-  })
+  }
+  const results = await translateTextBatch(requestTexts, translateOptions)
+
+  // 当前安装的旧 text-transform 没有 onSegmentComplete 时，仍按返回顺序逐段落库。
+  for (let index = 0; index < results.length; index++) {
+    if (!statuses[index]) {
+      const value = results[index] ?? getDisplaySource(segments[index]!)
+      persistResult(
+        index,
+        value,
+        value === texts[index] ? 'fallback' : 'translated'
+      )
+    }
+  }
 
   const merged = segments.map((segment, index) => ({
     ...segment,
     translatedText: translated[index] ?? getDisplaySource(segment),
+    translationStatus: statuses[index] || 'translated',
   }))
-
   const taskSegments: TranscriptionSegment[] = merged.map(segment => ({
     id: segment.id,
     start: segment.start,
@@ -573,9 +837,15 @@ async function translateStage(
     originalText: segment.originalText,
     polishedText: segment.polishedText,
     translatedText: segment.translatedText,
+    translationStatus: segment.translationStatus,
     confidence: segment.confidence,
   }))
-  databaseManager.replaceTranscriptionSegments(task.id, taskSegments)
+  saveTranslationProgress(
+    task.id,
+    translationFingerprint,
+    taskSegments.length,
+    true
+  )
   hooks.onSegments(taskSegments)
 
   if (fallbackCount > 0) {

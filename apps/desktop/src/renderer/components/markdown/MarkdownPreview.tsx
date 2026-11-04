@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from 'renderer/lib/utils'
@@ -9,6 +9,8 @@ export type MarkdownPreviewProps = {
   className?: string
   /** 源为空时的占位；默认「暂无内容」 */
   emptyFallback?: ReactNode
+  /** 处理文稿中的 #t=seconds 媒体定位链接 */
+  onTimeLink?: (seconds: number) => void
 }
 
 /**
@@ -21,6 +23,7 @@ export function MarkdownPreview({
   source,
   className,
   emptyFallback,
+  onTimeLink,
 }: MarkdownPreviewProps) {
   const trimmed = source.trim()
 
@@ -50,7 +53,27 @@ export function MarkdownPreview({
         className
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{trimmed}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ children, href, onClick, ...props }) => {
+            const match = /^#t=(\\d+(?:\\.\\d+)?)$/.exec(href ?? '')
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              onClick?.(event)
+              if (!match || !onTimeLink) return
+              event.preventDefault()
+              onTimeLink(Number(match[1]))
+            }
+            return (
+              <a {...props} href={href} onClick={handleClick}>
+                {children}
+              </a>
+            )
+          },
+        }}
+      >
+        {trimmed}
+      </ReactMarkdown>
     </article>
   )
 }

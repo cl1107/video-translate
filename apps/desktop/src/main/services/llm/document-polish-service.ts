@@ -118,6 +118,18 @@ export function stripOuterMarkdownFence(text: string): string {
   return t
 }
 
+export interface DocumentPartCheckpoint {
+  loadPart?: (part: {
+    index: number
+    input: string
+  }) => Promise<string | undefined>
+  savePart?: (part: {
+    index: number
+    input: string
+    output: string
+  }) => Promise<void>
+}
+
 export interface PolishDocumentOptions {
   title: string
   sourceLanguage: string
@@ -127,6 +139,9 @@ export interface PolishDocumentOptions {
   signal?: AbortSignal
   client?: TextCompletionPort
   maxChunkChars?: number
+  /** 可选的分块恢复钩子；持久化及配置校验由调用方负责 */
+  loadPart?: DocumentPartCheckpoint['loadPart']
+  savePart?: DocumentPartCheckpoint['savePart']
 }
 
 /**
@@ -153,19 +168,30 @@ export async function polishDocumentToMarkdown(
     throwIfAborted(options.signal)
     const partLabel =
       chunks.length > 1 ? `${i + 1}/${chunks.length}` : undefined
+    const input = buildDocumentPolishUserPrompt({
+      title: options.title,
+      sourceLanguage: options.sourceLanguage,
+      durationSeconds: options.durationSeconds,
+      rawText: chunks[i] ?? '',
+      partLabel,
+    })
+    const cached = await options.loadPart?.({ index: i, input })
+    throwIfAborted(options.signal)
+    if (cached?.trim()) {
+      parts.push(cached)
+      options.onProgress?.(i + 1, chunks.length)
+      continue
+    }
+
     try {
       const response = await client.complete({
         system,
-        user: buildDocumentPolishUserPrompt({
-          title: options.title,
-          sourceLanguage: options.sourceLanguage,
-          durationSeconds: options.durationSeconds,
-          rawText: chunks[i] ?? '',
-          partLabel,
-        }),
+        user: input,
         temperature: 0.2,
         maxTokens: 4096,
       })
+      // 完成请求后先检查取消，避免已取消的结果进入缓存或结果集。
+      throwIfAborted(options.signal)
       let polished = stripOuterMarkdownFence(cleanModelText(response, 'polish'))
       if (!polished) {
         throw new Error('润色结果为空')
@@ -175,6 +201,8 @@ export async function polishDocumentToMarkdown(
         const title = options.title.trim() || '文稿'
         polished = `# ${title}\n\n${polished}`
       }
+      await options.savePart?.({ index: i, input, output: polished })
+      throwIfAborted(options.signal)
       parts.push(polished)
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') throw error

@@ -49,6 +49,15 @@ import {
 import { ffmpegProcessor } from './ffmpeg/processor'
 import { getLlmApiKey } from './secure-store'
 import { tempWorkspace } from './temp-workspace'
+import { getTaskCheckpoint, updateCheckpointAfterReviewed } from './checkpoint'
+import {
+  assertEditableTask,
+  createImportedSubtitleTask,
+  createReusedTask,
+  exportWorkbenchSubtitles,
+  translateWorkbenchSegment,
+  validateSegmentEdit,
+} from './subtitle-workbench'
 import {
   burnHardSubtitlesStage,
   createAbortError,
@@ -112,6 +121,7 @@ export class TaskManager {
   /** 简单串行队列，避免多文件并行打爆本机 */
   private runQueue: Array<() => Promise<void>> = []
   private queueRunning = false
+  private editingTasks = new Set<string>()
 
   constructor() {
     this.loadActiveTasks()
@@ -418,7 +428,9 @@ export class TaskManager {
 
     try {
       // 在线任务：先下载到本地，再进入对应流水线
-      await this.ensureLocalVideoReady(task, controller.signal)
+      if (!getTaskCheckpoint(taskId).asrComplete || options.burnSubtitles) {
+        await this.ensureLocalVideoReady(task, controller.signal)
+      }
 
       const hooks = {
         onLog: (level: TaskLog['level'], message: string, details?: string) =>
@@ -871,6 +883,15 @@ export class TaskManager {
         task.status !== TaskStatus.FAILED &&
         task.status !== TaskStatus.CANCELLED
       ) {
+        // 上次进程退出后不应继续显示虚假的处理中状态；由用户恢复。
+        if (task.status !== TaskStatus.PAUSED) {
+          task.status = TaskStatus.PAUSED
+          databaseManager.updateTaskStatus(
+            task.id,
+            TaskStatus.PAUSED,
+            task.progress
+          )
+        }
         this.activeTasks.set(task.id, task)
       }
     }
@@ -930,6 +951,8 @@ export class TaskManager {
   }
 
   resumeTask(taskId: string): void {
+    if (this.abortControllers.has(taskId) || this.editingTasks.has(taskId))
+      return
     const task =
       this.activeTasks.get(taskId) ?? databaseManager.getTranslationTask(taskId)
     if (!task) return
@@ -946,12 +969,19 @@ export class TaskManager {
     task.errorMessage = undefined
     this.activeTasks.set(taskId, task)
     databaseManager.updateTaskStatus(taskId, TaskStatus.PENDING, 0, '')
-    this.addTaskLog(taskId, 'info', '恢复任务（将重新执行流水线）')
+    this.addTaskLog(
+      taskId,
+      'info',
+      '恢复任务（复用已完成阶段，仅补未完成部分）'
+    )
     this.notifyTaskUpdate(task)
     this.enqueueRun(taskId)
   }
 
   deleteTask(taskId: string): void {
+    if (this.editingTasks.has(taskId))
+      throw new Error('任务正在保存或翻译，请完成后再删除')
+    const deletedTask = this.getTask(taskId)
     const controller = this.abortControllers.get(taskId)
     controller?.abort(createAbortError('任务已删除'))
     this.abortControllers.delete(taskId)
@@ -959,13 +989,26 @@ export class TaskManager {
     this.tempLogs.delete(taskId)
     databaseManager.deleteTranslationTask(taskId)
     void tempWorkspace.removeTaskDir(taskId)
-    // 清理在线任务下载缓存（本地上传源文件不删）
-    void fs
-      .rm(path.join(getDownloadsRoot(), taskId), {
+    for (const cache of ['asr-checkpoints', 'text-checkpoints']) {
+      void fs.rm(path.join(app.getPath('userData'), cache, taskId), {
         recursive: true,
         force: true,
       })
-      .catch(() => {})
+    }
+    // 清理在线任务下载缓存（本地上传源文件不删）
+    const downloadDir = path.join(getDownloadsRoot(), taskId)
+    const referenced = databaseManager.getAllTranslationTasks().some(other => {
+      const relative = path.relative(downloadDir, other.videoFile.path)
+      return (
+        relative !== '..' &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative)
+      )
+    })
+    if (!referenced && deletedTask)
+      void removeDownloadCachePreservingOutputs(deletedTask).catch(error => {
+        console.warn(`清理任务下载缓存失败 (${taskId}):`, error)
+      })
 
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(IpcChannels.taskDeleted, taskId)
@@ -988,6 +1031,10 @@ export class TaskManager {
         rejected.push({ taskId, reason: '任务不存在' })
         continue
       }
+      if (this.editingTasks.has(taskId)) {
+        rejected.push({ taskId, reason: '任务正在保存或翻译，请完成后再删除' })
+        continue
+      }
       if (!isBulkDeletableTaskStatus(task.status)) {
         rejected.push({ taskId, reason: '任务尚未结束，不能批量删除' })
         continue
@@ -997,12 +1044,30 @@ export class TaskManager {
       this.activeTasks.delete(taskId)
       this.tempLogs.delete(taskId)
       databaseManager.deleteTranslationTask(taskId)
+      for (const cache of ['asr-checkpoints', 'text-checkpoints']) {
+        await fs.rm(path.join(app.getPath('userData'), cache, taskId), {
+          recursive: true,
+          force: true,
+        })
+      }
       await tempWorkspace.removeTaskDir(taskId).catch(error => {
         console.warn(`清理任务临时缓存失败 (${taskId}):`, error)
       })
-      await removeDownloadCachePreservingOutputs(task).catch(error => {
-        console.warn(`清理任务下载缓存失败 (${taskId}):`, error)
-      })
+      const downloadDir = path.join(getDownloadsRoot(), taskId)
+      const referenced = databaseManager
+        .getAllTranslationTasks()
+        .some(other => {
+          const relative = path.relative(downloadDir, other.videoFile.path)
+          return (
+            relative !== '..' &&
+            !relative.startsWith(`..${path.sep}`) &&
+            !path.isAbsolute(relative)
+          )
+        })
+      if (!referenced)
+        await removeDownloadCachePreservingOutputs(task).catch(error => {
+          console.warn(`清理任务下载缓存失败 (${taskId}):`, error)
+        })
       deletedTaskIds.push(taskId)
 
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -1015,7 +1080,21 @@ export class TaskManager {
   retryTask(taskId: string): void {
     const task =
       this.activeTasks.get(taskId) ?? databaseManager.getTranslationTask(taskId)
-    if (!task) return
+    if (
+      !task ||
+      this.abortControllers.has(taskId) ||
+      this.editingTasks.has(taskId)
+    )
+      return
+    if (
+      ![
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+        TaskStatus.PAUSED,
+      ].includes(task.status)
+    )
+      return
 
     task.status = TaskStatus.PENDING
     task.progress = 0
@@ -1025,9 +1104,125 @@ export class TaskManager {
     this.activeTasks.set(taskId, task)
     databaseManager.deleteTranscriptionSegments(taskId)
     databaseManager.updateTaskStatus(taskId, TaskStatus.PENDING, 0, '')
-    this.addTaskLog(taskId, 'info', '重试任务')
+    this.addTaskLog(taskId, 'info', '重新处理任务（保留可验证的识别分块缓存）')
     this.notifyTaskUpdate(task)
     this.enqueueRun(taskId)
+  }
+
+  async importSubtitles(
+    filePath: string,
+    settings?: Partial<TaskCreationSettings>
+  ): Promise<string> {
+    const task = await createImportedSubtitleTask(filePath, settings)
+    this.activeTasks.set(task.id, task)
+    this.addTaskLog(
+      task.id,
+      'success',
+      '已导入字幕，可校对、逐段重译或复用整篇翻译'
+    )
+    this.notifyTaskUpdate(task)
+    return task.id
+  }
+
+  private async editTask(
+    taskId: string,
+    action: (task: TranslationTask) => Promise<void>
+  ): Promise<void> {
+    const task = this.getTask(taskId)
+    if (!task) throw new Error('任务不存在')
+    assertEditableTask(task)
+    if (this.abortControllers.has(taskId))
+      throw new Error('任务正在停止，请稍后再试')
+    if (this.editingTasks.has(taskId))
+      throw new Error('正在保存或翻译，请等待完成')
+    this.editingTasks.add(taskId)
+    try {
+      await action(task)
+      this.activeTasks.set(taskId, task)
+      this.notifyTaskUpdate(task)
+    } finally {
+      this.editingTasks.delete(taskId)
+    }
+  }
+
+  async attachTaskMedia(taskId: string, filePath: string): Promise<void> {
+    await this.editTask(taskId, async task => {
+      if (!['srt', 'vtt'].includes(task.videoFile.format))
+        throw new Error('仅未关联视频的导入字幕可关联媒体')
+      const info = await ffmpegProcessor.getVideoInfo(filePath)
+      const stat = await fs.stat(filePath)
+      task.videoFile = {
+        ...task.videoFile,
+        name: path.basename(filePath),
+        path: filePath,
+        size: stat.size,
+        duration: info.duration,
+        format: info.format,
+      }
+      databaseManager.updateVideoFile(task.videoFile)
+    })
+  }
+
+  async updateTaskSegment(taskId: string, input: unknown): Promise<void> {
+    await this.editTask(taskId, async task => {
+      if (!input || typeof input !== 'object' || !('id' in input))
+        throw new Error('字幕段无效')
+      const existing = task.segments.find(s => s.id === input.id)
+      if (!existing) throw new Error('字幕段不存在')
+      const updated = validateSegmentEdit(input, existing)
+      task.segments = task.segments.map(s =>
+        s.id === updated.id ? updated : s
+      )
+      updateCheckpointAfterReviewed(taskId, task.segments)
+      task.segments = databaseManager.getTranscriptionSegments(taskId)
+    })
+  }
+
+  async retranslateTaskSegment(
+    taskId: string,
+    segmentId: string
+  ): Promise<void> {
+    await this.editTask(taskId, async task => {
+      const updated = await translateWorkbenchSegment(task, segmentId)
+      task.segments = task.segments.map(s =>
+        s.id === updated.id ? updated : s
+      )
+      updateCheckpointAfterReviewed(taskId, task.segments)
+      task.segments = databaseManager.getTranscriptionSegments(taskId)
+    })
+  }
+
+  async regenerateTaskSubtitles(taskId: string): Promise<void> {
+    await this.editTask(taskId, async task => {
+      if (task.kind !== 'subtitle')
+        throw new Error('请先复用识别结果创建字幕任务，再导出字幕')
+      await exportWorkbenchSubtitles(task)
+    })
+  }
+
+  async reuseTaskTranscript(
+    taskId: string,
+    options: {
+      kind: TaskKind
+      targetLanguage: string
+      settings?: Partial<TaskCreationSettings>
+    }
+  ): Promise<string> {
+    let newId = ''
+    await this.editTask(taskId, async source => {
+      if (
+        source.status !== TaskStatus.COMPLETED &&
+        !getTaskCheckpoint(taskId).asrComplete
+      ) {
+        throw new Error('识别尚未完成，请先恢复任务完成识别，再复用结果')
+      }
+      const task = createReusedTask(source, options)
+      newId = task.id
+      this.activeTasks.set(task.id, task)
+      this.notifyTaskUpdate(task)
+      this.enqueueRun(task.id)
+    })
+    return newId
   }
 
   getTaskLogs(taskId: string): TaskLog[] {
@@ -1067,6 +1262,8 @@ export class TaskManager {
     mode: SubtitleBurnMode,
     colors?: SubtitleColors | null
   ): Promise<{ success: boolean; burnedVideo?: string; error?: string }> {
+    if (this.editingTasks.has(taskId))
+      return { success: false, error: '请等待校对保存或重译完成' }
     const existing = this.activeTasks.get(taskId)
     if (existing?.status === TaskStatus.BURNING_SUBTITLES) {
       return { success: false, error: '该任务正在烧录中' }
@@ -1077,6 +1274,8 @@ export class TaskManager {
       return { success: false, error: '任务不存在' }
     }
 
+    if (['srt', 'vtt'].includes(task.videoFile.format))
+      return { success: false, error: '导入字幕未关联视频，无法烧录' }
     if (normalizeTaskKind(task.kind) === 'document') {
       return { success: false, error: '文稿任务不支持烧录字幕' }
     }
@@ -1219,7 +1418,23 @@ async function removeDownloadCachePreservingOutputs(
   }
 
   const protection = resolveDownloadCacheProtection(taskRoot, task)
-  if (protection.preserveRoot) return
+  // 复用任务可能把产物写入旧任务目录；任何仍被引用的目录均不清理。
+  const referenced = databaseManager.getAllTranslationTasks().some(other =>
+    [
+      other.videoFile.path,
+      other.platformSubtitlePath,
+      ...Object.values(other.outputArtifacts ?? {}),
+    ].some(value => {
+      if (typeof value !== 'string') return false
+      const relative = path.relative(taskRoot, value)
+      return (
+        relative !== '..' &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative)
+      )
+    })
+  )
+  if (protection.preserveRoot || referenced) return
 
   let entries: Array<{ name: string }> = []
   try {

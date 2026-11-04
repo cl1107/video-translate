@@ -184,8 +184,22 @@ function parseVTT(content: string): SubtitleEntry[] {
   const text = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
   // 去掉 WEBVTT 头
   const body = text.replace(/^WEBVTT[^\n]*\n+/i, '')
-  // 复用 SRT 块逻辑，时间戳用点或逗号
-  return parseSRT(body)
+  // WebVTT 允许 mm:ss.mmm、cue identifier 与设置；元数据块不作为字幕。
+  const cues = body.split(/\n\s*\n/).flatMap(block => {
+    if (
+      /^(?:NOTE(?:\s|$)|STYLE(?:\s|$)|REGION(?:\s|$))/.test(block.trimStart())
+    )
+      return []
+    const lines = block.split('\n')
+    const index = lines.findIndex(line => line.includes('-->'))
+    if (index < 0) return []
+    const timing = lines[index].replace(
+      /(^|\s)(\d{2}:\d{2}\.\d{3})(?=\s|$)/g,
+      '$100:$2'
+    )
+    return [[timing, ...lines.slice(index + 1)].join('\n')]
+  })
+  return parseSRT(cues.join('\n\n'))
 }
 
 /**

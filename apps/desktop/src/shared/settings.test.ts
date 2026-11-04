@@ -4,9 +4,26 @@ import {
   DEFAULT_APP_SETTINGS,
   migrateLegacyLlmFields,
   normalizeAppSettings,
+  normalizeGlossary,
   normalizeTaskSubmissionOptions,
   parseStoredAppSettings,
 } from './settings'
+
+test('normalizeGlossary 清洗空项并按源词去重', () => {
+  assert.deepEqual(
+    normalizeGlossary([
+      { source: '  Hello ', target: '你好' },
+      { source: 'hello', target: '问候' },
+      { source: '', target: '忽略' },
+      { source: 'Term', target: '  术语  ' },
+      null,
+    ]),
+    [
+      { source: 'Hello', target: '你好' },
+      { source: 'Term', target: '术语' },
+    ]
+  )
+})
 
 test('normalizeAppSettings 提供模型服务字段默认值', () => {
   const settings = normalizeAppSettings({})
@@ -14,6 +31,7 @@ test('normalizeAppSettings 提供模型服务字段默认值', () => {
   assert.equal(settings.translateModel, '')
   assert.equal(settings.polishModel, '')
   assert.equal(settings.polishTranscript, DEFAULT_APP_SETTINGS.polishTranscript)
+  assert.deepEqual(settings.glossary, [])
 })
 
 test('normalizeAppSettings 保留已配置的模型服务字段', () => {
@@ -154,6 +172,22 @@ test('normalizeAppSettings 自动迁移旧 localStorage 设置', () => {
   assert.equal(settings.llmBaseUrl, 'http://127.0.0.1:11434')
   assert.equal(settings.translateModel, 'qwen2.5:7b')
   assert.equal(settings.polishModel, 'qwen2.5:7b')
+})
+
+test('normalizeAppSettings 持久化并规范化术语库', () => {
+  const settings = normalizeAppSettings({
+    glossary: [
+      { source: ' API ', target: ' 应用程序接口 ' },
+      { source: 'api', target: '重复项' },
+    ],
+  })
+  assert.deepEqual(settings.glossary, [
+    { source: 'API', target: '应用程序接口' },
+  ])
+  assert.deepEqual(
+    parseStoredAppSettings(JSON.stringify(settings)).settings.glossary,
+    settings.glossary
+  )
 })
 
 test('normalizeAppSettings 规范化字幕输出位置', () => {

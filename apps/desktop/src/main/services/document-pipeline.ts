@@ -2,7 +2,10 @@
  * 文稿流水线：共享 FFmpeg/ASR，整篇润色为 Markdown（不写字幕、不翻译）。
  */
 import { promises as fs } from 'node:fs'
+import { app } from 'electron'
+import { createTextPartCache } from './text-part-cache'
 import path from 'node:path'
+import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
 import {
   normalizeDetectedLanguage,
@@ -16,6 +19,7 @@ import type {
 } from '../../shared/types/video'
 import { TaskStatus } from '../../shared/types/video'
 import { SubtitleGenerator } from '../utils/subtitle-generator'
+import { buildDocumentChaptersMarkdown } from './document-chapters'
 import { ensureSenseVoiceModel } from './asr/model-downloader'
 import {
   type AsrTranscriptionResult,
@@ -28,6 +32,14 @@ import { polishDocumentToMarkdown } from './llm/document-polish-service'
 import { resolveLlmCompletionConfig } from './llm/llm-config'
 import { tempWorkspace } from './temp-workspace'
 import type { PipelineHooks } from './translation-pipeline'
+import {
+  createCheckpointFingerprint,
+  getTaskCheckpoint,
+  isCheckpointFingerprintValid,
+  markAsrComplete,
+  markDocumentComplete,
+  seedTaskTranscript,
+} from './checkpoint'
 
 export interface DocumentPipelineContext {
   task: TranslationTask
@@ -46,6 +58,35 @@ function mediaBaseName(fileName: string): string {
 
 function resolveOutputDir(task: TranslationTask): string {
   return path.join(path.dirname(task.videoFile.path), 'output')
+}
+
+async function writeMarkdownWithoutOverwrite(
+  outputDir: string,
+  baseName: string,
+  markdown: string
+): Promise<string> {
+  const stamp = dayjs().format('YYYYMMDD_HHmmss')
+  for (let index = 0; ; index += 1) {
+    const suffix = index === 0 ? '' : `-${index + 1}`
+    const filePath = path.join(outputDir, `${baseName}-${stamp}${suffix}.md`)
+    try {
+      const handle = await fs.open(filePath, 'wx')
+      try {
+        await handle.writeFile(markdown, 'utf-8')
+      } finally {
+        await handle.close()
+      }
+      return filePath
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !('code' in error) ||
+        error.code !== 'EEXIST'
+      ) {
+        throw error
+      }
+    }
+  }
 }
 
 /**
@@ -99,19 +140,39 @@ async function tryLoadPlatformSubtitleSegments(
   }
 }
 
+async function getReadableMediaStat(
+  filePath: string
+): Promise<{ size: number; mtimeMs: number } | null> {
+  try {
+    const stat = await fs.stat(filePath)
+    return stat.isFile() && stat.size > 0
+      ? { size: stat.size, mtimeMs: stat.mtimeMs }
+      : null
+  } catch {
+    return null
+  }
+}
+
 async function ensureDocumentDependencies(
   options: TaskRuntimeOptions,
   hooks: PipelineHooks,
   signal: AbortSignal | undefined,
-  opts: { requireAsr: boolean; llmApiKey?: string }
+  opts: {
+    requireAsr: boolean
+    requireFfmpeg: boolean
+    requireLlm: boolean
+    llmApiKey?: string
+  }
 ): Promise<ReturnType<typeof resolveLlmCompletionConfig> & { ok: true }> {
   throwIfAborted(signal)
 
-  hooks.onLog('info', '检查 FFmpeg 可用性...')
-  if (!(await ffmpegProcessor.isAvailable())) {
-    throw new Error('FFmpeg 不可用，请先安装 FFmpeg')
+  if (opts.requireFfmpeg) {
+    hooks.onLog('info', '检查 FFmpeg 可用性...')
+    if (!(await ffmpegProcessor.isAvailable())) {
+      throw new Error('FFmpeg 不可用，请先安装 FFmpeg')
+    }
+    hooks.onLog('success', 'FFmpeg 可用性检查通过')
   }
-  hooks.onLog('success', 'FFmpeg 可用性检查通过')
 
   if (opts.requireAsr) {
     hooks.onLog('info', '检查 sherpa-onnx ASR 可用性...')
@@ -167,103 +228,205 @@ export async function runDocumentPipeline(
     await tempWorkspace.removeTaskDir(task.id)
     context.workDir = await tempWorkspace.ensureTaskDir(task.id)
 
-    const platformSegments = await tryLoadPlatformSubtitleSegments(task, hooks)
-    const usePlatform = Boolean(platformSegments && platformSegments.length > 0)
-
-    const polishResolved = await ensureDocumentDependencies(
-      options,
-      hooks,
-      signal,
-      {
-        requireAsr: !usePlatform,
-        llmApiKey: hooks.resolveLlmApiKey(),
-      }
+    const checkpoint = getTaskCheckpoint(task.id)
+    const storedSegments = databaseManager.getTranscriptionSegments(task.id)
+    const mediaStat = ['srt', 'vtt'].includes(
+      task.videoFile.format.toLowerCase()
     )
+      ? null
+      : await getReadableMediaStat(task.videoFile.path)
+    const mediaAvailable = mediaStat !== null
+    const asrFingerprint = createCheckpointFingerprint({
+      engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+      sourceLanguage: task.sourceLanguage,
+      mediaPath: task.videoFile.path,
+      mediaSize: mediaStat?.size,
+      mediaMtimeMs: mediaStat?.mtimeMs,
+      platformSubtitlePath: task.platformSubtitlePath,
+    })
+    const storedTranscriptComplete =
+      storedSegments.length > 0 &&
+      checkpoint.asrComplete &&
+      (!mediaStat ||
+        isCheckpointFingerprintValid(checkpoint, 'asr', asrFingerprint))
+    const legacyCompletedTranscript =
+      !mediaAvailable &&
+      task.status === TaskStatus.COMPLETED &&
+      task.segments.length > 0 &&
+      storedSegments.length > 0
+    const sourceFingerprint =
+      !mediaStat && checkpoint.asrFingerprint
+        ? checkpoint.asrFingerprint
+        : asrFingerprint
+    const documentFingerprint = createCheckpointFingerprint({
+      baseUrl: options.llmBaseUrl,
+      model: options.polishModel || options.translateModel,
+      sourceLanguage: task.sourceLanguage,
+      title: mediaBaseName(task.videoFile.name),
+      sourceFingerprint,
+      transcript: storedTranscriptComplete
+        ? storedSegments.map(s => [s.start, s.end, s.originalText])
+        : undefined,
+    })
+    const restoredDocument =
+      isCheckpointFingerprintValid(
+        checkpoint,
+        'document',
+        documentFingerprint
+      ) && Boolean(checkpoint.documentMarkdown)
 
-    if (usePlatform && platformSegments) {
-      context.transcription = {
-        segments: platformSegments,
-        engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
-        language:
-          task.platformSubtitleLanguage || toLanguageCode(task.sourceLanguage),
-        rawText: joinSegmentsToRawText(platformSegments),
+    let polishResolved: Awaited<
+      ReturnType<typeof ensureDocumentDependencies>
+    > | null = null
+    if (!restoredDocument) {
+      const platformSegments = storedTranscriptComplete
+        ? null
+        : await tryLoadPlatformSubtitleSegments(task, hooks)
+      const usePlatform = Boolean(
+        platformSegments && platformSegments.length > 0
+      )
+      if (
+        !mediaAvailable &&
+        !usePlatform &&
+        !storedTranscriptComplete &&
+        !legacyCompletedTranscript
+      ) {
+        throw new Error('媒体文件不存在，且没有完整转录断点可恢复')
       }
-      await hooks.onStatus(TaskStatus.TRANSCRIBING, 50)
-      databaseManager.saveTranscriptionSegments(task.id, platformSegments)
-      hooks.onSegments(platformSegments)
-      hooks.onLog(
-        'success',
-        '已采用平台字幕作为原文，跳过音频提取与语音识别',
-        `${platformSegments.length} 段`
+      polishResolved = await ensureDocumentDependencies(
+        options,
+        hooks,
+        signal,
+        {
+          requireAsr:
+            !usePlatform &&
+            !storedTranscriptComplete &&
+            !legacyCompletedTranscript,
+          requireFfmpeg: mediaAvailable,
+          requireLlm: true,
+          llmApiKey: hooks.resolveLlmApiKey(),
+        }
       )
-    } else {
-      await hooks.onStatus(TaskStatus.EXTRACTING_AUDIO, 10)
-      hooks.onLog('info', '开始提取音频...', task.videoFile.path)
-      const audioPath = path.join(context.workDir, `audio_${Date.now()}.wav`)
-      context.audioPath = await ffmpegProcessor.extractAudio(
-        task.videoFile.path,
-        audioPath,
-        progress => {
-          if (signal?.aborted) return
-          void hooks.onStatus(
-            TaskStatus.EXTRACTING_AUDIO,
-            10 + (progress / 100) * 20
-          )
-        },
-        context.workDir
-      )
-      throwIfAborted(signal)
-      hooks.onLog('success', '音频提取完成')
 
-      await hooks.onStatus(TaskStatus.TRANSCRIBING, 35)
-      const asrEngine = options.asrEngine ?? DEFAULT_ASR_ENGINE
-      hooks.onLog('info', '开始语音识别', `引擎 ${asrEngine}`)
-      let lastAsrLogPct = -25
-      try {
-        context.transcription = await sherpaTranscriber.transcribe(
-          context.audioPath,
-          {
-            engine: asrEngine,
-            language: toLanguageCode(task.sourceLanguage),
-            workDir: context.workDir,
-            onPartialSegments: partial => {
-              if (signal?.aborted) return
-              hooks.onTranscriptionPartial?.(partial)
-            },
-          },
+      if (storedTranscriptComplete || legacyCompletedTranscript) {
+        const segments = storedTranscriptComplete
+          ? storedSegments
+          : seedTaskTranscript(task.id, task.segments)
+        context.transcription = {
+          segments,
+          engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+          language:
+            task.detectedLanguage || toLanguageCode(task.sourceLanguage),
+          rawText: joinSegmentsToRawText(segments),
+        }
+        hooks.onSegments(segments)
+        hooks.onLog(
+          'info',
+          '已恢复完整转录断点，跳过音频提取与语音识别',
+          `${segments.length} 段`
+        )
+      } else if (usePlatform && platformSegments) {
+        const segments = seedTaskTranscript(task.id, platformSegments)
+        markAsrComplete(task.id, asrFingerprint)
+        context.transcription = {
+          segments,
+          engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+          language:
+            task.platformSubtitleLanguage ||
+            toLanguageCode(task.sourceLanguage),
+          rawText: joinSegmentsToRawText(segments),
+        }
+        await hooks.onStatus(TaskStatus.TRANSCRIBING, 50)
+        hooks.onSegments(segments)
+        hooks.onLog(
+          'success',
+          '已采用平台字幕作为原文，跳过音频提取与语音识别',
+          `${segments.length} 段`
+        )
+      } else {
+        await hooks.onStatus(TaskStatus.EXTRACTING_AUDIO, 10)
+        hooks.onLog('info', '开始提取音频...', task.videoFile.path)
+        const audioPath = path.join(context.workDir, `audio_${Date.now()}.wav`)
+        context.audioPath = await ffmpegProcessor.extractAudio(
+          task.videoFile.path,
+          audioPath,
           progress => {
             if (signal?.aborted) return
             void hooks.onStatus(
-              TaskStatus.TRANSCRIBING,
-              35 + (progress / 100) * 30
+              TaskStatus.EXTRACTING_AUDIO,
+              10 + (progress / 100) * 20
             )
-            // 约每 25% 记一条，避免长视频识别期间日志“卡住”
-            if (progress - lastAsrLogPct >= 25) {
-              lastAsrLogPct = progress
-              hooks.onLog('info', `语音识别进行中 ${Math.round(progress)}%`)
-            }
-          }
+          },
+          context.workDir
         )
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') throw error
-        const message = error instanceof Error ? error.message : String(error)
-        hooks.onLog('error', '语音识别失败', message)
-        throw new Error(`语音识别失败：${message}`)
+        throwIfAborted(signal)
+        hooks.onLog('success', '音频提取完成')
+
+        await hooks.onStatus(TaskStatus.TRANSCRIBING, 35)
+        const asrEngine = options.asrEngine ?? DEFAULT_ASR_ENGINE
+        hooks.onLog('info', '开始语音识别', `引擎 ${asrEngine}`)
+        let lastAsrLogPct = -25
+        try {
+          context.transcription = await sherpaTranscriber.transcribe(
+            context.audioPath,
+            {
+              engine: asrEngine,
+              language: toLanguageCode(task.sourceLanguage),
+              workDir: context.workDir,
+              checkpointDir: path.join(
+                app.getPath('userData'),
+                'asr-checkpoints',
+                task.id
+              ),
+              checkpointKey: asrFingerprint,
+              signal,
+              onPartialSegments: partial => {
+                if (signal?.aborted) return
+                hooks.onTranscriptionPartial?.(partial)
+              },
+            },
+            progress => {
+              if (signal?.aborted) return
+              void hooks.onStatus(
+                TaskStatus.TRANSCRIBING,
+                35 + (progress / 100) * 30
+              )
+              if (progress - lastAsrLogPct >= 25) {
+                lastAsrLogPct = progress
+                hooks.onLog('info', `语音识别进行中 ${Math.round(progress)}%`)
+              }
+            }
+          )
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error
+          const message = error instanceof Error ? error.message : String(error)
+          hooks.onLog('error', '语音识别失败', message)
+          throw new Error(`语音识别失败：${message}`)
+        }
+        throwIfAborted(signal)
+        if (context.transcription.segments.length === 0) {
+          throw new Error('语音识别未产生任何结果')
+        }
+        const segments = seedTaskTranscript(
+          task.id,
+          context.transcription.segments
+        )
+        context.transcription.segments = segments
+        markAsrComplete(task.id, asrFingerprint)
+        hooks.onSegments(segments)
+        hooks.onLog('success', '语音识别完成', `${segments.length} 段`)
       }
-      throwIfAborted(signal)
-      if (context.transcription.segments.length === 0) {
-        throw new Error('语音识别未产生任何结果')
+    } else {
+      const segments = storedSegments
+      context.transcription = {
+        segments,
+        engine: options.asrEngine ?? DEFAULT_ASR_ENGINE,
+        language: task.detectedLanguage || toLanguageCode(task.sourceLanguage),
+        rawText: joinSegmentsToRawText(segments),
       }
-      databaseManager.saveTranscriptionSegments(
-        task.id,
-        context.transcription.segments
-      )
-      hooks.onSegments(context.transcription.segments)
-      hooks.onLog(
-        'success',
-        '语音识别完成',
-        `${context.transcription.segments.length} 段`
-      )
+      context.polishedMarkdown = checkpoint.documentMarkdown
+      hooks.onSegments(segments)
+      hooks.onLog('info', '已恢复完整文稿断点，跳过模型调用')
     }
 
     const detectedLanguage = normalizeDetectedLanguage(
@@ -285,50 +448,81 @@ export async function runDocumentPipeline(
     const rawChars = context.rawText.length
     hooks.onLog('info', '识别原文已就绪，准备整理文稿', `约 ${rawChars} 字`)
 
-    await hooks.onStatus(TaskStatus.POLISHING, 70)
-    hooks.onLog('info', '开始整理为 Markdown 文稿', polishResolved.label)
+    if (!restoredDocument) {
+      if (!polishResolved) {
+        throw new Error('文稿润色配置未就绪')
+      }
+      await hooks.onStatus(TaskStatus.POLISHING, 70)
+      hooks.onLog('info', '开始整理为 Markdown 文稿', polishResolved.label)
 
-    try {
-      context.polishedMarkdown = await polishDocumentToMarkdown(
-        context.rawText,
-        {
-          title: mediaBaseName(task.videoFile.name),
-          sourceLanguage: task.sourceLanguage,
-          durationSeconds: task.videoFile.duration,
-          config: polishResolved.config,
-          signal,
-          onProgress: (done, total) => {
-            if (signal?.aborted) return
-            const pct = 70 + Math.round((done / total) * 25)
-            void hooks.onStatus(TaskStatus.POLISHING, pct)
-            hooks.onLog(
-              'info',
-              total > 1 ? `文稿润色进度 ${done}/${total} 块` : '文稿润色生成中…'
-            )
-          },
-        }
+      try {
+        context.polishedMarkdown = await polishDocumentToMarkdown(
+          context.rawText,
+          {
+            title: mediaBaseName(task.videoFile.name),
+            sourceLanguage: task.sourceLanguage,
+            durationSeconds: task.videoFile.duration,
+            config: polishResolved.config,
+            signal,
+            ...createTextPartCache(
+              path.join(
+                app.getPath('userData'),
+                'text-checkpoints',
+                task.id,
+                'document-polish'
+              ),
+              documentFingerprint
+            ),
+            onProgress: (done, total) => {
+              if (signal?.aborted) return
+              const pct = 70 + Math.round((done / total) * 25)
+              void hooks.onStatus(TaskStatus.POLISHING, pct)
+              hooks.onLog(
+                'info',
+                total > 1
+                  ? `文稿润色进度 ${done}/${total} 块`
+                  : '文稿润色生成中…'
+              )
+            },
+          }
+        )
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error
+        const message = error instanceof Error ? error.message : String(error)
+        hooks.onLog('error', '文稿润色失败', message)
+        throw error
+      }
+
+      throwIfAborted(signal)
+      const chapters = buildDocumentChaptersMarkdown(
+        context.transcription?.segments ?? []
       )
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw error
-      const message = error instanceof Error ? error.message : String(error)
-      hooks.onLog('error', '文稿润色失败', message)
-      throw error
+      if (chapters) {
+        context.polishedMarkdown = `${context.polishedMarkdown.trim()}\n\n${chapters}`
+      }
+      if (!context.polishedMarkdown) {
+        throw new Error('文稿润色结果为空')
+      }
+      markDocumentComplete(
+        task.id,
+        documentFingerprint,
+        context.polishedMarkdown
+      )
+      hooks.onLog(
+        'success',
+        '文稿润色完成',
+        `约 ${context.polishedMarkdown.length} 字符`
+      )
     }
-
-    throwIfAborted(signal)
-    hooks.onLog(
-      'success',
-      '文稿润色完成',
-      `约 ${context.polishedMarkdown.length} 字符`
-    )
 
     const outputDir = resolveOutputDir(task)
     await fs.mkdir(outputDir, { recursive: true })
-    const mdPath = path.join(
+    const polishedMarkdown = context.polishedMarkdown ?? ''
+    const mdPath = await writeMarkdownWithoutOverwrite(
       outputDir,
-      `${mediaBaseName(task.videoFile.name)}.md`
+      mediaBaseName(task.videoFile.name),
+      polishedMarkdown
     )
-    await fs.writeFile(mdPath, context.polishedMarkdown, 'utf-8')
 
     context.outputArtifacts = {
       polishedMarkdown: mdPath,

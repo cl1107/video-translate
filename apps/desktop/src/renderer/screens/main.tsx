@@ -8,6 +8,7 @@ import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 import { Button } from 'renderer/components/ui/button'
 import { VideoUploader } from 'renderer/components/video/VideoUploader'
 import { cn } from 'renderer/lib/utils'
+import { parseStoredAppSettings } from 'shared/settings'
 import {
   normalizeTaskKind,
   type TaskKind,
@@ -102,6 +103,21 @@ export function MainScreen() {
   const handleUploadSuccess = () => {
     setActiveTab('tasks')
     loadTasks()
+  }
+
+  const handleImportSubtitles = async () => {
+    try {
+      const settings = parseStoredAppSettings(
+        localStorage.getItem('video-translate-settings')
+      ).settings
+      const result = await App.importSubtitles(settings)
+      if (!result.success || !result.taskId) {
+        throw new Error(result.error || '导入字幕失败')
+      }
+      navigate(`/subtitle-review/${result.taskId}`)
+    } catch (error) {
+      console.error('导入字幕失败:', error)
+    }
   }
 
   const isDocument = workMode === 'document'
@@ -316,6 +332,8 @@ export function MainScreen() {
                 tasks={visibleTasks}
                 onTasksChange={loadTasks}
                 onGoUpload={() => setActiveTab('upload')}
+                onOpenReview={taskId => navigate(`/subtitle-review/${taskId}`)}
+                onImportSubtitles={() => void handleImportSubtitles()}
               />
             )}
           </div>

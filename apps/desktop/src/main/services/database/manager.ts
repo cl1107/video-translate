@@ -19,6 +19,31 @@ import {
   type VideoFile,
 } from '../../../shared/types/video'
 
+export interface PipelineCheckpoint {
+  taskId: string
+  asrComplete: boolean
+  asrFingerprint?: string
+  polishComplete: boolean
+  polishFingerprint?: string
+  translationComplete: boolean
+  translationFingerprint?: string
+  translationCompletedCount: number
+  documentComplete: boolean
+  documentFingerprint?: string
+  documentMarkdown?: string
+  manualReviewed: boolean
+  updatedAt: string
+}
+
+export function scopeTranscriptionSegmentId(
+  taskId: string,
+  segmentId: string,
+  index = 0
+): string {
+  const value = segmentId.trim() || `segment-${index + 1}`
+  return value.startsWith(`${taskId}:`) ? value : `${taskId}:${value}`
+}
+
 export class DatabaseManager {
   private db: Database.Database
   private dbPath: string
@@ -84,9 +109,30 @@ export class DatabaseManager {
         original_text TEXT NOT NULL,
         polished_text TEXT NULL,
         translated_text TEXT NULL,
+        translation_status TEXT NULL,
         confidence REAL DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (task_id) REFERENCES translation_tasks (id)
+      )
+    `)
+
+    // 任务级断点：只有 asr_complete=true 才允许把识别结果当作完整结果恢复。
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pipeline_checkpoints (
+        task_id TEXT PRIMARY KEY,
+        asr_complete INTEGER NOT NULL DEFAULT 0,
+        asr_fingerprint TEXT NULL,
+        polish_complete INTEGER NOT NULL DEFAULT 0,
+        polish_fingerprint TEXT NULL,
+        translation_complete INTEGER NOT NULL DEFAULT 0,
+        translation_fingerprint TEXT NULL,
+        translation_completed_count INTEGER NOT NULL DEFAULT 0,
+        document_complete INTEGER NOT NULL DEFAULT 0,
+        document_fingerprint TEXT NULL,
+        document_markdown TEXT NULL,
+        manual_reviewed INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES translation_tasks (id) ON DELETE CASCADE
       )
     `)
 
@@ -97,6 +143,11 @@ export class DatabaseManager {
     if (!segmentColumns.some(column => column.name === 'polished_text')) {
       this.db.exec(
         `ALTER TABLE transcription_segments ADD COLUMN polished_text TEXT NULL`
+      )
+    }
+    if (!segmentColumns.some(column => column.name === 'translation_status')) {
+      this.db.exec(
+        `ALTER TABLE transcription_segments ADD COLUMN translation_status TEXT NULL`
       )
     }
 
@@ -264,9 +315,25 @@ export class DatabaseManager {
     )
   }
 
-  /** 更新已下载视频的元数据（路径/时长等） */
+  /** 更新已下载视频的元数据（路径/时长等），只更新既有记录。 */
   updateVideoFile(videoFile: VideoFile): void {
-    this.saveVideoFile(videoFile)
+    this.db
+      .prepare(
+        `UPDATE video_files
+         SET name = ?, path = ?, size = ?, duration = ?, format = ?,
+             created_at = ?, source_url = ?
+         WHERE id = ?`
+      )
+      .run(
+        videoFile.name,
+        videoFile.path,
+        videoFile.size,
+        videoFile.duration,
+        videoFile.format,
+        videoFile.createdAt,
+        videoFile.sourceUrl || null,
+        videoFile.id
+      )
   }
 
   /**
@@ -522,28 +589,66 @@ export class DatabaseManager {
   ): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO transcription_segments
-      (id, task_id, start_time, end_time, original_text, polished_text, translated_text, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, task_id, start_time, end_time, original_text, polished_text,
+       translated_text, translation_status, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const transaction = this.db.transaction(
-      (segments: TranscriptionSegment[]) => {
-        for (const segment of segments) {
-          stmt.run(
-            segment.id,
-            taskId,
-            segment.start,
-            segment.end,
-            segment.originalText,
-            segment.polishedText || null,
-            segment.translatedText || null,
-            segment.confidence
-          )
-        }
+    const transaction = this.db.transaction((items: TranscriptionSegment[]) => {
+      for (const [index, segment] of items.entries()) {
+        stmt.run(
+          scopeTranscriptionSegmentId(taskId, segment.id, index),
+          taskId,
+          segment.start,
+          segment.end,
+          segment.originalText,
+          segment.polishedText || null,
+          segment.translatedText || null,
+          segment.translationStatus || null,
+          segment.confidence
+        )
       }
-    )
+    })
 
     transaction(segments)
+  }
+
+  /** 用完整识别快照替换任务段落，避免旧 partial 与新结果混存。 */
+  seedTaskTranscript(
+    taskId: string,
+    segments: TranscriptionSegment[]
+  ): TranscriptionSegment[] {
+    const normalized = segments.map((segment, index) => ({
+      ...segment,
+      id: scopeTranscriptionSegmentId(taskId, segment.id, index),
+    }))
+    const deleteStmt = this.db.prepare(
+      'DELETE FROM transcription_segments WHERE task_id = ?'
+    )
+    const insertStmt = this.db.prepare(`
+      INSERT INTO transcription_segments
+      (id, task_id, start_time, end_time, original_text, polished_text,
+       translated_text, translation_status, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    const transaction = this.db.transaction(() => {
+      deleteStmt.run(taskId)
+      for (const segment of normalized) {
+        insertStmt.run(
+          segment.id,
+          taskId,
+          segment.start,
+          segment.end,
+          segment.originalText,
+          segment.polishedText || null,
+          segment.translatedText || null,
+          segment.translationStatus || null,
+          segment.confidence
+        )
+      }
+    })
+    transaction()
+    return normalized
   }
 
   /**
@@ -556,8 +661,117 @@ export class DatabaseManager {
    */
   /** 清空任务既有分段；重试前调用，避免旧识别残留与新结果混存 */
   deleteTranscriptionSegments(taskId: string): void {
+    const transaction = this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM transcription_segments WHERE task_id = ?')
+        .run(taskId)
+      // 重试必须同时清除所有阶段断点，尤其是文稿 Markdown，避免复用旧结果。
+      this.db
+        .prepare('DELETE FROM pipeline_checkpoints WHERE task_id = ?')
+        .run(taskId)
+    })
+    transaction()
+  }
+
+  getPipelineCheckpoint(taskId: string): PipelineCheckpoint {
+    const row = this.db
+      .prepare('SELECT * FROM pipeline_checkpoints WHERE task_id = ?')
+      .get(taskId) as Record<string, unknown> | undefined
+    if (!row) {
+      return {
+        taskId,
+        asrComplete: false,
+        polishComplete: false,
+        translationComplete: false,
+        translationCompletedCount: 0,
+        documentComplete: false,
+        manualReviewed: false,
+        updatedAt: '',
+      }
+    }
+    return {
+      taskId,
+      asrComplete: Number(row.asr_complete) === 1,
+      asrFingerprint: (row.asr_fingerprint as string | null) || undefined,
+      polishComplete: Number(row.polish_complete) === 1,
+      polishFingerprint: (row.polish_fingerprint as string | null) || undefined,
+      translationComplete: Number(row.translation_complete) === 1,
+      translationFingerprint:
+        (row.translation_fingerprint as string | null) || undefined,
+      translationCompletedCount: Number(row.translation_completed_count || 0),
+      documentComplete: Number(row.document_complete) === 1,
+      documentFingerprint:
+        (row.document_fingerprint as string | null) || undefined,
+      documentMarkdown: (row.document_markdown as string | null) || undefined,
+      manualReviewed: Number(row.manual_reviewed) === 1,
+      updatedAt: String(row.updated_at || ''),
+    }
+  }
+
+  updatePipelineCheckpoint(
+    taskId: string,
+    patch: Partial<Omit<PipelineCheckpoint, 'taskId' | 'updatedAt'>>
+  ): void {
+    const current = this.getPipelineCheckpoint(taskId)
+    const next = { ...current, ...patch }
+    const updatedAt = dayjs().format('YYYY-MM-DD HH:mm:ss')
     this.db
-      .prepare('DELETE FROM transcription_segments WHERE task_id = ?')
+      .prepare(`
+        INSERT INTO pipeline_checkpoints
+        (task_id, asr_complete, asr_fingerprint, polish_complete,
+         polish_fingerprint, translation_complete, translation_fingerprint,
+         translation_completed_count, document_complete, document_fingerprint,
+         document_markdown, manual_reviewed, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(task_id) DO UPDATE SET
+          asr_complete = excluded.asr_complete,
+          asr_fingerprint = excluded.asr_fingerprint,
+          polish_complete = excluded.polish_complete,
+          polish_fingerprint = excluded.polish_fingerprint,
+          translation_complete = excluded.translation_complete,
+          translation_fingerprint = excluded.translation_fingerprint,
+          translation_completed_count = excluded.translation_completed_count,
+          document_complete = excluded.document_complete,
+          document_fingerprint = excluded.document_fingerprint,
+          document_markdown = excluded.document_markdown,
+          manual_reviewed = excluded.manual_reviewed,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        taskId,
+        next.asrComplete ? 1 : 0,
+        next.asrFingerprint || null,
+        next.polishComplete ? 1 : 0,
+        next.polishFingerprint || null,
+        next.translationComplete ? 1 : 0,
+        next.translationFingerprint || null,
+        next.translationCompletedCount,
+        next.documentComplete ? 1 : 0,
+        next.documentFingerprint || null,
+        next.documentMarkdown || null,
+        next.manualReviewed ? 1 : 0,
+        updatedAt
+      )
+  }
+
+  clearPolishAndTranslation(taskId: string): void {
+    this.db
+      .prepare(
+        `UPDATE transcription_segments
+         SET polished_text = NULL, translated_text = NULL,
+             translation_status = NULL
+         WHERE task_id = ?`
+      )
+      .run(taskId)
+  }
+
+  clearTranslationResults(taskId: string): void {
+    this.db
+      .prepare(
+        `UPDATE transcription_segments
+         SET translated_text = NULL, translation_status = NULL
+         WHERE task_id = ?`
+      )
       .run(taskId)
   }
 
@@ -565,7 +779,7 @@ export class DatabaseManager {
     const stmt = this.db.prepare(`
       SELECT * FROM transcription_segments
       WHERE task_id = ?
-      ORDER BY start_time ASC
+      ORDER BY start_time ASC, id ASC
     `)
 
     const rows = stmt.all(taskId) as any[]
@@ -576,7 +790,13 @@ export class DatabaseManager {
       end: row.end_time,
       originalText: row.original_text,
       polishedText: row.polished_text || undefined,
-      translatedText: row.translated_text,
+      translatedText: row.translated_text || undefined,
+      translationStatus:
+        row.translation_status === 'translated' ||
+        row.translation_status === 'fallback' ||
+        row.translation_status === 'reviewed'
+          ? row.translation_status
+          : undefined,
       confidence: row.confidence,
     }))
   }
@@ -592,7 +812,7 @@ export class DatabaseManager {
   updateSegmentTranslation(segmentId: string, translatedText: string): void {
     const stmt = this.db.prepare(`
       UPDATE transcription_segments
-      SET translated_text = ?
+      SET translated_text = ?, translation_status = 'translated'
       WHERE id = ?
     `)
 
@@ -725,8 +945,8 @@ export class DatabaseManager {
   ): void {
     const stmt = this.db.prepare(`
       UPDATE transcription_segments
-      SET polished_text = ?, translated_text = ?
-      WHERE id = ?
+      SET polished_text = ?, translated_text = ?, translation_status = ?
+      WHERE task_id = ? AND id = ?
     `)
 
     const transaction = this.db.transaction(() => {
@@ -734,7 +954,9 @@ export class DatabaseManager {
         stmt.run(
           segment.polishedText || null,
           segment.translatedText || null,
-          segment.id
+          segment.translationStatus || null,
+          taskId,
+          scopeTranscriptionSegmentId(taskId, segment.id)
         )
       }
     })
@@ -754,8 +976,9 @@ export class DatabaseManager {
     )
     const insertStmt = this.db.prepare(`
       INSERT INTO transcription_segments
-      (id, task_id, start_time, end_time, original_text, polished_text, translated_text, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, task_id, start_time, end_time, original_text, polished_text,
+       translated_text, translation_status, confidence)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const transaction = this.db.transaction(() => {
@@ -769,6 +992,7 @@ export class DatabaseManager {
           segment.originalText,
           segment.polishedText || null,
           segment.translatedText || null,
+          segment.translationStatus || null,
           segment.confidence
         )
       }

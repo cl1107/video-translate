@@ -50,6 +50,8 @@ export interface TaskRuntimeOptions {
   /** 模型服务 Endpoint（OpenAI 兼容） */
   llmBaseUrl: string
   translateModel: string
+  /** 固定译法；仅文本会随模型请求发送到所选端点。 */
+  glossary?: Array<{ source: string; target: string }>
   /** 润色模型；空 = 跟随翻译模型 */
   polishModel: string
   asrEngine: AsrEngineId
@@ -147,7 +149,7 @@ export function isBulkDeletableTaskStatus(status: TaskStatus): boolean {
  * 转录/显示段。
  *
  * 字段语义（钉死，避免「原文」歧义）：
- * - originalText：ASR 不可变识别原文（asrText）
+ * - originalText：ASR / 导入原文；校对工作台允许人工修正（原始识别快照由断点数据保留）
  * - polishedText：润色后的显示/翻译输入源（displaySource 候选）
  * - translatedText：目标语译文
  *
@@ -157,11 +159,13 @@ export interface TranscriptionSegment {
   id: string
   start: number
   end: number
-  /** ASR 原始识别文本（不可变语义） */
+  /** 原始识别/导入文本，允许人工校正；修改后应使旧润色失效 */
   originalText: string
   /** 大模型润色后的显示原文（用于翻译输入） */
   polishedText?: string
   translatedText?: string
+  /** 显式区分空译回退、正常译文与人工校对，不能靠原译文相等推断。 */
+  translationStatus?: 'translated' | 'fallback' | 'reviewed'
   confidence: number
 }
 

@@ -34,6 +34,13 @@ export const IpcChannels = {
   retryTask: 'retry-task',
   burnTaskSubtitles: 'burn-task-subtitles',
   getTaskLogs: 'get-task-logs',
+  importSubtitles: 'import-subtitles',
+  attachTaskMedia: 'attach-task-media',
+  updateTaskSegment: 'update-task-segment',
+  retranslateTaskSegment: 'retranslate-task-segment',
+  regenerateTaskSubtitles: 'regenerate-task-subtitles',
+  reuseTaskTranscript: 'reuse-task-transcript',
+  getTaskMediaUrl: 'get-task-media-url',
 
   // BYOK → 模型服务 API Key（OpenAI 兼容 Endpoint，本地或在线均可）
   llmApiKeyStatus: 'llm-api-key-status',

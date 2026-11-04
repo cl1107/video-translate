@@ -3,9 +3,11 @@ import {
   Captions,
   ChevronDown,
   Clock,
+  FilePlus2,
   FileVideo,
   Flame,
   FolderOpen,
+  ListChecks,
   Pause,
   Play,
   RotateCcw,
@@ -40,6 +42,10 @@ interface TaskListProps {
   onTasksChange: () => void
   /** 空状态时跳转到「添加视频」 */
   onGoUpload?: () => void
+  /** 打开字幕校对工作台；由路由宿主提供，便于组件脱离 Router 测试。 */
+  onOpenReview?: (taskId: string) => void
+  /** 导入 SRT/VTT；由宿主注入当前设置。 */
+  onImportSubtitles?: () => void
 }
 
 const BURN_MODE_OPTIONS: Array<{
@@ -126,7 +132,13 @@ function artifactLabels(artifacts?: TaskOutputArtifacts): string[] {
   return labels
 }
 
-export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
+export function TaskList({
+  tasks,
+  onTasksChange,
+  onGoUpload,
+  onOpenReview,
+  onImportSubtitles,
+}: TaskListProps) {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
   const [openOutputMenuTaskId, setOpenOutputMenuTaskId] = useState<string>()
   const [openBurnMenuTaskId, setOpenBurnMenuTaskId] = useState<string>()
@@ -335,6 +347,11 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
       <div className="flex flex-col gap-5">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold">翻译任务</h1>
+          {onImportSubtitles ? (
+            <Button variant="outline" size="sm" onClick={onImportSubtitles}>
+              <FilePlus2 className="h-4 w-4" /> 导入字幕
+            </Button>
+          ) : null}
         </div>
         <Card className="gap-0 py-0">
           <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
@@ -359,7 +376,14 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold">翻译任务</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">翻译任务</h1>
+          {onImportSubtitles ? (
+            <Button variant="outline" size="sm" onClick={onImportSubtitles}>
+              <FilePlus2 className="h-4 w-4" /> 导入字幕
+            </Button>
+          ) : null}
+        </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {deletableTaskIds.length > 0 && (
             <Button
@@ -644,6 +668,19 @@ export function TaskList({ tasks, onTasksChange, onGoUpload }: TaskListProps) {
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {(task.status === TaskStatus.COMPLETED ||
+                    task.status === TaskStatus.PAUSED ||
+                    task.status === TaskStatus.FAILED) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onOpenReview?.(task.id)}
+                    >
+                      <ListChecks className="h-4 w-4" />
+                      校对
+                    </Button>
                   )}
 
                   {isComplete && (

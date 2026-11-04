@@ -8,6 +8,7 @@ import {
   migrateLegacyLlmFields,
   normalizeDownloadCookieBrowser,
   normalizeDownloadProxy,
+  normalizeGlossary,
   normalizeTaskCreationSettings,
   normalizeAsrEngine,
   normalizeHexColor,
@@ -29,6 +30,7 @@ export function defaultTaskRuntimeOptions(): TaskRuntimeOptions {
     subtitleProcessingMode: 'translate',
     subtitleOutputLocation: 'output-subdirectory',
     polishTranscript: true,
+    glossary: [],
     originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
     translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
     downloadProxy: '',
@@ -52,6 +54,7 @@ export function taskOptionsFromAppSettings(
     subtitleProcessingMode: app.subtitleProcessingMode,
     subtitleOutputLocation: app.subtitleOutputLocation,
     polishTranscript: app.polishTranscript,
+    glossary: app.glossary,
     originalSubtitleColor: app.originalSubtitleColor,
     translatedSubtitleColor: app.translatedSubtitleColor,
     downloadProxy: app.downloadProxy,
@@ -106,6 +109,7 @@ export function normalizeTaskRuntimeOptions(
       raw.polishTranscript === undefined
         ? base.polishTranscript
         : Boolean(raw.polishTranscript),
+    glossary: normalizeGlossary(raw.glossary),
     originalSubtitleColor: normalizeHexColor(
       raw.originalSubtitleColor,
       DEFAULT_ORIGINAL_SUBTITLE_COLOR

@@ -49,6 +49,57 @@ test('polishDocumentToMarkdown 调用模型并补标题', async () => {
   assert.match(md, /这是整理后的段落/)
 })
 
+test('polishDocumentToMarkdown 失败重试时恢复已保存的前块', async () => {
+  const saved = new Map<number, string>()
+  let requests = 0
+  const baseOptions = {
+    title: '演示视频',
+    sourceLanguage: 'zh',
+    maxChunkChars: 8,
+    config: {
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      apiKey: 'x',
+      model: 'test',
+    },
+    loadPart: async ({ index, input }: { index: number; input: string }) =>
+      saved.has(index) && input ? saved.get(index) : undefined,
+    savePart: async ({ index, output }: { index: number; output: string }) => {
+      saved.set(index, output)
+    },
+  }
+  const failingClient = {
+    async complete() {
+      requests++
+      if (requests === 2) throw new Error('temporary failure')
+      return '前块'
+    },
+  }
+
+  await assert.rejects(() =>
+    polishDocumentToMarkdown('第一段内容很长。\n\n第二段内容很长。', {
+      ...baseOptions,
+      client: failingClient,
+    })
+  )
+  assert.equal(requests, 2)
+
+  const result = await polishDocumentToMarkdown(
+    '第一段内容很长。\n\n第二段内容很长。',
+    {
+      ...baseOptions,
+      client: {
+        async complete() {
+          requests++
+          return '后块'
+        },
+      },
+    }
+  )
+  assert.match(result, /前块/)
+  assert.match(result, /后块/)
+  assert.equal(requests, 3)
+})
+
 test('polishDocumentToMarkdown 空文失败', async () => {
   await assert.rejects(
     () =>

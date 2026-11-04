@@ -13,6 +13,7 @@ import {
   ModelServicesSettings,
   useModelServicesSettings,
 } from './ModelServicesSettings'
+import { GlossarySettings } from './GlossarySettings'
 import { ThemeToggle } from 'renderer/components/theme/ThemeToggle'
 import { UpdateSettingsCard } from 'renderer/components/update/UpdateSettingsCard'
 import { Alert, AlertDescription } from 'renderer/components/ui/alert'
@@ -607,6 +608,12 @@ export function SettingsPanel({ category, title }: SettingsPanelProps) {
               </div>
             </CardContent>
           </Card>
+
+          <GlossarySettings
+            glossary={settings.glossary}
+            onChange={glossary => setSettings(prev => ({ ...prev, glossary }))}
+            disabled={saving}
+          />
         </div>
       )}
 

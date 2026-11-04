@@ -1,4 +1,17 @@
-import { app, dialog, ipcMain, shell } from 'electron'
+import { app, dialog, ipcMain, shell, protocol, net } from 'electron'
+import { pathToFileURL } from 'node:url'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'task-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+])
 import { makeAppWithSingleInstanceLock } from 'lib/electron-app/factories/app/instance'
 import { makeAppSetup } from 'lib/electron-app/factories/app/setup'
 import { IpcChannels } from '../shared/ipc'
@@ -28,6 +41,118 @@ import { resolveTaskArtifactPath } from './utils/task-artifact-path'
 import { MainWindow } from './windows/main'
 
 function setupIpcHandlers() {
+  const runWorkbench = async (action: () => Promise<unknown>) => {
+    try {
+      await action()
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+  ipcMain.handle(IpcChannels.importSubtitles, async (_event, raw: unknown) => {
+    try {
+      const selection = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: '字幕', extensions: ['srt', 'vtt'] }],
+      })
+      if (selection.canceled || !selection.filePaths[0])
+        return { success: false, error: '已取消导入' }
+      return {
+        success: true,
+        taskId: await taskManager.importSubtitles(
+          selection.filePaths[0],
+          normalizeTaskCreationSettings(
+            raw && typeof raw === 'object' ? raw : {}
+          )
+        ),
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  })
+  ipcMain.handle(IpcChannels.attachTaskMedia, (_event, taskId: string) =>
+    runWorkbench(async () => {
+      const selection = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [
+          {
+            name: '视频',
+            extensions: ['mp4', 'mkv', 'mov', 'webm', 'avi', 'm4v'],
+          },
+        ],
+      })
+      if (selection.canceled || !selection.filePaths[0])
+        throw new Error('已取消关联视频')
+      await taskManager.attachTaskMedia(taskId, selection.filePaths[0])
+    })
+  )
+  ipcMain.handle(
+    IpcChannels.updateTaskSegment,
+    (_event, taskId: string, segment: unknown) =>
+      runWorkbench(() => taskManager.updateTaskSegment(taskId, segment))
+  )
+  ipcMain.handle(
+    IpcChannels.retranslateTaskSegment,
+    (_event, taskId: string, segmentId: string) =>
+      runWorkbench(() => taskManager.retranslateTaskSegment(taskId, segmentId))
+  )
+  ipcMain.handle(
+    IpcChannels.regenerateTaskSubtitles,
+    (_event, taskId: string) =>
+      runWorkbench(() => taskManager.regenerateTaskSubtitles(taskId))
+  )
+  ipcMain.handle(
+    IpcChannels.reuseTaskTranscript,
+    async (_event, taskId: string, input: unknown) => {
+      try {
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          !('kind' in input) ||
+          (input.kind !== 'subtitle' && input.kind !== 'document') ||
+          !('targetLanguage' in input) ||
+          typeof input.targetLanguage !== 'string' ||
+          !input.targetLanguage.trim()
+        )
+          throw new Error('复用选项无效')
+        return {
+          success: true,
+          taskId: await taskManager.reuseTaskTranscript(taskId, {
+            kind: input.kind,
+            targetLanguage: input.targetLanguage.trim(),
+            settings:
+              'settings' in input
+                ? normalizeTaskCreationSettings(
+                    input.settings && typeof input.settings === 'object'
+                      ? input.settings
+                      : {}
+                  )
+                : undefined,
+          }),
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+    }
+  )
+  ipcMain.handle(IpcChannels.getTaskMediaUrl, (_event, taskId: string) => {
+    const task = taskManager.getTask(taskId)
+    if (!task || ['srt', 'vtt', 'pending'].includes(task.videoFile.format))
+      return { success: false, error: '此任务未关联可播放的媒体文件' }
+    return {
+      success: true,
+      url: `task-media://media/${encodeURIComponent(task.id)}`,
+    }
+  })
   ipcMain.handle(
     IpcChannels.uploadFiles,
     async (
@@ -442,6 +567,19 @@ makeAppWithSingleInstanceLock(async () => {
   await app.whenReady()
 
   ensureGuiCommandPath()
+  protocol.handle('task-media', request => {
+    const url = new URL(request.url)
+    const task = taskManager.getTask(decodeURIComponent(url.pathname.slice(1)))
+    if (
+      !task ||
+      url.hostname !== 'media' ||
+      ['srt', 'vtt', 'pending'].includes(task.videoFile.format)
+    )
+      return new Response('Not found', { status: 404 })
+    return net.fetch(pathToFileURL(task.videoFile.path).toString(), {
+      headers: request.headers,
+    })
+  })
   setupIpcHandlers()
 
   const mainWindow = await makeAppSetup(MainWindow)

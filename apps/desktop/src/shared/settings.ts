@@ -27,6 +27,11 @@ export interface TaskSubmissionOptions {
   burnSubtitleMode: SubtitleBurnMode
 }
 
+export interface GlossaryEntry {
+  source: string
+  target: string
+}
+
 /** 识别文本润色后端：与翻译共用同一「模型服务」连接（OpenAI 兼容） */
 
 /** 硬字幕 / ASS 默认色：原文白、译文黄（与历史 ASS 硬编码一致） */
@@ -69,6 +74,8 @@ export interface AppSettings {
   subtitleOutputLocation: SubtitleOutputLocation
   /** 识别结果先经大模型润色再翻译 */
   polishTranscript: boolean
+  /** 翻译时优先采用的术语对照表 */
+  glossary: GlossaryEntry[]
   /** 原文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
   originalSubtitleColor: string
   /** 译文字幕颜色（#RRGGBB），用于 ASS / 硬字幕烧录 */
@@ -93,6 +100,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   outputFormat: 'srt',
   subtitleOutputLocation: 'output-subdirectory',
   polishTranscript: true,
+  glossary: [],
   originalSubtitleColor: DEFAULT_ORIGINAL_SUBTITLE_COLOR,
   translatedSubtitleColor: DEFAULT_TRANSLATED_SUBTITLE_COLOR,
   downloadProxy: '',
@@ -208,6 +216,34 @@ export function normalizeAsrEngine(value?: string | null): AsrEngineId {
   return DEFAULT_ASR_ENGINE
 }
 
+/** 清洗术语库：去除空项，并按源词（不区分大小写）去重。 */
+export function normalizeGlossary(value?: unknown): GlossaryEntry[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const entries: GlossaryEntry[] = []
+
+  for (const item of value) {
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      !('source' in item) ||
+      !('target' in item) ||
+      typeof item.source !== 'string' ||
+      typeof item.target !== 'string'
+    ) {
+      continue
+    }
+    const source = item.source.trim()
+    const target = item.target.trim()
+    const key = source.toLocaleLowerCase()
+    if (!source || !target || seen.has(key)) continue
+    seen.add(key)
+    entries.push({ source, target })
+  }
+
+  return entries
+}
+
 function legacyString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -298,6 +334,7 @@ export function normalizeAppSettings(
       raw.polishTranscript === undefined
         ? DEFAULT_APP_SETTINGS.polishTranscript
         : Boolean(raw.polishTranscript),
+    glossary: normalizeGlossary(raw.glossary),
     originalSubtitleColor: normalizeHexColor(
       raw.originalSubtitleColor,
       DEFAULT_ORIGINAL_SUBTITLE_COLOR

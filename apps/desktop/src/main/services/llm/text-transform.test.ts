@@ -20,6 +20,66 @@ test('cleanModelText 仅回显标签时视为空', () => {
   assert.equal(cleanModelText('译文：', 'translation'), '')
 })
 
+test('translateTextBatch 注入术语与前后文，并逐段回调状态', async () => {
+  const prompts: string[] = []
+  const completed: Array<{
+    index: number
+    total: number
+    source: string
+    translated: string
+    translationStatus: 'translated' | 'fallback'
+  }> = []
+  let calls = 0
+  const client: TextCompletionPort = {
+    complete: async ({ user }) => {
+      prompts.push(user)
+      calls += 1
+      return calls === 1 ? '第一段译文' : '第二段译文'
+    },
+  }
+
+  const translated = await translateTextBatch(['one', 'two'], {
+    sourceLanguage: 'en',
+    targetLanguage: 'zh',
+    client,
+    glossary: [{ source: 'one', target: '一' }],
+    contextBefore: ['before'],
+    contextAfter: ['after'],
+    onSegmentComplete: result => {
+      completed.push(result)
+    },
+  })
+
+  assert.deepEqual(translated, ['第一段译文', '第二段译文'])
+  assert.equal(completed[0]?.index, 0)
+  assert.equal(completed[1]?.index, 1)
+  assert.equal(completed[0]?.translationStatus, 'translated')
+  assert.ok(prompts[0]?.includes('one → 一'))
+  assert.ok(prompts[0]?.includes('前文参考（只读'))
+  assert.ok(prompts[0]?.includes('后文参考（只读'))
+  assert.ok(prompts[1]?.includes('第一段译文') === false)
+})
+
+test('translateTextBatch 空结果回退时逐段回调 fallback', async () => {
+  const completed: string[] = []
+  const client: TextCompletionPort = {
+    complete: async () => '源语言：英语\\n目标语言：中文',
+  }
+
+  const translated = await translateTextBatch(['hello'], {
+    sourceLanguage: 'en',
+    targetLanguage: 'zh',
+    client,
+    maxAttempts: 1,
+    onSegmentComplete: result => {
+      completed.push(result.translationStatus)
+    },
+  })
+
+  assert.deepEqual(translated, ['hello'])
+  assert.deepEqual(completed, ['fallback'])
+})
+
 test('translateTextBatch 支持 AbortSignal', async () => {
   const controller = new AbortController()
   const client: TextCompletionPort = {
