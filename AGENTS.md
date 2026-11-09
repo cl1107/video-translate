@@ -6,40 +6,36 @@
 
 ## 项目概述
 
-这是一个基于 Electron + React 构建的**视频翻译助手**桌面应用程序。它使用 sherpa-onnx（SenseVoice / Fun-ASR-Nano）进行本地语音识别，通过统一的「模型服务」（任意 OpenAI 兼容 Endpoint：本地 Ollama / LM Studio / vLLM 或在线 API）进行 LLM 驱动的翻译与润色。应用提供两条独立工作流：**字幕**（翻译并导出 SRT/ASS，可选硬字幕烧录）与**文稿**（整篇润色为 Markdown 并全屏预览）。
+这是一个基于 **Longbridge Native Shell（NSH）** 的**视频翻译助手**桌面应用程序（`apps/nsh`）。它使用本机 FFmpeg、可选 sherpa-onnx CLI（SenseVoice）进行语音识别，通过统一的「模型服务」（任意 OpenAI 兼容 Endpoint）做翻译与润色。应用提供两条独立工作流：**字幕**（翻译并导出 SRT/ASS，可选硬字幕烧录）与**文稿**（整篇润色为 Markdown）。
+
+`apps/desktop/` 是已废弃的 Electron 实现，仅供对照，默认 `dev`/`build`/`start` 桌面入口都是 NSH。
 
 ## 关键开发命令
 
 ```bash
-# 开发环境
-pnpm dev:desktop          # 启动桌面应用开发服务器
-pnpm dev:landing          # 启动 landing page
-pnpm start:desktop        # 预览已构建的桌面应用
+# 桌面（NSH，需要本机 nsh CLI，当前验证版本 0.4.0）
+nsh --version
+nsh check apps/nsh
+nsh test apps/nsh
+nsh run apps/nsh          # 或 pnpm dev:desktop / pnpm start:desktop
+nsh package apps/nsh --target macos
 
-# 构建打包与本地安装
-pnpm build                # 通过 Turborepo 构建全部应用
-pnpm build:desktop        # 构建桌面安装包
-pnpm build:landing        # 构建 landing page
-pnpm install:local        # 本地自用：一键编译、代码签名并安装至 /Applications
-pnpm make:release         # 创建发布版本
+# 官网
+pnpm dev:landing
+pnpm build:landing
 
 # 代码质量
-pnpm lint                 # 运行 Oxlint 代码检查
-pnpm lint:fix             # 自动修复可安全处理的 lint 问题
-pnpm format               # 使用 Oxfmt 格式化仓库
-pnpm format:check         # 检查格式，不写入文件
-pnpm test                 # 运行全部 Vitest 测试
-
-# 依赖管理
-pnpm install              # 安装依赖
-pnpm --filter video-translate rebuild:native  # 重建桌面原生依赖
+pnpm lint
+pnpm test                 # 先跑 nsh test，再跑 Vitest / turbo
 ```
 
 ## 架构概览
 
-### Electron 应用结构
+### NSH 应用结构
 
-- **桌面应用** (`apps/desktop/`): Electron + React 主产品
+- **桌面应用** (`apps/nsh/`): Rust 二进制 + `nsh_base` UI；领域逻辑在 `src/domain/`
+- **产品官网** (`apps/landing/`): Vite + React landing page
+- **废弃 Electron** (`apps/desktop/`): 见该目录 `DEPRECATED.md`
 - **产品官网** (`apps/landing/`): Vite + React landing page
 - **主进程** (`apps/desktop/src/main/`): 核心服务和任务管理
 - **渲染进程** (`apps/desktop/src/renderer/`): React UI 组件

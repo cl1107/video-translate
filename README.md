@@ -1,6 +1,6 @@
 # 视频翻译助手 🎬
 
-基于 **sherpa-onnx（SenseVoice / Fun-ASR-Nano）+ Electron** 的本地优先桌面工具：可从视频提取原文字幕、通过任意 **OpenAI 兼容模型服务 Endpoint** 翻译字幕，或把音视频整理成 **Markdown 文稿**。仓库使用 pnpm Workspace 与 Turborepo 管理桌面应用和产品官网。
+基于 **sherpa-onnx（SenseVoice）+ Native Shell（NSH）** 的本地优先桌面工具：可从视频提取原文字幕、通过任意 **OpenAI 兼容模型服务 Endpoint** 翻译字幕，或把音视频整理成 **Markdown 文稿**。桌面端在 `apps/nsh`，**不再需要 Electron**。仓库仍用 pnpm Workspace 管理产品官网 `apps/landing`。
 
 **产品官网（GitHub Pages）：** [https://cl1107.github.io/video-translate/](https://cl1107.github.io/video-translate/)
 
@@ -20,7 +20,7 @@
 - 🌍 **多语言翻译** - 字幕线通过配置的 OpenAI 兼容模型服务翻译；可选同一 Endpoint 润色识别原文
 - 📄 **Markdown 文稿** - 文稿线整篇 AI 润色为结构化 MD，全屏预览 / 复制 / 导出
 - ⚡ **智能处理** - 自动音频提取、分段识别与进度回调
-- 🎨 **现代界面** - React 19 + TailwindCSS 4 + Base UI，支持暗黑模式
+- 🎨 **原生界面** - Native Shell Rust UI，系统外观（浅色/深色）
 - 📁 **多格式输出** - 原文 / 译文 / 双语 SRT、ASS 与可选硬字幕；输出到 `output` 或源视频同目录
 - 🔄 **任务管理** - 进度、日志、本地时间与处理耗时；支持暂停/恢复和批量删除已结束任务
 - 🖊️ **字幕校对工作台** - 同步播放媒体，对照修改原文/译文与起止时间，单段重译后保存并重新导出；未保存草稿会提示
@@ -253,7 +253,8 @@ ollama pull kaelri/hy-mt2:1.8b
 
 ```
 apps/
-├── desktop/                 # Electron 桌面应用
+├── nsh/                     # NSH 桌面应用（默认）
+├── desktop/                 # 已废弃的 Electron 实现
 │   └── src/
 │       ├── main/            # 主进程
 │   ├── services/
@@ -274,8 +275,9 @@ pnpm-workspace.yaml          # Workspace 包声明
 ### 开发命令
 
 ```bash
-# 启动开发服务器（热重载）
-pnpm dev:desktop
+# 启动 NSH 桌面端
+pnpm dev:desktop          # nsh run apps/nsh
+nsh check apps/nsh && nsh test apps/nsh
 
 # 启动 landing page
 pnpm dev:landing
