@@ -11,7 +11,7 @@ use super::{
     ffmpeg::Ffmpeg,
     llm::{Completer, MockCompleter, OpenAiCompleter, document_system, polish_system, translate_system},
     model::{
-        SubtitleBurnMode, SubtitleProcessingMode, TaskKind, TaskLog, TaskOutputArtifacts,
+        Segment, SubtitleBurnMode, SubtitleProcessingMode, TaskKind, TaskLog, TaskOutputArtifacts,
         TaskStatus, TranslationStatus, TranslationTask, VideoFile, new_id, now,
     },
     paths::{resolve_output_dir, unique_path, work_dir},
@@ -149,6 +149,84 @@ pub fn create_task_from_input(
     })
 }
 
+pub fn can_reuse_transcript(task: &TranslationTask) -> bool {
+    !task.segments.is_empty()
+        && task
+            .segments
+            .iter()
+            .any(|segment| !segment.asr_text().is_empty())
+}
+
+/// 用已有识别结果新建字幕或文稿任务，不重新 ASR。
+pub fn create_reused_task(
+    source: &TranslationTask,
+    kind: TaskKind,
+    settings: &AppSettings,
+) -> Result<TranslationTask, String> {
+    if !can_reuse_transcript(source) {
+        return Err("任务尚无可复用的识别结果".into());
+    }
+    let now_ts = now();
+    let mut video = source.video_file.clone();
+    video.id = new_id();
+    video.created_at = now_ts;
+    let processing = if kind == TaskKind::Subtitle {
+        SubtitleProcessingMode::Translate
+    } else {
+        SubtitleProcessingMode::Extract
+    };
+    let id = new_id();
+    let segments = source
+        .segments
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| Segment {
+            id: format!("{id}:seg-{}", index + 1),
+            start: segment.start,
+            end: segment.end,
+            original_text: segment.original_text.clone(),
+            polished_text: None,
+            translated_text: None,
+            translation_status: None,
+            confidence: segment.confidence,
+        })
+        .collect();
+    let mut task = TranslationTask {
+        id: id.clone(),
+        video_file: video,
+        kind,
+        status: TaskStatus::Pending,
+        progress: 0.0,
+        source_language: source.source_language.clone(),
+        detected_language: source.detected_language.clone(),
+        target_language: settings.target_language.clone(),
+        options: settings.to_runtime(processing, false, SubtitleBurnMode::Bilingual),
+        source_url: source.source_url.clone(),
+        platform_subtitle_path: source.platform_subtitle_path.clone(),
+        platform_subtitle_language: source.platform_subtitle_language.clone(),
+        segments,
+        logs: Vec::new(),
+        error_message: None,
+        created_at: now_ts,
+        updated_at: now_ts,
+        completed_at: None,
+        output_artifacts: None,
+    };
+    log_task(
+        &mut task,
+        "info",
+        &format!("从任务 {} 复用识别结果，跳过 ASR", source.id),
+    );
+    let mut cp = PipelineCheckpoint {
+        asr_complete: true,
+        asr_fingerprint: None,
+        ..PipelineCheckpoint::default()
+    };
+    checkpoint::save(&task.id, &cp)?;
+    let _ = cp;
+    Ok(task)
+}
+
 pub struct Runtime {
     pub transcriber: Box<dyn Transcriber>,
     pub completer: Option<Box<dyn Completer>>,
@@ -271,7 +349,12 @@ fn run_inner(
         mtime,
     );
 
-    if matches!(ext.as_str(), "srt" | "vtt") {
+    if checkpoint::stage_valid(cp.asr_complete, &cp.asr_fingerprint, &asr_fp)
+        && !task.segments.is_empty()
+    {
+        log_task(task, "info", "复用已完成的识别结果，跳过 ASR");
+        hooks.emit(task);
+    } else if matches!(ext.as_str(), "srt" | "vtt") {
         log_task(task, "info", "导入字幕文件");
         let content = fs::read_to_string(&path).map_err(|err| err.to_string())?;
         let cues = parse_subtitle(&content, Some(&ext));
@@ -289,9 +372,6 @@ fn run_inner(
         let cues = parse_subtitle(&content, None);
         task.segments = segments_from_cues(&task.id, &cues);
         mark_asr(&mut cp, &task.id, &asr_fp)?;
-        hooks.emit(task);
-    } else if cp.asr_complete && checkpoint::matches(&cp.asr_fingerprint, &asr_fp) && !task.segments.is_empty() {
-        log_task(task, "info", "复用已完成的识别结果，跳过 ASR");
         hooks.emit(task);
     } else {
         let ffmpeg = runtime
@@ -793,5 +873,59 @@ mod tests {
         retranslate_segment(&mut task, "s1", &MockCompleter).unwrap();
         let text = task.segments[0].translated_text.clone().unwrap();
         assert!(text.contains("你好"), "{text}");
+    }
+
+    #[test]
+    fn reuse_transcript_creates_new_task_without_asr() {
+        let dir = tempdir().unwrap();
+        let srt = dir.path().join("talk.srt");
+        fs::write(&srt, "1\n00:00:01,000 --> 00:00:02,000\nHello\n").unwrap();
+        let mut settings = AppSettings::default();
+        settings.mock_asr = true;
+        settings.mock_llm = true;
+        settings.target_language = "ja".into();
+        let mut source = create_task_from_input(
+            srt.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &settings,
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let runtime = Runtime {
+            transcriber: Box::new(MockTranscriber),
+            completer: Some(Box::new(MockCompleter)),
+            ffmpeg: None,
+        };
+        let abort = AbortFlag::new();
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(|_| {}),
+        };
+        source = run_task(source, &runtime, &abort, &mut hooks);
+        assert_eq!(source.status, TaskStatus::Completed);
+        source.segments[0].translated_text = Some("旧译文".into());
+
+        let reused = create_reused_task(&source, TaskKind::Subtitle, &settings).unwrap();
+        assert_ne!(reused.id, source.id);
+        assert_eq!(reused.kind, TaskKind::Subtitle);
+        assert_eq!(reused.target_language, "ja");
+        assert_eq!(reused.segments[0].original_text, source.segments[0].original_text);
+        assert!(reused.segments[0].translated_text.is_none());
+        assert!(reused.segments[0].polished_text.is_none());
+
+        let reused = run_task(reused, &runtime, &abort, &mut hooks);
+        assert_eq!(reused.status, TaskStatus::Completed);
+        assert!(reused.logs.iter().any(|log| log.message.contains("跳过 ASR")));
+        assert_ne!(reused.segments[0].original_text, "[mock]");
+
+        let empty = TranslationTask {
+            segments: Vec::new(),
+            ..source.clone()
+        };
+        assert_eq!(
+            create_reused_task(&empty, TaskKind::Document, &settings).unwrap_err(),
+            "任务尚无可复用的识别结果"
+        );
     }
 }

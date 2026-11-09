@@ -16,7 +16,7 @@ use crate::domain::{
         Segment, SubtitleBurnMode, SubtitleProcessingMode, TaskKind, TaskStatus, TranslationTask,
     },
     paths::{self, settings_path},
-    pipeline::{AbortFlag, PipelineHooks, Runtime, create_task_from_input, regenerate_subtitles, retranslate_segment, run_task},
+    pipeline::{AbortFlag, PipelineHooks, Runtime, can_reuse_transcript, create_reused_task, create_task_from_input, regenerate_subtitles, retranslate_segment, run_task},
     settings::{AppSettings, parse_settings_json},
     system_check::{self, CheckResult},
 };
@@ -231,6 +231,36 @@ pub(crate) fn select_task(id: String) {
 pub(crate) fn selected_task() -> Option<TranslationTask> {
     let id = selected_id()?;
     task_by_id(&id)
+}
+
+pub(crate) fn selected_can_reuse() -> bool {
+    selected_task().is_some_and(|task| can_reuse_transcript(&task))
+}
+
+pub(crate) fn reuse_selected(kind: TaskKind) {
+    let Some(source) = selected_task() else {
+        ws().update(|ws| ws.message = "请先选择任务".into());
+        return;
+    };
+    let settings = settings();
+    match create_reused_task(&source, kind, &settings) {
+        Ok(task) => {
+            let id = task.id.clone();
+            ws().update(|ws| {
+                ws.kind = kind;
+                ws.panel = Panel::Tasks;
+                ws.selected = Some(id.clone());
+                ws.message = if kind == TaskKind::Document {
+                    "已复用识别结果创建文稿任务".into()
+                } else {
+                    "已复用识别结果创建字幕任务".into()
+                };
+            });
+            upsert_task(task);
+            start_task(id);
+        }
+        Err(err) => ws().update(|ws| ws.message = err),
+    }
 }
 
 pub(crate) fn submit_input() {

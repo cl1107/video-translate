@@ -201,11 +201,23 @@ fn tasks_panel() -> impl IntoElement {
                         .justify_between()
                         .px_4()
                         .py_3()
+                        .gap_2()
                         .child(
                             text(move || format!("任务 {}", store::visible_count()))
                                 .text_sm()
                                 .font_weight(FontWeight::MEDIUM),
                         )
+                        .child(when(store::selected_can_reuse, || {
+                            view()
+                                .flex_row()
+                                .gap_1()
+                                .child(ui::outline_button("复用到字幕", || {
+                                    store::reuse_selected(TaskKind::Subtitle);
+                                }))
+                                .child(ui::outline_button("复用到文稿", || {
+                                    store::reuse_selected(TaskKind::Document);
+                                }))
+                        }))
                         .child(ui::outline_button("清理已结束", store::delete_finished)),
                 )
                 .child(
@@ -351,6 +363,17 @@ fn selected_body() -> impl IntoElement {
                     }
                 })),
         )
+        .child(when(store::selected_can_reuse, || {
+            view()
+                .flex_row()
+                .gap_2()
+                .child(ui::outline_button("复用到字幕", || {
+                    store::reuse_selected(TaskKind::Subtitle);
+                }))
+                .child(ui::outline_button("复用到文稿", || {
+                    store::reuse_selected(TaskKind::Document);
+                }))
+        }))
         .child(
             text(move || {
                 store::selected_task()

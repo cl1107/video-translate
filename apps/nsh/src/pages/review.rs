@@ -210,6 +210,26 @@ fn editor(id: String, selected: Signal<usize>) -> impl IntoElement {
             .text_sm()
             .text_color(move || theme().destructive),
         )
+        .child(when(
+            {
+                let id = id.clone();
+                move || {
+                    store::task_by_id(&id)
+                        .is_some_and(|task| crate::domain::pipeline::can_reuse_transcript(&task))
+                }
+            },
+            || {
+                view()
+                    .flex_row()
+                    .gap_2()
+                    .child(ui::outline_button("复用到字幕", || {
+                        store::reuse_selected(crate::domain::model::TaskKind::Subtitle);
+                    }))
+                    .child(ui::outline_button("复用到文稿", || {
+                        store::reuse_selected(crate::domain::model::TaskKind::Document);
+                    }))
+            },
+        ))
         .child(
             view()
                 .flex_row()

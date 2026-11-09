@@ -113,6 +113,11 @@ pub fn matches(stored: &Option<String>, current: &str) -> bool {
     stored.as_deref() == Some(current)
 }
 
+/// 阶段已完成，且未记录指纹（跨工作流复用）或指纹一致。
+pub fn stage_valid(complete: bool, stored: &Option<String>, current: &str) -> bool {
+    complete && (stored.is_none() || stored.as_deref() == Some(current))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +127,7 @@ mod tests {
         assert_ne!(asr_fingerprint("a", "p", 1, 2), asr_fingerprint("b", "p", 1, 2));
         assert!(matches(&Some("x".into()), "x"));
         assert!(!matches(&Some("x".into()), "y"));
+        assert!(stage_valid(true, &None, "anything"));
+        assert!(!stage_valid(false, &None, "x"));
     }
 }
