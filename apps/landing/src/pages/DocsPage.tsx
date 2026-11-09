@@ -142,8 +142,8 @@ export function DocsPage() {
           <em>跑通第一条任务。</em>
         </h1>
         <p className="docs-lead">
-          从系统工具到应用内流程：FFmpeg、模型服务、yt-dlp 怎么配，以及本地文件 /
-          在线链接如何提取原文、翻译字幕、校对或生成 Markdown
+          从系统工具到应用内流程：FFmpeg、模型服务、yt-dlp 怎么配，以及本地文件
+          / 在线链接如何提取原文、翻译字幕、校对或生成 Markdown
           文稿。依赖缺失时应用启动会自检并给出安装提示。
         </p>
         <DownloadCta
@@ -196,8 +196,8 @@ export function DocsPage() {
                   <li>
                     <strong>模型服务</strong>
                     ：按需配置。仅提取原文时无需模型服务；字幕翻译、润色与文稿整理使用
-                    OpenAI 兼容 Endpoint（本机 Ollama / LM Studio / vLLM
-                    或在线 API）
+                    OpenAI 兼容 Endpoint（本机 Ollama / LM Studio / vLLM 或在线
+                    API）
                   </li>
                   <li>
                     <strong>yt-dlp</strong>：可选。仅「在线链接」下载视频时需要
@@ -454,7 +454,8 @@ sudo dnf install ffmpeg`}
               字幕翻译、字幕润色和文稿整理使用设置中的
               <strong>OpenAI 兼容 Endpoint</strong>
               。仅提取原文时可以跳过本节。可以是本机 Ollama、LM Studio、vLLM
-              或在线 API。使用在线服务时，应用只发送识别后的文本，不会上传视频、音频或
+              或在线
+              API。使用在线服务时，应用只发送识别后的文本，不会上传视频、音频或
               ASR 模型。
             </p>
             <p>
@@ -504,8 +505,9 @@ ollama list`}
               <div>
                 <strong>可配置多套模型服务</strong>
                 <p>
-                  设置里可添加多套 OpenAI 兼容服务（名称、Base URL、翻译/润色模型），创建任务时选择其中一套。API
-                  Key 只保存在本机，不会写入任务记录。FFmpeg / ASR /
+                  设置里可添加多套 OpenAI 兼容服务（名称、Base
+                  URL、翻译/润色模型），创建任务时选择其中一套。API Key
+                  只保存在本机，不会写入任务记录。FFmpeg / ASR /
                   字幕生成始终在本地。
                 </p>
               </div>
@@ -615,7 +617,8 @@ pip install -U yt-dlp
             <h3>2. 选择工作流并导入素材</h3>
             <p>
               主界面顶栏左侧切换 <strong>字幕</strong> 或 <strong>文稿</strong>
-              ；右侧「添加 / 任务」在当前工作流内切换面板。两条线任务列表独立，完整识别结果可互相复用。
+              ；右侧「添加 /
+              任务」在当前工作流内切换面板。两条线任务列表独立，完整识别结果可互相复用。
             </p>
             <div className="docs-cards">
               <article>
@@ -635,7 +638,8 @@ pip install -U yt-dlp
               <article>
                 <h4>导入字幕</h4>
                 <p>
-                  任务列表可导入 SRT / VTT，直接进入校对，或复用为翻译任务。可关联本地视频同步播放与烧录。
+                  任务列表可导入 SRT /
+                  VTT，直接进入校对，或复用为翻译任务。可关联本地视频同步播放与烧录。
                 </p>
               </article>
             </div>
@@ -648,8 +652,9 @@ pip install -U yt-dlp
               </li>
               <li>
                 <strong>选择处理方式</strong>
-                ：「仅提取原文」只生成原文 SRT，无需模型服务；「翻译字幕」可先润色原文，再由所选
-                Endpoint 翻译。
+                ：「仅提取原文」只生成原文
+                SRT，无需模型服务；「翻译字幕」可先润色原文，再由所选 Endpoint
+                翻译。
               </li>
               <li>
                 <strong>导出</strong>
@@ -697,7 +702,9 @@ pip install -U yt-dlp
                 在对应工作流的任务列表查看进度、日志、本地创建时间与处理耗时；支持暂停
                 / 恢复。识别、润色、翻译会按阶段保存断点，恢复时只补未完成部分。
               </li>
-              <li>字幕完成：打开字幕或结果文件夹；可进入校对、补烧硬字幕，或复用识别结果生成文稿。</li>
+              <li>
+                字幕完成：打开字幕或结果文件夹；可进入校对、补烧硬字幕，或复用识别结果生成文稿。
+              </li>
               <li>
                 文稿完成：全屏预览 Markdown、复制、打开 .md 或结果文件夹。
               </li>
@@ -713,7 +720,8 @@ pip install -U yt-dlp
               <li>源语言 / 目标语言（字幕线）</li>
               <li>字幕与烧录视频的输出位置：output 子目录或源视频同目录</li>
               <li>
-                模型服务：可添加多套 OpenAI 兼容 Endpoint，分别指定翻译 / 润色模型
+                模型服务：可添加多套 OpenAI 兼容 Endpoint，分别指定翻译 /
+                润色模型
               </li>
               <li>术语库：翻译时优先采用指定译法</li>
               <li>原文 / 译文字幕颜色；烧录内容在创建字幕任务时选择</li>

@@ -15,12 +15,13 @@
 pnpm dev:desktop          # 启动桌面应用开发服务器
 pnpm dev:landing          # 启动 landing page
 pnpm start:desktop        # 预览已构建的桌面应用
+pnpm vt --help            # 仓库内无窗口 CLI；安装到 /Applications 后用全局 vt
 
 # 构建打包与本地安装
 pnpm build                # 通过 Turborepo 构建全部应用
 pnpm build:desktop        # 构建桌面安装包
 pnpm build:landing        # 构建 landing page
-pnpm install:local        # 本地自用：一键编译、代码签名并安装至 /Applications
+pnpm install:local        # 本地自用：编译、签名、安装至 /Applications，并写入 ~/.local/bin/vt
 pnpm make:release         # 创建发布版本
 
 # 代码质量
@@ -40,6 +41,7 @@ pnpm --filter video-translate rebuild:native  # 重建桌面原生依赖
 ### Electron 应用结构
 
 - **桌面应用** (`apps/desktop/`): Electron + React 主产品
+- **CLI** (`apps/desktop/src/cli/`): 无窗口入口，复用主进程 TaskManager / 流水线；开发用 `pnpm vt`，全局用 `vt`（绑定安装包 Electron）
 - **产品官网** (`apps/landing/`): Vite + React landing page
 - **主进程** (`apps/desktop/src/main/`): 核心服务和任务管理
 - **渲染进程** (`apps/desktop/src/renderer/`): React UI 组件
@@ -212,3 +214,5 @@ UI / 设计工作请先读对应应用的产品与视觉上下文（Impeccable�
 - **North stars:** desktop = _The Quiet Workbench_；landing = _The Acid Studio_
 - **Live 配置:** `apps/desktop/.impeccable/live/config.json`、`apps/landing/.impeccable/live/config.json`
 - 命令入口：`$impeccable`（需指定 target 应用）。设计相关原则与 anti-references 以 PRODUCT/DESIGN 为准，勿与实现细节混写。
+
+Agent 通过 CLI 执行翻译 / 转录 / 文稿时，使用 skill `video-translate-cli`（`.agents/skills/video-translate-cli/SKILL.md`）。

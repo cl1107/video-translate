@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { configureAppPaths, resetAppPathsForTests } from '../runtime/app-paths'
 
 const storage = vi.hoisted(() => ({ userData: '', encrypted: true }))
 vi.mock('electron', () => ({
@@ -29,9 +30,28 @@ import * as secureStore from './secure-store'
 beforeEach(() => {
   storage.userData = mkdtempSync(path.join(tmpdir(), 'video-translate-keys-'))
   storage.encrypted = true
+  delete process.env.VIDEO_TRANSLATE_LLM_API_KEY
+  configureAppPaths({
+    userData: storage.userData,
+    logs: path.join(storage.userData, 'logs'),
+    isPackaged: false,
+  })
+  secureStore.configureSafeStorageForTests(safeStorage)
   vi.clearAllMocks()
 })
-afterEach(() => rmSync(storage.userData, { recursive: true, force: true }))
+afterEach(() => {
+  secureStore.configureSafeStorageForTests(undefined)
+  resetAppPathsForTests()
+  rmSync(storage.userData, { recursive: true, force: true })
+})
+
+test('VIDEO_TRANSLATE_LLM_API_KEY 覆盖本地存储', () => {
+  secureStore.setLlmApiKey('stored-key')
+  process.env.VIDEO_TRANSLATE_LLM_API_KEY = 'env-key'
+  expect(secureStore.getLlmApiKey()).toBe('env-key')
+  delete process.env.VIDEO_TRANSLATE_LLM_API_KEY
+  expect(secureStore.getLlmApiKey()).toBe('stored-key')
+})
 
 test('服务密钥独立保存，新服务不回退全局密钥', () => {
   expect(secureStore.setLlmApiKey('legacy-key').success).toBe(true)

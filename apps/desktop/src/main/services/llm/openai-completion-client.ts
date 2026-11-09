@@ -58,7 +58,7 @@ export class OpenAiCompletionClient implements TextCompletionPort {
    * 非流式 chat completion，返回助手文本内容。
    */
   async complete(options: CompleteOptions): Promise<string> {
-    const response = await this.client.chat.completions.create({
+    const request = {
       model: this.model,
       messages: [
         { role: 'system', content: options.system },
@@ -66,7 +66,13 @@ export class OpenAiCompletionClient implements TextCompletionPort {
       ],
       temperature: options.temperature ?? 0.1,
       max_tokens: options.maxTokens ?? 2000,
-    })
+      // 翻译与润色直接生成正文，避免思考内容耗尽输出额度。
+      reasoning_effort: 'none',
+      chat_template_kwargs: { enable_thinking: false },
+    } satisfies OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming & {
+      chat_template_kwargs: { enable_thinking: boolean }
+    }
+    const response = await this.client.chat.completions.create(request)
 
     const content = response.choices[0]?.message?.content
     if (typeof content !== 'string') {

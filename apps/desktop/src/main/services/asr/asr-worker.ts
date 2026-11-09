@@ -130,9 +130,23 @@ function recognize(request: AsrWorkerRequest): AsrWorkerResult {
   return recognizer.getResult(stream)
 }
 
+function handleRecognize(
+  request: AsrWorkerRequest,
+  post: (message: AsrWorkerResponse) => void
+): void {
+  if (!request || request.type !== 'recognize') return
+  try {
+    const payload = recognize(request)
+    post({ id: request.id, type: 'result', payload })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    post({ id: request.id, type: 'error', message })
+  }
+}
+
 const parentPort = (
   process as unknown as {
-    parentPort: {
+    parentPort?: {
       on: (
         event: 'message',
         listener: (event: { data: unknown }) => void
@@ -142,15 +156,16 @@ const parentPort = (
   }
 ).parentPort
 
-parentPort.on('message', event => {
-  const request = event.data as AsrWorkerRequest
-  if (!request || request.type !== 'recognize') return
-
-  try {
-    const payload = recognize(request)
-    parentPort.postMessage({ id: request.id, type: 'result', payload })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    parentPort.postMessage({ id: request.id, type: 'error', message })
-  }
-})
+if (parentPort) {
+  parentPort.on('message', event => {
+    handleRecognize(event.data as AsrWorkerRequest, message =>
+      parentPort.postMessage(message)
+    )
+  })
+} else {
+  process.on('message', (data: unknown) => {
+    handleRecognize(data as AsrWorkerRequest, message => {
+      process.send?.(message)
+    })
+  })
+}

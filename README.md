@@ -141,6 +141,23 @@ ollama pull kaelri/hy-mt2:1.8b
 
 其他 OpenAI 兼容服务请填写其 Base URL（通常带 `/v1`）、模型 ID，以及服务要求的 API Key。
 
+### CLI
+
+桌面应用的全部处理能力也可通过无窗口 CLI 调用（同一套 ASR / 模型服务 / 流水线）。
+
+把最新桌面包装进 `/Applications` 后，全局命令应绑定安装包里的 Electron（`~/.local/bin` 已在常见 PATH 中）：
+
+```bash
+pnpm install:local          # 部署到 /Applications，并写入 ~/.local/bin/vt
+vt --help
+vt doctor --json
+vt subtitle ./video.mp4 --target-lang zh --json
+```
+
+只更新了安装包、尚未重写 shim 时，再执行一次 `vt install`（或 `pnpm vt install`）。开发仓库内也可直接 `pnpm vt`。
+
+`pnpm vt` 默认使用独立数据目录 `视频翻译助手-cli`。从安装包启动的全局 `vt` 与桌面共用任务库。Agent 集成见 [`.agents/skills/video-translate-cli/SKILL.md`](.agents/skills/video-translate-cli/SKILL.md)。
+
 ### 启动应用
 
 ```bash

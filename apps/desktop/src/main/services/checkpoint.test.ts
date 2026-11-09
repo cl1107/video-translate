@@ -26,7 +26,11 @@ vi.mock('./database/manager', () => ({
     id.startsWith(`${taskId}:`) ? id : `${taskId}:${id}`,
 }))
 
-import { seedTaskTranscript, updateCheckpointAfterReviewed } from './checkpoint'
+import {
+  resetDownstreamCheckpointsForRetry,
+  seedTaskTranscript,
+  updateCheckpointAfterReviewed,
+} from './checkpoint'
 const segment: TranscriptionSegment = {
   id: 'platform-1',
   start: 0,
@@ -81,6 +85,22 @@ describe('pipeline checkpoint helpers', () => {
       'task-1',
       { manualReviewed: false }
     )
+  })
+
+  it('重试只清下游断点，保留 ASR 完成标记', () => {
+    resetDownstreamCheckpointsForRetry('task-1')
+    expect(databaseManager.updatePipelineCheckpoint).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({
+        polishComplete: false,
+        documentComplete: false,
+        documentMarkdown: undefined,
+        translationComplete: false,
+      })
+    )
+    const patch = databaseManager.updatePipelineCheckpoint.mock.calls[0]?.[1]
+    expect(patch).not.toHaveProperty('asrComplete')
+    expect(patch).not.toHaveProperty('asrFingerprint')
   })
 
   it('校对 helper 保存人工结果并关闭旧模型断点', () => {

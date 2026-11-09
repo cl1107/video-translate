@@ -8,15 +8,41 @@ import {
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
-import { app, safeStorage } from 'electron'
 import { LEGACY_LLM_SERVICE_ID } from '../../shared/settings'
+import { getUserDataDir } from '../runtime/app-paths'
+
+type SafeStorage = {
+  isEncryptionAvailable: () => boolean
+  encryptString: (value: string) => Buffer
+  decryptString: (value: Buffer) => string
+}
+
+let safeStorageOverride: SafeStorage | undefined
+
+export function configureSafeStorageForTests(storage?: SafeStorage): void {
+  safeStorageOverride = storage
+}
+
+function electronSafeStorage(): SafeStorage | undefined {
+  if (safeStorageOverride) return safeStorageOverride
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const electron = require('electron') as
+      | { safeStorage?: SafeStorage }
+      | string
+    if (!electron || typeof electron === 'string') return undefined
+    return electron.safeStorage
+  } catch {
+    return undefined
+  }
+}
 
 const LLM_KEY_FILE = 'llm-api-key.enc'
 /** v0.8.x 及以前的旧文件名；读取回退用，新写入一律走 LLM_KEY_FILE */
 const LEGACY_BYOK_KEY_FILE = 'byok-api-key.enc'
 
 function storeDir(): string {
-  const dir = path.join(app.getPath('userData'), 'secure')
+  const dir = path.join(getUserDataDir(), 'secure')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
@@ -40,7 +66,8 @@ function legacyKeyFilePath(): string {
 }
 
 function writeKeyFile(file: string, value: string): void {
-  if (safeStorage.isEncryptionAvailable()) {
+  const safeStorage = electronSafeStorage()
+  if (safeStorage?.isEncryptionAvailable()) {
     writeFileSync(file, safeStorage.encryptString(value))
   } else {
     // 极端环境无 OS keychain 时仍落盘，权限依赖 userData 目录
@@ -53,7 +80,8 @@ function readKeyFile(file: string): string | null {
   const buf = readFileSync(file)
   if (buf.length === 0) return null
 
-  if (safeStorage.isEncryptionAvailable()) {
+  const safeStorage = electronSafeStorage()
+  if (safeStorage?.isEncryptionAvailable()) {
     try {
       const text = safeStorage.decryptString(buf)
       return text.trim() || null
@@ -97,6 +125,8 @@ export function setLlmApiKey(
  * 切勿把返回值写入任务日志或 console。
  */
 export function getLlmApiKey(serviceId?: string): string | null {
+  const fromEnv = process.env.VIDEO_TRANSLATE_LLM_API_KEY?.trim()
+  if (fromEnv) return fromEnv
   try {
     const current = readKeyFile(keyFilePath(serviceId))
     if (current) return current

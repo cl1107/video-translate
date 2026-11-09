@@ -5,7 +5,8 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import dayjs from 'dayjs'
-import { app, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
+import { getDownloadsRoot, getUserDataSubdir } from '../runtime/app-paths'
 import { randomUUID } from 'node:crypto'
 import { IpcChannels } from '../../shared/ipc'
 import type {
@@ -49,7 +50,11 @@ import {
 import { ffmpegProcessor } from './ffmpeg/processor'
 import { getLlmApiKey } from './secure-store'
 import { tempWorkspace } from './temp-workspace'
-import { getTaskCheckpoint, updateCheckpointAfterReviewed } from './checkpoint'
+import {
+  getTaskCheckpoint,
+  resetDownstreamCheckpointsForRetry,
+  updateCheckpointAfterReviewed,
+} from './checkpoint'
 import {
   assertEditableTask,
   createImportedSubtitleTask,
@@ -80,10 +85,6 @@ export interface CreateUrlTaskOptions extends Partial<TaskCreationSettings> {
   sourceLanguage: string
   targetLanguage: string
   kind?: TaskKind
-}
-
-function getDownloadsRoot(): string {
-  return path.join(app.getPath('userData'), 'downloads')
 }
 
 /**
@@ -122,6 +123,8 @@ export class TaskManager {
   private runQueue: Array<() => Promise<void>> = []
   private queueRunning = false
   private editingTasks = new Set<string>()
+  private taskUpdateListeners = new Set<(task: TranslationTask) => void>()
+  private taskDeletedListeners = new Set<(taskId: string) => void>()
 
   constructor() {
     this.loadActiveTasks()
@@ -130,6 +133,79 @@ export class TaskManager {
 
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window
+  }
+
+  subscribeTaskUpdates(listener: (task: TranslationTask) => void): () => void {
+    this.taskUpdateListeners.add(listener)
+    return () => this.taskUpdateListeners.delete(listener)
+  }
+
+  subscribeTaskDeleted(listener: (taskId: string) => void): () => void {
+    this.taskDeletedListeners.add(listener)
+    return () => this.taskDeletedListeners.delete(listener)
+  }
+
+  /**
+   * 等到任务进入终态（完成 / 失败 / 取消 / 暂停）。
+   * 订阅优先、轮询兜底，避免错过 notify 窗口。
+   */
+  waitForTask(
+    taskId: string,
+    options?: { signal?: AbortSignal; pollMs?: number }
+  ): Promise<TranslationTask> {
+    const pollMs = options?.pollMs ?? 400
+    const signal = options?.signal
+    const settled = new Set<TaskStatus>([
+      TaskStatus.COMPLETED,
+      TaskStatus.FAILED,
+      TaskStatus.CANCELLED,
+      TaskStatus.PAUSED,
+    ])
+
+    const existing = this.getTask(taskId)
+    if (!existing) {
+      return Promise.reject(new Error('任务不存在'))
+    }
+
+    return new Promise((resolve, reject) => {
+      let timer: NodeJS.Timeout | undefined
+      let unsub: (() => void) | undefined
+      let settledOnce = false
+
+      const cleanup = () => {
+        if (timer) clearInterval(timer)
+        unsub?.()
+        signal?.removeEventListener('abort', onAbort)
+      }
+
+      const finish = (task: TranslationTask) => {
+        if (settledOnce) return
+        settledOnce = true
+        cleanup()
+        resolve(task)
+      }
+
+      const onAbort = () => {
+        if (settledOnce) return
+        settledOnce = true
+        cleanup()
+        reject(signal?.reason ?? new Error('等待任务已取消'))
+      }
+
+      const inspect = (task: TranslationTask | null) => {
+        if (task && settled.has(task.status)) finish(task)
+      }
+
+      unsub = this.subscribeTaskUpdates(task => {
+        if (task.id === taskId) inspect(task)
+      })
+      inspect(this.getTask(taskId))
+      timer = setInterval(() => inspect(this.getTask(taskId)), pollMs)
+      if (signal) {
+        if (signal.aborted) onAbort()
+        else signal.addEventListener('abort', onAbort, { once: true })
+      }
+    })
   }
 
   private async initializeServices(): Promise<void> {
@@ -152,6 +228,9 @@ export class TaskManager {
           `[Temp] 已清理 ${stale.removedEntries} 项残留缓存，释放约 ${stale.freedBytes} 字节`
         )
       }
+
+      // CLI（ELECTRON_RUN_AS_NODE）不预拉模型；流水线首次识别仍会 ensure
+      if (process.env.ELECTRON_RUN_AS_NODE) return
 
       const asrReady = await ensureSenseVoiceModel(p => {
         if (p.stage === 'downloading' || p.stage === 'extracting') {
@@ -862,14 +941,14 @@ export class TaskManager {
   }
 
   private notifyTaskUpdate(task: TranslationTask): void {
+    const fromDb = databaseManager.getTranslationTask(task.id)
+    const payload: TranslationTask = {
+      ...task,
+      options: task.options ?? fromDb?.options,
+      outputArtifacts: task.outputArtifacts ?? fromDb?.outputArtifacts,
+    }
+    for (const listener of this.taskUpdateListeners) listener(payload)
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      // 产物以内存 / DB 一等字段为准，不再解析日志
-      const fromDb = databaseManager.getTranslationTask(task.id)
-      const payload: TranslationTask = {
-        ...task,
-        options: task.options ?? fromDb?.options,
-        outputArtifacts: task.outputArtifacts ?? fromDb?.outputArtifacts,
-      }
       this.mainWindow.webContents.send(IpcChannels.taskUpdated, payload)
     }
   }
@@ -884,7 +963,11 @@ export class TaskManager {
         task.status !== TaskStatus.CANCELLED
       ) {
         // 上次进程退出后不应继续显示虚假的处理中状态；由用户恢复。
-        if (task.status !== TaskStatus.PAUSED) {
+        // CLI 与桌面可能共用库：不在无窗口进程里把进行中任务改写成暂停。
+        if (
+          task.status !== TaskStatus.PAUSED &&
+          !process.env.ELECTRON_RUN_AS_NODE
+        ) {
           task.status = TaskStatus.PAUSED
           databaseManager.updateTaskStatus(
             task.id,
@@ -990,7 +1073,7 @@ export class TaskManager {
     databaseManager.deleteTranslationTask(taskId)
     void tempWorkspace.removeTaskDir(taskId)
     for (const cache of ['asr-checkpoints', 'text-checkpoints']) {
-      void fs.rm(path.join(app.getPath('userData'), cache, taskId), {
+      void fs.rm(getUserDataSubdir(cache, taskId), {
         recursive: true,
         force: true,
       })
@@ -1010,6 +1093,7 @@ export class TaskManager {
         console.warn(`清理任务下载缓存失败 (${taskId}):`, error)
       })
 
+    for (const listener of this.taskDeletedListeners) listener(taskId)
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(IpcChannels.taskDeleted, taskId)
     }
@@ -1045,7 +1129,7 @@ export class TaskManager {
       this.tempLogs.delete(taskId)
       databaseManager.deleteTranslationTask(taskId)
       for (const cache of ['asr-checkpoints', 'text-checkpoints']) {
-        await fs.rm(path.join(app.getPath('userData'), cache, taskId), {
+        await fs.rm(getUserDataSubdir(cache, taskId), {
           recursive: true,
           force: true,
         })
@@ -1070,6 +1154,7 @@ export class TaskManager {
         })
       deletedTaskIds.push(taskId)
 
+      for (const listener of this.taskDeletedListeners) listener(taskId)
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send(IpcChannels.taskDeleted, taskId)
       }
@@ -1099,12 +1184,11 @@ export class TaskManager {
     task.status = TaskStatus.PENDING
     task.progress = 0
     task.errorMessage = undefined
-    task.segments = []
     task.subtitles = []
     this.activeTasks.set(taskId, task)
-    databaseManager.deleteTranscriptionSegments(taskId)
+    resetDownstreamCheckpointsForRetry(taskId)
     databaseManager.updateTaskStatus(taskId, TaskStatus.PENDING, 0, '')
-    this.addTaskLog(taskId, 'info', '重新处理任务（保留可验证的识别分块缓存）')
+    this.addTaskLog(taskId, 'info', '重新处理任务（保留已完成的语音识别结果）')
     this.notifyTaskUpdate(task)
     this.enqueueRun(taskId)
   }

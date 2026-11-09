@@ -1,24 +1,29 @@
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { app } from 'electron'
 import type { AsrEngineId } from '../../../shared/constants'
+import { getUserDataDir, isAppPackaged } from '../../runtime/app-paths'
 
 const SENSEVOICE_DIR_NAME =
   'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17'
 const FUNASR_NANO_DIR_NAME = 'sherpa-onnx-funasr-nano-int8-2025-12-30'
 
+function desktopPackageRoot(): string {
+  // apps/desktop/src/main/services/asr → apps/desktop
+  return path.resolve(__dirname, '../../../..')
+}
+
 function getProjectRoot(): string {
   // 生产包：模型放在 userData/models/asr
-  // 开发：默认使用项目根目录（pnpm dev 的 cwd）
-  try {
-    if (app?.isPackaged) {
-      return app.getPath('userData')
-    }
-  } catch {
-    // app 尚未就绪时（例如脚本探测）
-  }
-  return process.cwd()
+  if (isAppPackaged()) return getUserDataDir()
+
+  const cwdRoot = process.cwd()
+  if (existsSync(path.join(cwdRoot, 'models', 'asr'))) return cwdRoot
+
+  const desktopRoot = desktopPackageRoot()
+  if (existsSync(path.join(desktopRoot, 'models', 'asr'))) return desktopRoot
+
+  return cwdRoot
 }
 
 export function getAsrModelsRoot(): string {

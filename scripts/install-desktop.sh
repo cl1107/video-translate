@@ -70,6 +70,8 @@ usage() {
   -c, --clean             构建前清理历史输出产物
   -h, --help              显示此帮助信息
 
+安装完成后会写入 ~/.local/bin/vt，绑定 /Applications 中同一份 Electron。
+
 示例:
   pnpm install:local              # 默认以 slim 模式一键编译、自动签名并安装到 /Applications
   pnpm install:local --open       # 编译、签名、安装后直接打开应用
@@ -303,16 +305,39 @@ fi
 codesign --verify --deep --strict "${TARGET_APP_PATH}"
 success "安装后签名校验通过"
 
+info "安装全局命令 vt..."
+VT_BIN_DIR="${HOME}/.local/bin"
+VT_BIN="${VT_BIN_DIR}/vt"
+ELECTRON_BIN="${TARGET_APP_PATH}/Contents/MacOS/${APP_NAME}"
+BOOTSTRAP="${TARGET_APP_PATH}/Contents/Resources/cli-bootstrap.cjs"
+mkdir -p "${VT_BIN_DIR}"
+if [[ -x "${ELECTRON_BIN}" && -f "${BOOTSTRAP}" ]]; then
+  cat > "${VT_BIN}" << EOF
+#!/bin/sh
+export ELECTRON_RUN_AS_NODE=1
+exec "${ELECTRON_BIN}" "${BOOTSTRAP}" "\$@"
+EOF
+  chmod 755 "${VT_BIN}"
+  success "全局命令: ${VT_BIN} → ${TARGET_APP_PATH}"
+  if ! command -v vt >/dev/null 2>&1; then
+    warn "当前 shell 找不到 vt，请把 ${VT_BIN_DIR} 加入 PATH"
+  fi
+else
+  warn "安装包缺少 CLI 入口（${BOOTSTRAP}），未写入全局 vt"
+fi
+
 echo -e "\n${GREEN}${BOLD}======================================================${RESET}"
 echo -e "${GREEN}${BOLD}  部署成功！《${APP_NAME}》已安装至 /Applications  ${RESET}"
 echo -e "  应用路径: ${CYAN}${TARGET_APP_PATH}${RESET}"
 echo -e "  应用版本: ${CYAN}v${VERSION}${RESET}"
 echo -e "  签名身份: ${CYAN}${SIGN_IDENTITY}${RESET}"
+echo -e "  全局 CLI: ${CYAN}${VT_BIN}${RESET}"
 echo -e "${GREEN}${BOLD}======================================================${RESET}\n"
 
 if [ "${AUTO_OPEN}" = true ]; then
   info "正在启动《${APP_NAME}》..."
   open "${TARGET_APP_PATH}"
 else
-  echo -e "如需启动应用，可执行:\n  ${CYAN}open \"${TARGET_APP_PATH}\"${RESET}\n"
+  echo -e "如需启动应用，可执行:\n  ${CYAN}open \"${TARGET_APP_PATH}\"${RESET}"
+  echo -e "全局 CLI:\n  ${CYAN}vt --help${RESET}\n"
 fi

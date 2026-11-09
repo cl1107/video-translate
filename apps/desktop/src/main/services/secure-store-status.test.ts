@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { configureAppPaths, resetAppPathsForTests } from '../runtime/app-paths'
 
 const electron = vi.hoisted(() => ({
   userData: '',
@@ -19,6 +20,7 @@ vi.mock('electron', () => ({
 
 import {
   clearLlmApiKey,
+  configureSafeStorageForTests,
   getLlmApiKey,
   hasLlmApiKey,
   setLlmApiKey,
@@ -28,10 +30,19 @@ beforeEach(() => {
   electron.userData = mkdtempSync(
     path.join(tmpdir(), 'secure-store-status-test-')
   )
+  delete process.env.VIDEO_TRANSLATE_LLM_API_KEY
+  configureAppPaths({
+    userData: electron.userData,
+    logs: path.join(electron.userData, 'logs'),
+    isPackaged: false,
+  })
+  configureSafeStorageForTests(electron)
   vi.clearAllMocks()
 })
 
 afterEach(() => {
+  configureSafeStorageForTests(undefined)
+  resetAppPathsForTests()
   rmSync(electron.userData, { recursive: true, force: true })
 })
 

@@ -66,6 +66,21 @@ export function markAsrComplete(taskId: string, fingerprint: string): void {
   })
 }
 
+/** 重试下游阶段时保留 ASR 完整断点，只清润色 / 翻译 / 文稿。 */
+export function resetDownstreamCheckpointsForRetry(taskId: string): void {
+  databaseManager.updatePipelineCheckpoint(taskId, {
+    polishComplete: false,
+    polishFingerprint: undefined,
+    translationComplete: false,
+    translationFingerprint: undefined,
+    translationCompletedCount: 0,
+    documentComplete: false,
+    documentFingerprint: undefined,
+    documentMarkdown: undefined,
+    manualReviewed: false,
+  })
+}
+
 export function markPolishComplete(taskId: string, fingerprint: string): void {
   databaseManager.updatePipelineCheckpoint(taskId, {
     polishComplete: true,
