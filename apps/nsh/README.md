@@ -35,10 +35,12 @@ nsh package apps/nsh --target macos    # 产出 .nsh/out/ 下的 .app
 
 ## ASR
 
-真实识别需要：
+真实识别默认：
 
 1. SenseVoice 模型（设置里「下载 SenseVoice」，或 `VIDEO_TRANSLATE_ASR_MODELS`）
-2. 本机 `sherpa-onnx-offline` / `sherpa-onnx` CLI
+2. 本机 `sherpa-onnx-offline`（或 `sherpa-onnx-offline-sense-voice` / `sherpa-onnx`）
+
+Fun-ASR-Nano 是可选引擎：模型不在时会明确报错，不会假装已识别。长音频按块落盘，恢复时跳过已成功 ASR 块。
 
 开发与测试可开设置中的「模拟识别」，或：
 

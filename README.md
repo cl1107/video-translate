@@ -187,21 +187,13 @@ ollama pull kaelri/hy-mt2:1.8b
 
 ## 🏗️ 技术架构
 
-### 前端 (Renderer Process)
+### 桌面端 (NSH)
 
-- **React 19** - UI 框架
-- **TypeScript 7** - 类型安全
-- **TailwindCSS 4** - 样式
-- **Base UI（@base-ui/react）** - 交互原语；组件风格兼容 shadcn 设计语言
-- **react-markdown + remark-gfm** - 文稿全屏预览
-
-### 后端 (Main Process)
-
-- **Electron 43** - 跨平台桌面应用
-- **SQLite (better-sqlite3)** - 本地任务与日志存储
+- **Native Shell 0.4.0** - Rust 原生桌面（`apps/nsh`）
+- **SQLite (rusqlite)** - 本地任务与日志存储
 - **FFmpeg** - 音频提取、分段、可选硬字幕烧录
-- **sherpa-onnx-node** - 本地 ASR（SenseVoice / Fun-ASR-Nano）
-- **OpenAI 兼容模型服务** - 按需使用的本地或在线大语言模型（字幕翻译、润色与文稿整理）；Ollama、LM Studio、vLLM 均可作为本地 Endpoint
+- **sherpa-onnx CLI + SenseVoice** - 本机 ASR（Fun-ASR-Nano 可选）
+- **OpenAI 兼容模型服务** - 按需使用的本地或在线大语言模型
 
 ### 核心服务
 
@@ -326,7 +318,7 @@ pnpm --filter video-translate rebuild:native
 
 - ✅ **本地优先** - 视频、音频提取、ASR 与产物处理在本机完成
 - ✅ **本地存储** - 任务、日志与产物保存在本机
-- ✅ **沙盒隔离** - 遵循 Electron 安全实践
+- ✅ **本机运行** - 桌面端是 NSH 原生进程，不再嵌入 Chromium
 - ⚠️ **文本发送边界** - 配置本机 Endpoint 时识别文本留在本机；配置在线 Endpoint 时，仅将识别后的文本（以及必要的提示词）发送到该服务，视频、音频、字幕文件和 ASR 模型不会上传
 
 ## 📦 发布包说明
@@ -459,7 +451,7 @@ pip install -U yt-dlp
 - [SenseVoice / FunASR](https://github.com/modelscope/FunASR) - ASR 模型
 - [OpenAI API](https://platform.openai.com/docs) - OpenAI 兼容模型服务接口；Ollama、LM Studio、vLLM 等本地服务也可接入
 - [FFmpeg](https://ffmpeg.org) - 音视频处理工具
-- [Electron](https://electronjs.org) - 跨平台桌面应用框架
+- [Native Shell](https://nsh.dev) - 原生桌面运行时
 
 ## 📞 支持
 

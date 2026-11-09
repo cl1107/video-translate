@@ -6,6 +6,7 @@ use std::{
 
 use super::{
     asr::{Transcriber, select_transcriber},
+    checkpoint::{self, PipelineCheckpoint},
     download::{download_url, looks_like_url},
     ffmpeg::Ffmpeg,
     llm::{Completer, MockCompleter, OpenAiCompleter, document_system, polish_system, translate_system},
@@ -160,7 +161,7 @@ impl Runtime {
             || std::env::var("VIDEO_TRANSLATE_MOCK_ASR").ok().as_deref() == Some("1");
         let mock_llm = settings.mock_llm
             || std::env::var("VIDEO_TRANSLATE_MOCK_LLM").ok().as_deref() == Some("1");
-        let transcriber = select_transcriber(mock_asr)?;
+        let transcriber = select_transcriber(&settings.asr_engine, mock_asr)?;
         let completer: Option<Box<dyn Completer>> = if mock_llm {
             Some(Box::new(MockCompleter))
         } else if settings.llm_base_url.trim().is_empty() {
@@ -261,6 +262,15 @@ fn run_inner(
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
+    let mut cp = checkpoint::load(&task.id);
+    let (size, mtime) = checkpoint::file_mtime_size(&task.video_file.path);
+    let asr_fp = checkpoint::asr_fingerprint(
+        &task.options.asr_engine,
+        &task.video_file.path,
+        size,
+        mtime,
+    );
+
     if matches!(ext.as_str(), "srt" | "vtt") {
         log_task(task, "info", "导入字幕文件");
         let content = fs::read_to_string(&path).map_err(|err| err.to_string())?;
@@ -271,12 +281,17 @@ fn run_inner(
         task.segments = segments_from_cues(&task.id, &cues);
         task.video_file.duration = cues.last().map(|c| c.end).unwrap_or(0.0);
         task.detected_language = Some(task.source_language.clone());
+        mark_asr(&mut cp, &task.id, &asr_fp)?;
         hooks.emit(task);
     } else if let Some(platform) = task.platform_subtitle_path.clone() {
         log_task(task, "info", "使用平台字幕，跳过 ASR");
         let content = fs::read_to_string(&platform).map_err(|err| err.to_string())?;
         let cues = parse_subtitle(&content, None);
         task.segments = segments_from_cues(&task.id, &cues);
+        mark_asr(&mut cp, &task.id, &asr_fp)?;
+        hooks.emit(task);
+    } else if cp.asr_complete && checkpoint::matches(&cp.asr_fingerprint, &asr_fp) && !task.segments.is_empty() {
+        log_task(task, "info", "复用已完成的识别结果，跳过 ASR");
         hooks.emit(task);
     } else {
         let ffmpeg = runtime
@@ -295,14 +310,17 @@ fn run_inner(
         task.video_file.format = info.format;
         let audio = work_dir(&task.id).join("audio.wav");
         fs::create_dir_all(audio.parent().unwrap()).map_err(|err| err.to_string())?;
-        ffmpeg.extract_audio(&path, &audio)?;
+        if !audio.is_file() {
+            ffmpeg.extract_audio(&path, &audio)?;
+        }
         set_status(task, TaskStatus::Transcribing, 35.0);
-        log_task(task, "info", "语音识别");
+        log_task(task, "info", "语音识别（成功块会落盘，恢复时不重跑）");
         hooks.emit(task);
         check_abort(abort)?;
         let transcription = runtime.transcriber.transcribe(&audio, &task.id)?;
         task.segments = transcription.segments;
         task.detected_language = transcription.language.or(task.detected_language.clone());
+        mark_asr(&mut cp, &task.id, &asr_fp)?;
         hooks.emit(task);
     }
 
@@ -312,8 +330,21 @@ fn run_inner(
 
     let extract_only = task.kind == TaskKind::Subtitle
         && task.options.subtitle_processing_mode == SubtitleProcessingMode::Extract;
+    let polish_fp = checkpoint::fingerprint(&[&asr_fp, &task.options.polish_model]);
+    let translation_fp = checkpoint::fingerprint(&[
+        &polish_fp,
+        &task.options.translate_model,
+        &task.target_language,
+        &serde_json::to_string(&task.options.glossary).unwrap_or_default(),
+    ]);
 
     if task.kind == TaskKind::Document {
+        if cp.document_complete && checkpoint::matches(&cp.document_fingerprint, &polish_fp) {
+            if let Some(markdown) = &cp.document_markdown {
+                write_document_artifacts(task, markdown)?;
+                return Ok(());
+            }
+        }
         set_status(task, TaskStatus::Polishing, 70.0);
         log_task(task, "info", "整理文稿");
         hooks.emit(task);
@@ -328,13 +359,19 @@ fn run_inner(
         } else {
             format!("# 文稿\n\n{transcript}\n")
         };
+        cp.document_complete = true;
+        cp.document_fingerprint = Some(polish_fp);
+        cp.document_markdown = Some(markdown.clone());
+        checkpoint::save(&task.id, &cp)?;
         write_document_artifacts(task, &markdown)?;
         return Ok(());
     }
 
     if !extract_only {
         if task.options.polish_transcript {
-            if let Some(completer) = runtime.completer.as_ref() {
+            if cp.polish_complete && checkpoint::matches(&cp.polish_fingerprint, &polish_fp) {
+                log_task(task, "info", "复用已完成的润色");
+            } else if let Some(completer) = runtime.completer.as_ref() {
                 set_status(task, TaskStatus::Polishing, 55.0);
                 log_task(task, "info", "润色原文");
                 hooks.emit(task);
@@ -345,27 +382,49 @@ fn run_inner(
                         segment.polished_text = Some(polished);
                     }
                 }
+                cp.polish_complete = true;
+                cp.polish_fingerprint = Some(polish_fp.clone());
+                checkpoint::save(&task.id, &cp)?;
             }
         }
-        let completer = runtime
-            .completer
-            .as_ref()
-            .ok_or("翻译需要模型服务。请在设置中填写 Endpoint，或改用「仅提取原文」，或开启模拟翻译。")?;
-        set_status(task, TaskStatus::Translating, 75.0);
-        log_task(task, "info", "翻译字幕");
-        hooks.emit(task);
-        let system = translate_system(&task.target_language, &task.options.glossary);
-        for segment in &mut task.segments {
-            check_abort(abort)?;
-            let input = segment.translate_input().to_string();
-            let translated = completer.complete(&system, &input)?;
-            if translated.trim().is_empty() {
-                segment.translated_text = Some(input);
-                segment.translation_status = Some(TranslationStatus::Fallback);
+        if cp.translation_complete && checkpoint::matches(&cp.translation_fingerprint, &translation_fp)
+        {
+            log_task(task, "info", "复用已完成的翻译");
+        } else {
+            let completer = runtime
+                .completer
+                .as_ref()
+                .ok_or("翻译需要模型服务。请在设置中填写 Endpoint，或改用「仅提取原文」，或开启模拟翻译。")?;
+            set_status(task, TaskStatus::Translating, 75.0);
+            log_task(task, "info", "翻译字幕");
+            hooks.emit(task);
+            let system = translate_system(&task.target_language, &task.options.glossary);
+            let skip = if checkpoint::matches(&cp.translation_fingerprint, &translation_fp) {
+                cp.translation_completed_count
             } else {
-                segment.translated_text = Some(translated);
-                segment.translation_status = Some(TranslationStatus::Translated);
+                0
+            };
+            for (index, segment) in task.segments.iter_mut().enumerate() {
+                if index < skip && segment.translated_text.as_ref().is_some_and(|t| !t.trim().is_empty()) {
+                    continue;
+                }
+                check_abort(abort)?;
+                let input = segment.translate_input().to_string();
+                let user = super::llm::translate_user(&input, &task.options.glossary);
+                let translated = completer.complete(&system, &user)?;
+                if translated.trim().is_empty() {
+                    segment.translated_text = Some(input);
+                    segment.translation_status = Some(TranslationStatus::Fallback);
+                } else {
+                    segment.translated_text = Some(translated);
+                    segment.translation_status = Some(TranslationStatus::Translated);
+                }
+                cp.translation_fingerprint = Some(translation_fp.clone());
+                cp.translation_completed_count = index + 1;
+                checkpoint::save(&task.id, &cp)?;
             }
+            cp.translation_complete = true;
+            checkpoint::save(&task.id, &cp)?;
         }
     }
 
@@ -492,6 +551,58 @@ pub fn regenerate_subtitles(task: &mut TranslationTask) -> Result<(), String> {
     write_subtitle_artifacts(task)
 }
 
+fn mark_asr(cp: &mut PipelineCheckpoint, task_id: &str, fingerprint: &str) -> Result<(), String> {
+    cp.asr_complete = true;
+    cp.asr_fingerprint = Some(fingerprint.to_string());
+    checkpoint::save(task_id, cp)
+}
+
+pub fn is_playable_media(path: &str) -> bool {
+    matches!(
+        Path::new(path)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str(),
+        "mp4" | "mkv" | "mov" | "webm" | "m4v" | "avi" | "mp3" | "wav" | "m4a" | "aac"
+    )
+}
+
+pub fn file_url(path: &str) -> String {
+    let mut url = String::from("file://");
+    for ch in path.chars() {
+        match ch {
+            ' ' => url.push_str("%20"),
+            '#' => url.push_str("%23"),
+            _ => url.push(ch),
+        }
+    }
+    url
+}
+
+pub fn retranslate_segment(
+    task: &mut TranslationTask,
+    segment_id: &str,
+    completer: &dyn Completer,
+) -> Result<(), String> {
+    let system = translate_system(&task.target_language, &task.options.glossary);
+    let Some(segment) = task.segments.iter_mut().find(|item| item.id == segment_id) else {
+        return Err("找不到该字幕段".into());
+    };
+    let input = segment.translate_input().to_string();
+    let user = super::llm::translate_user(&input, &task.options.glossary);
+    let translated = completer.complete(&system, &user)?;
+    if translated.trim().is_empty() {
+        segment.translated_text = Some(input);
+        segment.translation_status = Some(TranslationStatus::Fallback);
+    } else {
+        segment.translated_text = Some(translated);
+        segment.translation_status = Some(TranslationStatus::Translated);
+    }
+    Ok(())
+}
+
 fn write_document_artifacts(task: &mut TranslationTask, markdown: &str) -> Result<(), String> {
     let source = PathBuf::from(&task.video_file.path);
     let dir = source
@@ -598,5 +709,89 @@ mod tests {
             task.segments[0].translated_text.as_deref(),
             Some("译：Hello")
         );
+    }
+
+    #[test]
+    fn resume_skips_successful_asr() {
+        let dir = tempdir().unwrap();
+        let media = dir.path().join("clip.mp4");
+        fs::write(&media, b"fake").unwrap();
+        let mut settings = AppSettings::default();
+        settings.mock_asr = true;
+        let mut task = create_task_from_input(
+            media.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &settings,
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        task.segments = vec![crate::domain::model::Segment {
+            id: format!("{}:seg-1", task.id),
+            start: 0.0,
+            end: 1.0,
+            original_text: "cached".into(),
+            polished_text: None,
+            translated_text: None,
+            translation_status: None,
+            confidence: 1.0,
+        }];
+        let (size, mtime) = checkpoint::file_mtime_size(&task.video_file.path);
+        let fp = checkpoint::asr_fingerprint(
+            &task.options.asr_engine,
+            &task.video_file.path,
+            size,
+            mtime,
+        );
+        let mut cp = PipelineCheckpoint::default();
+        mark_asr(&mut cp, &task.id, &fp).unwrap();
+        let runtime = Runtime {
+            transcriber: Box::new(MockTranscriber),
+            completer: None,
+            ffmpeg: None,
+        };
+        let abort = AbortFlag::new();
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(|_| {}),
+        };
+        task = run_task(task, &runtime, &abort, &mut hooks);
+        assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.segments[0].original_text, "cached");
+        assert!(task.logs.iter().any(|log| log.message.contains("跳过 ASR")));
+    }
+
+    #[test]
+    fn retranslate_uses_glossary() {
+        let dir = tempdir().unwrap();
+        let srt = dir.path().join("talk.srt");
+        fs::write(&srt, "1\n00:00:01,000 --> 00:00:02,000\nHello\n").unwrap();
+        let mut settings = AppSettings::default();
+        settings.glossary = vec![crate::domain::model::GlossaryEntry {
+            source: "Hello".into(),
+            target: "你好".into(),
+        }];
+        let mut task = create_task_from_input(
+            srt.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &settings,
+            SubtitleProcessingMode::Translate,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        task.segments = vec![crate::domain::model::Segment {
+            id: "s1".into(),
+            start: 0.0,
+            end: 1.0,
+            original_text: "Hello".into(),
+            polished_text: None,
+            translated_text: None,
+            translation_status: None,
+            confidence: 1.0,
+        }];
+        retranslate_segment(&mut task, "s1", &MockCompleter).unwrap();
+        let text = task.segments[0].translated_text.clone().unwrap();
+        assert!(text.contains("你好"), "{text}");
     }
 }

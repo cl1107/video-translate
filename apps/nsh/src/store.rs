@@ -16,7 +16,7 @@ use crate::domain::{
         Segment, SubtitleBurnMode, SubtitleProcessingMode, TaskKind, TaskStatus, TranslationTask,
     },
     paths::{self, settings_path},
-    pipeline::{AbortFlag, PipelineHooks, Runtime, create_task_from_input, regenerate_subtitles, run_task},
+    pipeline::{AbortFlag, PipelineHooks, Runtime, create_task_from_input, regenerate_subtitles, retranslate_segment, run_task},
     settings::{AppSettings, parse_settings_json},
     system_check::{self, CheckResult},
 };
@@ -404,6 +404,52 @@ pub(crate) fn update_segment(task_id: &str, segment: Segment) {
     }
     task.updated_at = crate::domain::model::now();
     upsert_task(task);
+}
+
+pub(crate) fn attach_media(task_id: &str, path: PathBuf) {
+    let mut task = match task_by_id(task_id) {
+        Some(task) => task,
+        None => return,
+    };
+    task.video_file.path = path.to_string_lossy().into_owned();
+    task.video_file.name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&task.video_file.name)
+        .to_string();
+    task.updated_at = crate::domain::model::now();
+    upsert_task(task);
+}
+
+pub(crate) fn retranslate_current(task_id: String, segment_id: String) {
+    let settings = settings();
+    let api_key = api_key();
+    let Some(task) = task_by_id(&task_id) else {
+        return;
+    };
+    spawn(async move {
+        let result = blocking(move || {
+            if !api_key.is_empty() {
+                unsafe { std::env::set_var("VIDEO_TRANSLATE_LLM_API_KEY", &api_key) };
+            }
+            let runtime = Runtime::from_settings(&settings)?;
+            let completer = runtime
+                .completer
+                .ok_or_else(|| "翻译需要模型服务或模拟翻译".to_string())?;
+            let mut task = task;
+            retranslate_segment(&mut task, &segment_id, completer.as_ref())?;
+            Ok::<_, String>(task)
+        })
+        .await;
+        match result {
+            Ok(Ok(task)) => {
+                upsert_task(task);
+                ws().update(|ws| ws.message = "已按术语库重译当前段".into());
+            }
+            Ok(Err(err)) => ws().update(|ws| ws.message = err),
+            Err(err) => ws().update(|ws| ws.message = format!("{err}")),
+        }
+    });
 }
 
 pub(crate) fn save_review(task_id: &str) {

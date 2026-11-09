@@ -1,5 +1,5 @@
 use super::{
-    asr::resolve_sensevoice,
+    asr::{funasr_nano_hint, resolve_funasr_nano, resolve_sensevoice, sherpa_bin},
     command::{first_version_line, resolve_command, run_capture},
 };
 
@@ -29,12 +29,28 @@ pub fn run_checks() -> Vec<CheckResult> {
         },
         optional: true,
     });
-    let sherpa = resolve_command("sherpa-onnx-offline").or_else(|| resolve_command("sherpa-onnx"));
+    let nano = resolve_funasr_nano();
     results.push(CheckResult {
-        name: "sherpa-onnx".into(),
+        name: "Fun-ASR-Nano".into(),
+        available: nano.is_some(),
+        version: nano.as_ref().map(|p| p.dir.display().to_string()),
+        error: if nano.is_some() {
+            None
+        } else {
+            Some(funasr_nano_hint())
+        },
+        optional: true,
+    });
+    let sherpa = sherpa_bin();
+    results.push(CheckResult {
+        name: "sherpa-onnx CLI".into(),
         available: sherpa.is_some(),
-        version: sherpa.map(|p| p.display().to_string()),
-        error: None,
+        version: sherpa.as_ref().map(|p| p.display().to_string()),
+        error: if sherpa.is_some() {
+            None
+        } else {
+            Some("未找到 sherpa-onnx-offline，真实 ASR 不可用。".into())
+        },
         optional: true,
     });
     results

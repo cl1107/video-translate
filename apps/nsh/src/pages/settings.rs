@@ -24,6 +24,26 @@ pub(crate) fn settings_page() -> impl IntoElement {
                     .text_sm()
                     .text_color(move || theme().muted_foreground),
             )
+            .child(
+                view()
+                    .flex_row()
+                    .gap_2()
+                    .child(ui::ghost_button(
+                        "SenseVoice",
+                        || store::settings().asr_engine != "funasr-nano",
+                        || patch_settings(|settings| settings.asr_engine = "sensevoice".into()),
+                    ))
+                    .child(ui::ghost_button(
+                        "Fun-ASR-Nano",
+                        || store::settings().asr_engine == "funasr-nano",
+                        || patch_settings(|settings| settings.asr_engine = "funasr-nano".into()),
+                    )),
+            )
+            .child(
+                text("真实识别默认走本机 sherpa-onnx CLI + SenseVoice；Fun-ASR-Nano 未安装时会明确报错，不会假装已识别。")
+                    .text_sm()
+                    .text_color(move || theme().muted_foreground),
+            )
             .child(ui::labeled_switch(
                 "模拟识别（无 sherpa 时仍可跑通视频路径）",
                 || store::settings().mock_asr,

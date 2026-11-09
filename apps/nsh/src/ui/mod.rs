@@ -1,6 +1,6 @@
 //! 应用自有的 styled 控件，建立在无外观的 nsh_base 之上。
 
-use nsh_base::{button, input, progress, switch, theme};
+use nsh_base::{button, input, progress, slider, switch, theme, SliderValue};
 use nsh_core::prelude::*;
 
 pub(crate) fn primary_button(
@@ -119,6 +119,43 @@ pub(crate) fn bar_progress(value: impl Fn() -> f32 + 'static) -> impl IntoElemen
         .h_2()
         .track_class("h-2 rounded-full bg-muted overflow-hidden")
         .indicator_class("h-2 rounded-full bg-chart-1")
+}
+
+pub(crate) fn timeline(
+    value: impl Fn() -> f64 + 'static,
+    max: impl Fn() -> f64 + 'static,
+    on_change: impl Fn(f64) + 'static,
+) -> impl IntoElement {
+    slider()
+        .value(move || SliderValue::Single(value()))
+        .min(0.0)
+        .max(move || max().max(0.1))
+        .step(0.05)
+        .h_6()
+        .track_class("h-6 justify-center")
+        .indicator_class("h-1.5 rounded-full bg-muted")
+        .range_class("h-1.5 rounded-full bg-chart-1")
+        .thumb_class("size-4 rounded-full bg-primary")
+        .on_change(move |v: &SliderValue| on_change(v.start()))
+}
+
+pub(crate) fn range_timeline(
+    start: impl Fn() -> f64 + 'static,
+    end: impl Fn() -> f64 + 'static,
+    max: impl Fn() -> f64 + 'static,
+    on_change: impl Fn(f64, f64) + 'static,
+) -> impl IntoElement {
+    slider()
+        .value(move || SliderValue::Range(start(), end()))
+        .min(0.0)
+        .max(move || max().max(0.1))
+        .step(0.05)
+        .h_6()
+        .track_class("h-6 justify-center")
+        .indicator_class("h-1.5 rounded-full bg-muted")
+        .range_class("h-1.5 rounded-full bg-chart-1")
+        .thumb_class("size-4 rounded-full bg-primary")
+        .on_change(move |v: &SliderValue| on_change(v.start(), v.end()))
 }
 
 pub(crate) fn surface() -> View {

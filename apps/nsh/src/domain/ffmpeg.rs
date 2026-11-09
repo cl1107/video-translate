@@ -122,6 +122,47 @@ impl Ffmpeg {
         Ok(output.to_path_buf())
     }
 
+    pub fn extract_clip(
+        &self,
+        input: &Path,
+        start: f64,
+        duration: f64,
+        output: &Path,
+    ) -> Result<PathBuf, String> {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        }
+        let input_s = input.to_string_lossy();
+        let output_s = output.to_string_lossy();
+        let start_s = format!("{start:.3}");
+        let dur_s = format!("{duration:.3}");
+        let (code, _, stderr) = run_capture(
+            &self.ffmpeg,
+            &[
+                "-hide_banner",
+                "-ss",
+                &start_s,
+                "-t",
+                &dur_s,
+                "-i",
+                input_s.as_ref(),
+                "-vn",
+                "-acodec",
+                "pcm_s16le",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-y",
+                output_s.as_ref(),
+            ],
+        )?;
+        if code != 0 {
+            return Err(format!("切分音频失败: {stderr}"));
+        }
+        Ok(output.to_path_buf())
+    }
+
     pub fn burn_subtitles(
         &self,
         video: &Path,

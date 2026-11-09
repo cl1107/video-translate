@@ -134,6 +134,21 @@ pub fn translate_system(target: &str, glossary: &[GlossaryEntry]) -> String {
     prompt
 }
 
+pub fn translate_user(text: &str, glossary: &[GlossaryEntry]) -> String {
+    if glossary.is_empty() {
+        return text.to_string();
+    }
+    let mut user = String::from("请只翻译当前这一段。术语优先：\n");
+    for entry in glossary {
+        if !entry.source.trim().is_empty() {
+            user.push_str(&format!("- {} => {}\n", entry.source, entry.target));
+        }
+    }
+    user.push_str("原文：\n");
+    user.push_str(text);
+    user
+}
+
 pub fn polish_system() -> &'static str {
     "你是语音识别润色器。纠正明显识别错误，保持原意和语言，不要翻译。只输出润色后的文本。"
 }

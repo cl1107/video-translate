@@ -1,6 +1,7 @@
 //! 领域层：与 NSH 无关的任务、字幕、流水线与存储。
 
 pub mod asr;
+pub mod checkpoint;
 pub mod command;
 pub mod db;
 pub mod download;

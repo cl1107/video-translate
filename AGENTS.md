@@ -99,26 +99,14 @@ LLM 驱动的翻译：
 
 ### 构建配置
 
-- `apps/desktop/electron.vite.config.ts` - Electron-Vite 构建配置
-- `apps/desktop/electron-builder.ts` - 应用程序打包和分发
-- `apps/desktop/tsconfig.json` - 桌面应用 TypeScript 配置
-- `turbo.json` - monorepo 任务编排
+- `apps/nsh/nsh.json` / `apps/nsh/Cargo.toml` - NSH 桌面应用
+- `turbo.json` - monorepo 任务编排（官网）
 - `pnpm-workspace.yaml` - Workspace 包声明
-
-### 代码质量
-
-- `.oxlintrc.json` - Oxlint 检查规则
-- `.oxfmtrc.json` - Oxfmt 格式化规则
-- 使用单引号、2空格缩进、按需使用分号
-- 检查规则为 React/TypeScript 开发配置
 
 ### 开发环境
 
-- 使用 **pnpm** 作为包管理器
-- **Electron-Vite** 作为构建工具
-- **TailwindCSS 4** 配合 **Base UI（@base-ui/react）** 组件进行样式与交互
-- **React 19** 配合 TypeScript
-- 文稿预览使用 **react-markdown + remark-gfm + @tailwindcss/typography**
+- 桌面端：**nsh 0.4.0** + Rust（`apps/nsh`）
+- 官网：pnpm + Vite + React（`apps/landing`）
 
 ## 重要实现细节
 
@@ -130,16 +118,6 @@ SQLite 数据库使用以下主要表：
 - `translation_tasks` - 任务状态和进度
 - `transcription_segments` - 转录的文本段落
 - `task_logs` - 详细的任务操作日志
-
-### IPC 通信
-
-主进程暴露以下 IPC 处理器：
-
-- `upload-files` - 创建新的翻译任务
-- `get-all-tasks` / `get-task` - 任务检索
-- `pause-task` / `resume-task` / `delete-task` - 任务控制
-- `get-ollama-models` / `pull-ollama-model` - 模型管理
-- `check-system-dependencies` - 系统要求验证
 
 ### 任务类型与状态
 
@@ -160,27 +138,15 @@ SQLite 数据库使用以下主要表：
 
 - **FFmpeg** - 音视频处理（必须在系统 PATH 中）
 - **模型服务** - 任意 OpenAI 兼容 Endpoint（本地 Ollama / LM Studio / vLLM 或在线 API，用户自配）
-- **Node.js 18+** - 运行时环境
-
-### 管理的依赖
-
-- **sherpa-onnx-node** - 本地语音识别（SenseVoice / Fun-ASR-Nano）
-- **better-sqlite3** - 带有原生绑定的 SQLite 数据库
-- **Electron** - 桌面应用程序框架
+- **nsh 0.4.0 + Rust** - 桌面运行时（`~/.local/bin/nsh`）
+- **sherpa-onnx CLI** - 真实 ASR（SenseVoice 模型；Fun-ASR-Nano 可选）
 
 ## 开发说明
 
-### 组件架构
-
-- React 组件使用 Base UI 原语配合 TailwindCSS（shadcn 风格设计语言）
-- 通过 React hooks 和 IPC 通信进行状态管理
-- 支持响应式设计和暗黑模式
-
 ### 测试方法
 
-- 使用 Vitest 运行 TypeScript、TSX、Electron 服务和构建配置测试
-- 测试文件使用 `*.test.ts` / `*.test.tsx` 命名，由 Vitest 自动发现
-- `pnpm test` 通过 Turborepo 运行根目录与各 workspace 的测试
+- 桌面：`nsh test apps/nsh`（Rust 领域测试 + 无头 UI）
+- 官网：Vitest / turbo
 
 ### 性能考虑
 
@@ -193,7 +159,6 @@ SQLite 数据库使用以下主要表：
 
 - 所有处理在本地进行（离线优先）
 - 临时文件自动清理
-- 实施了 Electron 安全最佳实践
 - 仅访问用户配置的模型服务 Endpoint；无其他外部 API 调用
 
 ## Design Context
