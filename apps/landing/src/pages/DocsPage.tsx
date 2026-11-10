@@ -135,15 +135,15 @@ export function DocsPage() {
       <div className="docs-hero">
         <p className="docs-kicker">
           <BookOpen size={14} />
-          文档 v{APP_VERSION}
+          NSH 源码指南 · 历史包 v{APP_VERSION}
         </p>
         <h1>
           装好依赖，
           <em>跑通第一条任务。</em>
         </h1>
         <p className="docs-lead">
-          从系统工具到应用内流程：FFmpeg、模型服务、yt-dlp 怎么配，以及本地文件 /
-          在线链接如何提取原文、翻译字幕、校对或生成 Markdown
+          从系统工具到应用内流程：FFmpeg、模型服务、yt-dlp 怎么配，以及本地文件
+          / 在线链接如何提取原文、翻译字幕、校对或生成 Markdown
           文稿。依赖缺失时应用启动会自检并给出安装提示。
         </p>
         <DownloadCta
@@ -196,15 +196,15 @@ export function DocsPage() {
                   <li>
                     <strong>模型服务</strong>
                     ：按需配置。仅提取原文时无需模型服务；字幕翻译、润色与文稿整理使用
-                    OpenAI 兼容 Endpoint（本机 Ollama / LM Studio / vLLM
-                    或在线 API）
+                    OpenAI 兼容 Endpoint（本机 Ollama / LM Studio / vLLM 或在线
+                    API）
                   </li>
                   <li>
                     <strong>yt-dlp</strong>：可选。仅「在线链接」下载视频时需要
                   </li>
                   <li>
-                    <strong>SenseVoice ASR</strong>：默认自动下载，无需手动装
-                    Python
+                    <strong>SenseVoice ASR</strong>
+                    ：在设置中下载模型，应用内运行，无需 Python
                   </li>
                 </ul>
               </div>
@@ -212,18 +212,18 @@ export function DocsPage() {
             <div className="docs-callout docs-callout-soft">
               <Check size={18} />
               <div>
-                <strong>源码新能力</strong>
+                <strong>当前源码与历史安装包</strong>
                 <p>
-                  字幕校对工作台、术语库、阶段断点恢复与跨工作流复用已进入当前源码。GitHub
-                  Releases 安装包仍为 v{APP_VERSION}
-                  ；从源码运行可立即使用，下一版本随包发布。
+                  当前桌面端使用 Longbridge Native Shell（NSH），macOS arm64
+                  为当前分发验收目标。 GitHub Releases v{APP_VERSION} 为历史
+                  Electron 包，不包含 NSH 重构。
                 </p>
               </div>
             </div>
             <div className="docs-meta-grid">
               <div>
                 <span>系统</span>
-                <strong>macOS · Windows · Linux</strong>
+                <strong>NSH：macOS arm64</strong>
               </div>
               <div>
                 <span>内存建议</span>
@@ -250,38 +250,45 @@ export function DocsPage() {
               <Download size={22} />
               安装应用
             </h2>
-            <ol className="docs-steps">
-              <li>
-                使用上方下载按钮（自动匹配本机平台），或打开{' '}
-                <a href={releaseUrl} target="_blank" rel="noreferrer">
-                  GitHub Releases
-                </a>{' '}
-                自选安装包（macOS arm64 / Windows x64 / Linux x64）。
-              </li>
-              <li>
-                每个平台有 <strong>bundled-ffmpeg</strong>（完整版）与{' '}
-                <strong>slim</strong>
-                （精简版）两种（见下节）；不确定时选完整版。
-              </li>
-              <li>
-                安装并启动。首次启动会跑<strong>系统依赖检查</strong>
-                ：缺什么会直接告诉你。
-              </li>
-              <li>
-                可选依赖缺失<strong>不会</strong>
-                挡住进入主界面：模型服务只影响翻译与润色，yt-dlp
-                只影响在线链接下载。
-              </li>
-              <li>
-                下载后建议用 Release 中的 <code>SHA256SUMS.txt</code> 校验文件。
-              </li>
-            </ol>
+            <p>
+              NSH 安装包尚未发布时，请在 macOS Apple Silicon 上从源码构建。 需要
+              Rust / Cargo、Xcode Command Line Tools 与 NSH 0.4.0。
+            </p>
+            <CodeBlock label="仓库根目录 · macOS arm64">
+              {`# 安装 NSH：见 https://nsh.dev/docs/installation
+nsh --version
+nsh run apps/nsh
+nsh check apps/nsh
+nsh test apps/nsh
+nsh package apps/nsh --target macos --out apps/nsh/.nsh/out
+open "apps/nsh/.nsh/out/视频翻译助手.app"`}
+            </CodeBlock>
+            <p>
+              安装快捷脚本为 <code>pnpm install:local --open</code>，默认复制到
+              <code>~/Applications</code>。<code>pnpm make:release</code>{' '}
+              仅生成本地 NSH zip 与校验和，不推送或发布。FFmpeg、yt-dlp
+              和模型需单独准备。
+            </p>
+            <p>
+              NSH 使用独立的 <code>video-translate-nsh</code>{' '}
+              数据目录，目前不自动迁移 Electron
+              旧任务、设置与凭证。请保留旧数据，可导入旧版 SRT / VTT
+              后继续校对。
+            </p>
+            <p>
+              上方下载按钮及{' '}
+              <a href={releaseUrl} target="_blank" rel="noreferrer">
+                GitHub Releases
+              </a>
+              当前提供历史 Electron v{APP_VERSION}，下面的 bundled / slim
+              与跨平台包说明仅适用于旧版。
+            </p>
           </section>
 
           <section id="packages" className="docs-section">
             <h2>
               <HardDrive size={22} />
-              bundled-ffmpeg 与 slim
+              历史 Electron：bundled-ffmpeg 与 slim
             </h2>
             <p>
               CI 为每个平台打两种包，区别只在于<strong>是否内置 FFmpeg</strong>
@@ -454,7 +461,8 @@ sudo dnf install ffmpeg`}
               字幕翻译、字幕润色和文稿整理使用设置中的
               <strong>OpenAI 兼容 Endpoint</strong>
               。仅提取原文时可以跳过本节。可以是本机 Ollama、LM Studio、vLLM
-              或在线 API。使用在线服务时，应用只发送识别后的文本，不会上传视频、音频或
+              或在线
+              API。使用在线服务时，应用只发送识别后的文本，不会上传视频、音频或
               ASR 模型。
             </p>
             <p>
@@ -504,8 +512,9 @@ ollama list`}
               <div>
                 <strong>可配置多套模型服务</strong>
                 <p>
-                  设置里可添加多套 OpenAI 兼容服务（名称、Base URL、翻译/润色模型），创建任务时选择其中一套。API
-                  Key 只保存在本机，不会写入任务记录。FFmpeg / ASR /
+                  设置里可添加多套 OpenAI 兼容服务（名称、Base
+                  URL、翻译/润色模型），创建任务时选择其中一套。API Key
+                  只保存在本机，不会写入任务记录。FFmpeg / ASR /
                   字幕生成始终在本地。
                 </p>
               </div>
@@ -559,9 +568,9 @@ pip install -U yt-dlp
             </h2>
             <p>
               默认引擎为 <strong>SenseVoice Small</strong>
-              （sherpa-onnx），支持中 / 英 / 日 / 韩 /
-              粤。应用在依赖检查、启动或首次任务时会
-              <strong>自动下载并解压</strong>，无需单独安装 Python。
+              （sherpa-onnx），支持中 / 英 / 日 / 韩 / 粤。NSH 在设置中点
+              <strong>「下载 SenseVoice」</strong>准备模型， 通过应用内
+              sherpa-onnx 执行识别，无需 Python 或独立 sherpa CLI。
             </p>
             <div className="docs-table-wrap">
               <table className="docs-table">
@@ -578,7 +587,7 @@ pip install -U yt-dlp
                       <code>sensevoice</code>
                     </td>
                     <td>默认，速度快，适合常见字幕场景</td>
-                    <td>自动下载</td>
+                    <td>设置中点击下载</td>
                   </tr>
                   <tr>
                     <td>
@@ -591,7 +600,8 @@ pip install -U yt-dlp
               </table>
             </div>
             <p className="docs-note">
-              若自动下载失败，检查网络后在应用内点「重新检查」。也可通过环境变量{' '}
+              若模型下载失败，检查网络后重新点「下载
+              SenseVoice」。也可通过环境变量{' '}
               <code>VIDEO_TRANSLATE_ASR_MODELS</code> 指定模型目录。
             </p>
           </section>
@@ -615,7 +625,8 @@ pip install -U yt-dlp
             <h3>2. 选择工作流并导入素材</h3>
             <p>
               主界面顶栏左侧切换 <strong>字幕</strong> 或 <strong>文稿</strong>
-              ；右侧「添加 / 任务」在当前工作流内切换面板。两条线任务列表独立，完整识别结果可互相复用。
+              ；右侧「添加 /
+              任务」在当前工作流内切换面板。两条线任务列表独立，完整识别结果可互相复用。
             </p>
             <div className="docs-cards">
               <article>
@@ -635,7 +646,8 @@ pip install -U yt-dlp
               <article>
                 <h4>导入字幕</h4>
                 <p>
-                  任务列表可导入 SRT / VTT，直接进入校对，或复用为翻译任务。可关联本地视频同步播放与烧录。
+                  任务列表可导入 SRT /
+                  VTT，直接进入校对，或复用为翻译任务。可关联本地视频同步播放与烧录。
                 </p>
               </article>
             </div>
@@ -648,8 +660,9 @@ pip install -U yt-dlp
               </li>
               <li>
                 <strong>选择处理方式</strong>
-                ：「仅提取原文」只生成原文 SRT，无需模型服务；「翻译字幕」可先润色原文，再由所选
-                Endpoint 翻译。
+                ：「仅提取原文」只生成原文
+                SRT，无需模型服务；「翻译字幕」可先润色原文，再由所选 Endpoint
+                翻译。
               </li>
               <li>
                 <strong>导出</strong>
@@ -697,7 +710,9 @@ pip install -U yt-dlp
                 在对应工作流的任务列表查看进度、日志、本地创建时间与处理耗时；支持暂停
                 / 恢复。识别、润色、翻译会按阶段保存断点，恢复时只补未完成部分。
               </li>
-              <li>字幕完成：打开字幕或结果文件夹；可进入校对、补烧硬字幕，或复用识别结果生成文稿。</li>
+              <li>
+                字幕完成：打开字幕或结果文件夹；可进入校对、补烧硬字幕，或复用识别结果生成文稿。
+              </li>
               <li>
                 文稿完成：全屏预览 Markdown、复制、打开 .md 或结果文件夹。
               </li>
@@ -713,7 +728,8 @@ pip install -U yt-dlp
               <li>源语言 / 目标语言（字幕线）</li>
               <li>字幕与烧录视频的输出位置：output 子目录或源视频同目录</li>
               <li>
-                模型服务：可添加多套 OpenAI 兼容 Endpoint，分别指定翻译 / 润色模型
+                模型服务：可添加多套 OpenAI 兼容 Endpoint，分别指定翻译 /
+                润色模型
               </li>
               <li>术语库：翻译时优先采用指定译法</li>
               <li>原文 / 译文字幕颜色；烧录内容在创建字幕任务时选择</li>

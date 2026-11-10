@@ -49,7 +49,7 @@ pub fn run_checks() -> Vec<CheckResult> {
         error: if sherpa.is_some() {
             None
         } else {
-            Some("未找到 sherpa-onnx-offline，真实 ASR 不可用。".into())
+            Some("可选 CLI 未安装；SenseVoice 与 Fun-ASR-Nano 使用内置 sherpa-onnx 引擎。".into())
         },
         optional: true,
     });

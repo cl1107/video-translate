@@ -12,13 +12,23 @@ use nsh_platform_windows as platform;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn main() -> impl std::process::Termination {
     env_logger::init();
+    platform::set_ui_sets(vec![
+        nsh_base::registry(),
+        nsh_app_video_translate::__nsh_native_module(),
+    ]);
     platform::run_app(
-        platform::AppSource::Rust(platform::Root::of::<nsh_app_video_translate::App>()),
+        platform::AppSource::Rust(
+            platform::Root::of::<nsh_app_video_translate::App>().tokens(
+                nsh_base::Theme::from_json(include_str!("../theme.json"))
+                    .expect("theme.json")
+                    .into_tokens(),
+            ),
+        ),
         platform::AppOptions {
             title: "视频翻译助手".to_owned(),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             app_id: "com.cl1107.video-translate".to_owned(),
-            size: (1200, 800),
+            size: (1400, 900),
             ..Default::default()
         },
     )

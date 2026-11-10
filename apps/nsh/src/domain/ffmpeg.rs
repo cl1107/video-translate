@@ -5,7 +5,7 @@ use std::{
 
 use serde_json::Value;
 
-use super::command::{resolve_command, run_capture};
+use super::command::{resolve_command, run_capture_cancellable};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MediaInfo {
@@ -30,8 +30,16 @@ impl Ffmpeg {
     }
 
     pub fn probe(&self, path: &Path) -> Result<MediaInfo, String> {
+        self.probe_with_cancel(path, &|| false)
+    }
+
+    pub fn probe_with_cancel(
+        &self,
+        path: &Path,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<MediaInfo, String> {
         let path_str = path.to_string_lossy();
-        let (code, stdout, stderr) = run_capture(
+        let (code, stdout, stderr) = run_capture_cancellable(
             &self.ffprobe,
             &[
                 "-v",
@@ -42,20 +50,18 @@ impl Ffmpeg {
                 "-show_streams",
                 path_str.as_ref(),
             ],
+            cancelled,
         )?;
         if code != 0 {
             return Err(format!("ffprobe 失败: {stderr}"));
         }
-        let json: Value =
-            serde_json::from_str(&stdout).map_err(|err| format!("解析 ffprobe JSON 失败: {err}"))?;
+        let json: Value = serde_json::from_str(&stdout)
+            .map_err(|err| format!("解析 ffprobe JSON 失败: {err}"))?;
         let duration = json
             .pointer("/format/duration")
             .and_then(Value::as_str)
             .and_then(|s| s.parse().ok())
-            .or_else(|| {
-                json.pointer("/format/duration")
-                    .and_then(Value::as_f64)
-            })
+            .or_else(|| json.pointer("/format/duration").and_then(Value::as_f64))
             .unwrap_or(0.0);
         let format = json
             .pointer("/format/format_name")
@@ -87,12 +93,21 @@ impl Ffmpeg {
     }
 
     pub fn extract_audio(&self, video: &Path, output: &Path) -> Result<PathBuf, String> {
+        self.extract_audio_with_cancel(video, output, &|| false)
+    }
+
+    pub fn extract_audio_with_cancel(
+        &self,
+        video: &Path,
+        output: &Path,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<PathBuf, String> {
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
         let video_s = video.to_string_lossy();
         let output_s = output.to_string_lossy();
-        let (code, _, stderr) = run_capture(
+        let (code, _, stderr) = run_capture_cancellable(
             &self.ffmpeg,
             &[
                 "-hide_banner",
@@ -108,6 +123,7 @@ impl Ffmpeg {
                 "-y",
                 output_s.as_ref(),
             ],
+            cancelled,
         )?;
         if code != 0 {
             if stderr.contains("does not contain any stream") || stderr.contains("Stream map") {
@@ -129,6 +145,17 @@ impl Ffmpeg {
         duration: f64,
         output: &Path,
     ) -> Result<PathBuf, String> {
+        self.extract_clip_with_cancel(input, start, duration, output, &|| false)
+    }
+
+    pub fn extract_clip_with_cancel(
+        &self,
+        input: &Path,
+        start: f64,
+        duration: f64,
+        output: &Path,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<PathBuf, String> {
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
@@ -136,7 +163,7 @@ impl Ffmpeg {
         let output_s = output.to_string_lossy();
         let start_s = format!("{start:.3}");
         let dur_s = format!("{duration:.3}");
-        let (code, _, stderr) = run_capture(
+        let (code, _, stderr) = run_capture_cancellable(
             &self.ffmpeg,
             &[
                 "-hide_banner",
@@ -156,6 +183,7 @@ impl Ffmpeg {
                 "-y",
                 output_s.as_ref(),
             ],
+            cancelled,
         )?;
         if code != 0 {
             return Err(format!("切分音频失败: {stderr}"));
@@ -169,14 +197,27 @@ impl Ffmpeg {
         subtitle: &Path,
         output: &Path,
     ) -> Result<PathBuf, String> {
+        self.burn_subtitles_with_cancel(video, subtitle, output, &|| false)
+    }
+
+    pub fn burn_subtitles_with_cancel(
+        &self,
+        video: &Path,
+        subtitle: &Path,
+        output: &Path,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<PathBuf, String> {
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
         let video_s = video.to_string_lossy();
         let output_s = output.to_string_lossy();
-        let sub = subtitle.to_string_lossy().replace('\\', "\\\\").replace(':', "\\:");
+        let sub = subtitle
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace(':', "\\:");
         let filter = format!("subtitles='{sub}'");
-        let (code, _, stderr) = run_capture(
+        let (code, _, stderr) = run_capture_cancellable(
             &self.ffmpeg,
             &[
                 "-hide_banner",
@@ -189,6 +230,7 @@ impl Ffmpeg {
                 "-y",
                 output_s.as_ref(),
             ],
+            cancelled,
         )?;
         if code != 0 {
             return Err(format!("烧录字幕失败: {stderr}"));

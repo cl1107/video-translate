@@ -37,7 +37,12 @@
 在线链接任务在 `downloading` 阶段用系统 **yt-dlp** 拉取最高画质 + 平台字幕到 `userData/downloads/<taskId>/`。  
 **字幕优先级**：平台人工/自动字幕（匹配源语）→ 否则本地 ASR。
 
-## 明确非目标（当前）
+## NSH 实现与迁移边界
 
-- 断点续跑（resume 会协作取消后**重跑**流水线，检查点未实现）。
-- 将 BYOK API Key 写入任务行或日志。
+当前桌面实现位于 `apps/nsh`，`apps/desktop` 为旧 Electron 对照。NSH 通过 `Completer` 接入 OpenAI 兼容服务，不使用 Electron IPC。
+
+阶段检查点保存识别、润色、翻译和文稿状态；长音频成功识别块单独落盘。恢复时仅复用输入与参数仍匹配的结果；完整转录可跨字幕 / 文稿任务复用。
+
+NSH 使用独立 `video-translate-nsh` 数据目录，目前不自动迁移旧 Electron 数据库、设置或凭证。旧目录保持原位，导出 SRT / VTT 可导入新应用。
+
+明确禁止将 BYOK API Key 写入任务行或日志。

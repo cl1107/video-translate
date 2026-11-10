@@ -22,14 +22,17 @@ fn longest_line_width(text: &str) -> usize {
     text.split('\n').map(display_width).max().unwrap_or(0)
 }
 
-pub fn collect_issues(
-    segments: &[Segment],
-    mode: SubtitleProcessingMode,
-) -> Vec<ReviewIssue> {
+pub fn collect_issues(segments: &[Segment], mode: SubtitleProcessingMode) -> Vec<ReviewIssue> {
     let require_translation = mode == SubtitleProcessingMode::Translate;
     let mut issues = Vec::new();
     for (index, segment) in segments.iter().enumerate() {
-        if require_translation && segment.translated_text.as_deref().unwrap_or("").trim().is_empty()
+        if require_translation
+            && segment
+                .translated_text
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .is_empty()
         {
             issues.push(ReviewIssue {
                 kind: "empty-translation",
@@ -46,8 +49,9 @@ pub fn collect_issues(
             });
         }
 
-        let line_width = longest_line_width(&segment.original_text)
-            .max(longest_line_width(segment.translated_text.as_deref().unwrap_or("")));
+        let line_width = longest_line_width(&segment.original_text).max(longest_line_width(
+            segment.translated_text.as_deref().unwrap_or(""),
+        ));
         if line_width > MAX_SUBTITLE_LINE_WIDTH {
             issues.push(ReviewIssue {
                 kind: "line-too-long",
@@ -89,6 +93,59 @@ pub fn collect_issues(
     issues
 }
 
+/// 时间修改共用同一边界，拒绝 NaN、负数、零时长与越过媒体末尾。
+pub fn validate_times(start: f64, end: f64, duration: Option<f64>) -> Result<(), String> {
+    if !start.is_finite() || !end.is_finite() || start < 0.0 || end <= start {
+        return Err("开始时间须非负，结束时间须晚于开始时间".into());
+    }
+    if duration.is_some_and(|limit| limit > 0.0 && end > limit + 0.001) {
+        return Err("字幕时间超出媒体时长".into());
+    }
+    Ok(())
+}
+
+/// 在播放头处分开字幕，文本由使用者校对；不猜测文字与音频的对齐。
+pub fn split_segment(segments: &mut Vec<Segment>, index: usize, at: f64) -> Result<(), String> {
+    let segment = segments.get(index).ok_or("请先选择字幕段")?;
+    if !at.is_finite() || at <= segment.start || at >= segment.end {
+        return Err("播放头须位于当前段内部".into());
+    }
+    let mut right = segment.clone();
+    right.id = super::model::new_id();
+    right.start = at;
+    right.original_text.clear();
+    right.polished_text = None;
+    right.translated_text = None;
+    right.translation_status = None;
+    segments[index].end = at;
+    segments.insert(index + 1, right);
+    Ok(())
+}
+
+pub fn merge_next(segments: &mut Vec<Segment>, index: usize) -> Result<(), String> {
+    if index + 1 >= segments.len() {
+        return Err("当前段后没有可合并的字幕".into());
+    }
+    if segments[index].translated_text.is_some() != segments[index + 1].translated_text.is_some() {
+        return Err("两段译文须同时存在或同时为空，请先补齐译文".into());
+    }
+    let right = segments.remove(index + 1);
+    let left = &mut segments[index];
+    left.end = left.end.max(right.end);
+    left.original_text = format!("{}\n{}", left.original_text, right.original_text)
+        .trim()
+        .into();
+    // 润色不再代表编辑后的整句，重译使用校对后的原文。
+    left.polished_text = None;
+    left.translated_text = match (&left.translated_text, &right.translated_text) {
+        (Some(a), Some(b)) => Some(format!("{a}\n{b}")),
+        (None, None) => None,
+        _ => return Err("两段译文须同时存在或同时为空，请先补齐译文".into()),
+    };
+    left.translation_status = Some(TranslationStatus::Reviewed);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +176,53 @@ mod tests {
         let segments = vec![seg("a", 0.0, 1.0, "hello", None)];
         let issues = collect_issues(&segments, SubtitleProcessingMode::Translate);
         assert!(issues.iter().any(|issue| issue.kind == "empty-translation"));
+    }
+}
+
+#[cfg(test)]
+mod editing_tests {
+    use super::*;
+    fn segment() -> Segment {
+        Segment {
+            id: "one".into(),
+            start: 1.0,
+            end: 3.0,
+            original_text: "你好世界".into(),
+            polished_text: Some("旧润色".into()),
+            translated_text: None,
+            translation_status: None,
+            confidence: 1.0,
+        }
+    }
+    #[test]
+    fn reject_invalid_times_and_out_of_bounds() {
+        for (start, end) in [
+            (f64::NAN, 2.0),
+            (-1.0, 2.0),
+            (2.0, 2.0),
+            (3.0, 2.0),
+            (0.0, f64::INFINITY),
+        ] {
+            assert!(validate_times(start, end, None).is_err());
+        }
+        assert!(validate_times(1.0, 3.0, Some(2.0)).is_err());
+        assert!(validate_times(1.0, 3.0, Some(3.0)).is_ok());
+    }
+    #[test]
+    fn split_and_merge_preserve_text_and_times() {
+        let mut segments = vec![segment()];
+        assert!(split_segment(&mut segments, 0, 1.0).is_err());
+        split_segment(&mut segments, 0, 2.0).unwrap();
+        assert_eq!(segments.len(), 2);
+        assert_ne!(segments[0].id, segments[1].id);
+        assert_eq!(segments[0].end, 2.0);
+        assert_eq!(segments[1].start, 2.0);
+        assert!(segments[1].original_text.is_empty());
+        segments[1].original_text = "第二句".into();
+        merge_next(&mut segments, 0).unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].end, 3.0);
+        assert_eq!(segments[0].original_text, "你好世界\n第二句");
+        assert!(segments[0].polished_text.is_none());
     }
 }

@@ -48,7 +48,10 @@ fn normalize_timestamp(raw: &str) -> String {
         caps.0.parse::<u32>().unwrap_or(0),
         caps.1,
         caps.2,
-        format!("{:0<3}", caps.3).chars().take(3).collect::<String>()
+        format!("{:0<3}", caps.3)
+            .chars()
+            .take(3)
+            .collect::<String>()
     )
 }
 
@@ -89,6 +92,7 @@ fn regex_time(value: &str) -> Option<(String, String, String, String)> {
     Some((hh, mm, ss, ms))
 }
 
+#[cfg(test)]
 fn strip_tags(text: &str) -> String {
     let mut out = String::new();
     let mut chars = text.chars().peekable();

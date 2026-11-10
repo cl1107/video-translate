@@ -15,11 +15,7 @@ pub fn set_data_dir_override(path: Option<PathBuf>) {
 }
 
 pub fn data_dir() -> PathBuf {
-    if let Some(path) = override_slot()
-        .lock()
-        .expect("data dir override")
-        .clone()
-    {
+    if let Some(path) = override_slot().lock().expect("data dir override").clone() {
         return path;
     }
     if let Ok(path) = std::env::var("VIDEO_TRANSLATE_DATA_DIR") {

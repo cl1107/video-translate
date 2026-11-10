@@ -7,9 +7,11 @@ use std::{
 use super::{
     asr::{Transcriber, select_transcriber},
     checkpoint::{self, PipelineCheckpoint},
-    download::{download_url, looks_like_url},
+    download::{download_url_with_cancel, looks_like_url},
     ffmpeg::Ffmpeg,
-    llm::{Completer, MockCompleter, OpenAiCompleter, document_system, polish_system, translate_system},
+    llm::{
+        Completer, MockCompleter, OpenAiCompleter, document_system, polish_system, translate_system,
+    },
     model::{
         Segment, SubtitleBurnMode, SubtitleProcessingMode, TaskKind, TaskLog, TaskOutputArtifacts,
         TaskStatus, TranslationStatus, TranslationTask, VideoFile, new_id, now,
@@ -217,13 +219,12 @@ pub fn create_reused_task(
         "info",
         &format!("从任务 {} 复用识别结果，跳过 ASR", source.id),
     );
-    let mut cp = PipelineCheckpoint {
+    let cp = PipelineCheckpoint {
         asr_complete: true,
         asr_fingerprint: None,
         ..PipelineCheckpoint::default()
     };
     checkpoint::save(&task.id, &cp)?;
-    let _ = cp;
     Ok(task)
 }
 
@@ -233,27 +234,72 @@ pub struct Runtime {
     pub ffmpeg: Option<Ffmpeg>,
 }
 
+struct LazyTranscriber {
+    engine: String,
+    mock: bool,
+}
+
+impl Transcriber for LazyTranscriber {
+    fn transcribe(&self, audio: &Path, task_id: &str) -> Result<super::asr::Transcription, String> {
+        select_transcriber(&self.engine, self.mock)?.transcribe(audio, task_id)
+    }
+
+    fn transcribe_with_cancel(
+        &self,
+        audio: &Path,
+        task_id: &str,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<super::asr::Transcription, String> {
+        select_transcriber(&self.engine, self.mock)?
+            .transcribe_with_cancel(audio, task_id, cancelled)
+    }
+}
+
 impl Runtime {
+    pub fn for_task(
+        settings: &AppSettings,
+        task: &TranslationTask,
+        api_key: &str,
+    ) -> Result<Self, String> {
+        let mut settings = settings.clone();
+        settings.asr_engine = task.options.asr_engine.clone();
+        settings.llm_base_url = task.options.llm_base_url.clone();
+        settings.translate_model = task.options.translate_model.clone();
+        settings.polish_model = task.options.polish_model.clone();
+        if task.kind == TaskKind::Document && !settings.polish_model.trim().is_empty() {
+            settings.translate_model = settings.polish_model.clone();
+        }
+        if task.kind == TaskKind::Subtitle
+            && task.options.subtitle_processing_mode == SubtitleProcessingMode::Extract
+        {
+            settings.llm_base_url.clear();
+        }
+        Self::from_settings_with_key(&settings, api_key)
+    }
+
     pub fn from_settings(settings: &AppSettings) -> Result<Self, String> {
+        let key = std::env::var("VIDEO_TRANSLATE_LLM_API_KEY").unwrap_or_default();
+        Self::from_settings_with_key(settings, &key)
+    }
+
+    pub fn from_settings_with_key(settings: &AppSettings, api_key: &str) -> Result<Self, String> {
         let mock_asr = settings.mock_asr
             || std::env::var("VIDEO_TRANSLATE_MOCK_ASR").ok().as_deref() == Some("1");
         let mock_llm = settings.mock_llm
             || std::env::var("VIDEO_TRANSLATE_MOCK_LLM").ok().as_deref() == Some("1");
-        let transcriber = select_transcriber(&settings.asr_engine, mock_asr)?;
+        let transcriber = Box::new(LazyTranscriber {
+            engine: settings.asr_engine.clone(),
+            mock: mock_asr,
+        });
         let completer: Option<Box<dyn Completer>> = if mock_llm {
             Some(Box::new(MockCompleter))
         } else if settings.llm_base_url.trim().is_empty() {
             None
         } else {
-            let key = std::env::var("VIDEO_TRANSLATE_LLM_API_KEY").unwrap_or_default();
             Some(Box::new(OpenAiCompleter::new(
                 &settings.llm_base_url,
-                &key,
-                if settings.translate_model.trim().is_empty() {
-                    "gpt-4o-mini"
-                } else {
-                    &settings.translate_model
-                },
+                api_key,
+                &settings.translate_model,
             )?))
         };
         Ok(Self {
@@ -308,18 +354,21 @@ fn run_inner(
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if looks_like_url(task.source_url.as_deref().unwrap_or(&task.video_file.path))
+    if (looks_like_url(task.source_url.as_deref().unwrap_or(&task.video_file.path))
         || ext == "url"
-        || task.video_file.format == "url"
+        || task.video_file.format == "url")
+        && !Path::new(&task.video_file.path).is_file()
     {
         set_status(task, TaskStatus::Downloading, 5.0);
         log_task(task, "info", "正在用 yt-dlp 下载");
         hooks.emit(task);
-        let downloaded = download_url(
+        let downloaded = download_url_with_cancel(
             task.source_url.as_deref().unwrap_or(&task.video_file.path),
             &task.id,
             &task.options.download_proxy,
             &task.options.download_cookie_browser,
+            &task.source_language,
+            &|| abort.is_cancelled(),
         )?;
         task.video_file.path = downloaded.media_path.to_string_lossy().into_owned();
         task.video_file.format = downloaded
@@ -328,6 +377,7 @@ fn run_inner(
             .and_then(|s| s.to_str())
             .unwrap_or("mp4")
             .into();
+        task.platform_subtitle_language = downloaded.subtitle_language;
         if let Some(sub) = downloaded.subtitle_path {
             task.platform_subtitle_path = Some(sub.to_string_lossy().into_owned());
         }
@@ -342,12 +392,8 @@ fn run_inner(
         .to_ascii_lowercase();
     let mut cp = checkpoint::load(&task.id);
     let (size, mtime) = checkpoint::file_mtime_size(&task.video_file.path);
-    let asr_fp = checkpoint::asr_fingerprint(
-        &task.options.asr_engine,
-        &task.video_file.path,
-        size,
-        mtime,
-    );
+    let asr_fp =
+        checkpoint::asr_fingerprint(&task.options.asr_engine, &task.video_file.path, size, mtime);
 
     if checkpoint::stage_valid(cp.asr_complete, &cp.asr_fingerprint, &asr_fp)
         && !task.segments.is_empty()
@@ -370,6 +416,10 @@ fn run_inner(
         log_task(task, "info", "使用平台字幕，跳过 ASR");
         let content = fs::read_to_string(&platform).map_err(|err| err.to_string())?;
         let cues = parse_subtitle(&content, None);
+        if cues.is_empty() {
+            return Err("平台字幕没有有效条目".into());
+        }
+        task.detected_language = task.platform_subtitle_language.clone();
         task.segments = segments_from_cues(&task.id, &cues);
         mark_asr(&mut cp, &task.id, &asr_fp)?;
         hooks.emit(task);
@@ -382,7 +432,7 @@ fn run_inner(
         log_task(task, "info", "提取音轨");
         hooks.emit(task);
         check_abort(abort)?;
-        let info = ffmpeg.probe(&path)?;
+        let info = ffmpeg.probe_with_cancel(&path, &|| abort.is_cancelled())?;
         if !info.has_audio {
             return Err("源文件没有音轨，无法识别。请改用导入字幕。".into());
         }
@@ -390,14 +440,21 @@ fn run_inner(
         task.video_file.format = info.format;
         let audio = work_dir(&task.id).join("audio.wav");
         fs::create_dir_all(audio.parent().unwrap()).map_err(|err| err.to_string())?;
-        if !audio.is_file() {
-            ffmpeg.extract_audio(&path, &audio)?;
+        let audio_fingerprint = audio.with_extension("source");
+        if !audio.is_file()
+            || fs::read_to_string(&audio_fingerprint).ok().as_deref() != Some(&asr_fp)
+        {
+            ffmpeg.extract_audio_with_cancel(&path, &audio, &|| abort.is_cancelled())?;
+            fs::write(&audio_fingerprint, &asr_fp).map_err(|error| error.to_string())?;
         }
         set_status(task, TaskStatus::Transcribing, 35.0);
         log_task(task, "info", "语音识别（成功块会落盘，恢复时不重跑）");
         hooks.emit(task);
         check_abort(abort)?;
-        let transcription = runtime.transcriber.transcribe(&audio, &task.id)?;
+        let transcription =
+            runtime
+                .transcriber
+                .transcribe_with_cancel(&audio, &task.id, &|| abort.is_cancelled())?;
         task.segments = transcription.segments;
         task.detected_language = transcription.language.or(task.detected_language.clone());
         mark_asr(&mut cp, &task.id, &asr_fp)?;
@@ -410,14 +467,19 @@ fn run_inner(
 
     let extract_only = task.kind == TaskKind::Subtitle
         && task.options.subtitle_processing_mode == SubtitleProcessingMode::Extract;
-    let polish_fp = checkpoint::fingerprint(&[&asr_fp, &task.options.polish_model]);
-    let translation_fp = checkpoint::fingerprint(&[
-        &polish_fp,
+    let source_content_fp = segment_content_fingerprint(task, false)?;
+    let polish_fp = checkpoint::fingerprint(&[
+        &source_content_fp,
+        &asr_fp,
+        &task.options.llm_base_url,
+        &task.options.polish_model,
         &task.options.translate_model,
-        &task.target_language,
-        &serde_json::to_string(&task.options.glossary).unwrap_or_default(),
+        if task.options.polish_transcript {
+            "polish"
+        } else {
+            "raw"
+        },
     ]);
-
     if task.kind == TaskKind::Document {
         if cp.document_complete && checkpoint::matches(&cp.document_fingerprint, &polish_fp) {
             if let Some(markdown) = &cp.document_markdown {
@@ -428,17 +490,48 @@ fn run_inner(
         set_status(task, TaskStatus::Polishing, 70.0);
         log_task(task, "info", "整理文稿");
         hooks.emit(task);
-        let transcript = task
-            .segments
-            .iter()
-            .map(|seg| format!("[{}] {}", super::srt::format_srt_time(seg.start), seg.asr_text()))
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let markdown = if let Some(completer) = runtime.completer.as_ref() {
-            completer.complete(document_system(), &transcript)?
-        } else {
-            format!("# 文稿\n\n{transcript}\n")
-        };
+        let mut inputs = Vec::new();
+        let mut input = String::new();
+        let mut input_len = 0;
+        for segment in &task.segments {
+            let line = format!(
+                "[{}] {}\n\n",
+                super::srt::format_srt_time(segment.start),
+                segment.asr_text()
+            );
+            for character in line.chars() {
+                input.push(character);
+                input_len += 1;
+                // Bound input and output per request even for a single long ASR segment.
+                if input_len >= 1200 {
+                    inputs.push(std::mem::take(&mut input));
+                    input_len = 0;
+                }
+            }
+        }
+        if !input.is_empty() {
+            inputs.push(input);
+        }
+        if !checkpoint::matches(&cp.document_parts_fingerprint, &polish_fp) {
+            cp.document_parts.clear();
+            cp.document_parts_fingerprint = Some(polish_fp.clone());
+        }
+        for input in inputs.iter().skip(cp.document_parts.len()) {
+            check_abort(abort)?;
+            cp.document_parts
+                .push(complete_document_part(runtime, task, input)?);
+            checkpoint::save(&task.id, &cp)?;
+        }
+        let mut markdown = cp.document_parts.join("\n\n");
+        markdown.push_str("\n\n## 来源索引\n\n");
+        for segment in &task.segments {
+            markdown.push_str(&format!(
+                "- [{}](#t={:.3})\n",
+                super::srt::format_srt_time(segment.start),
+                segment.start
+            ));
+        }
+        check_abort(abort)?;
         cp.document_complete = true;
         cp.document_fingerprint = Some(polish_fp);
         cp.document_markdown = Some(markdown.clone());
@@ -449,7 +542,15 @@ fn run_inner(
 
     if !extract_only {
         if task.options.polish_transcript {
-            if cp.polish_complete && checkpoint::matches(&cp.polish_fingerprint, &polish_fp) {
+            if cp.polish_complete
+                && checkpoint::matches(&cp.polish_fingerprint, &polish_fp)
+                && task.segments.iter().all(|segment| {
+                    segment
+                        .polished_text
+                        .as_ref()
+                        .is_some_and(|text| !text.trim().is_empty())
+                })
+            {
                 log_task(task, "info", "复用已完成的润色");
             } else if let Some(completer) = runtime.completer.as_ref() {
                 set_status(task, TaskStatus::Polishing, 55.0);
@@ -457,7 +558,12 @@ fn run_inner(
                 hooks.emit(task);
                 check_abort(abort)?;
                 for segment in &mut task.segments {
-                    let polished = completer.complete(polish_system(), segment.asr_text())?;
+                    check_abort(abort)?;
+                    let polished = completer.complete_with_model(
+                        &task.options.polish_model,
+                        polish_system(),
+                        segment.asr_text(),
+                    )?;
                     if !polished.trim().is_empty() {
                         segment.polished_text = Some(polished);
                     }
@@ -467,14 +573,28 @@ fn run_inner(
                 checkpoint::save(&task.id, &cp)?;
             }
         }
-        if cp.translation_complete && checkpoint::matches(&cp.translation_fingerprint, &translation_fp)
+        let translation_content_fp = segment_content_fingerprint(task, true)?;
+        let translation_fp = checkpoint::fingerprint(&[
+            &polish_fp,
+            &translation_content_fp,
+            &task.options.translate_model,
+            &task.target_language,
+            &serde_json::to_string(&task.options.glossary).map_err(|error| error.to_string())?,
+        ]);
+        if cp.translation_complete
+            && checkpoint::matches(&cp.translation_fingerprint, &translation_fp)
+            && task.segments.iter().all(|segment| {
+                segment
+                    .translated_text
+                    .as_ref()
+                    .is_some_and(|text| !text.trim().is_empty())
+            })
         {
             log_task(task, "info", "复用已完成的翻译");
         } else {
-            let completer = runtime
-                .completer
-                .as_ref()
-                .ok_or("翻译需要模型服务。请在设置中填写 Endpoint，或改用「仅提取原文」，或开启模拟翻译。")?;
+            let completer = runtime.completer.as_ref().ok_or(
+                "翻译需要模型服务。请在设置中填写 Endpoint，或改用「仅提取原文」，或开启模拟翻译。",
+            )?;
             set_status(task, TaskStatus::Translating, 75.0);
             log_task(task, "info", "翻译字幕");
             hooks.emit(task);
@@ -484,8 +604,14 @@ fn run_inner(
             } else {
                 0
             };
-            for (index, segment) in task.segments.iter_mut().enumerate() {
-                if index < skip && segment.translated_text.as_ref().is_some_and(|t| !t.trim().is_empty()) {
+            for index in 0..task.segments.len() {
+                let segment = &mut task.segments[index];
+                if index < skip
+                    && segment
+                        .translated_text
+                        .as_ref()
+                        .is_some_and(|t| !t.trim().is_empty())
+                {
                     continue;
                 }
                 check_abort(abort)?;
@@ -502,22 +628,21 @@ fn run_inner(
                 cp.translation_fingerprint = Some(translation_fp.clone());
                 cp.translation_completed_count = index + 1;
                 checkpoint::save(&task.id, &cp)?;
+                hooks.emit(task);
             }
             cp.translation_complete = true;
             checkpoint::save(&task.id, &cp)?;
         }
     }
 
+    check_abort(abort)?;
     set_status(task, TaskStatus::GeneratingSubtitles, 90.0);
     log_task(task, "info", "导出字幕文件");
     hooks.emit(task);
     write_subtitle_artifacts(task)?;
 
     if task.options.burn_subtitles {
-        let ffmpeg = runtime
-            .ffmpeg
-            .as_ref()
-            .ok_or("烧录需要 FFmpeg")?;
+        let ffmpeg = runtime.ffmpeg.as_ref().ok_or("烧录需要 FFmpeg")?;
         let sub = match task.options.burn_subtitle_mode {
             SubtitleBurnMode::Original => task
                 .output_artifacts
@@ -560,12 +685,58 @@ fn run_inner(
                 .and_then(|s| s.to_str())
                 .unwrap_or("video")
         )));
-        let path = ffmpeg.burn_subtitles(Path::new(&task.video_file.path), Path::new(&sub), &burned)?;
+        check_abort(abort)?;
+        let path = ffmpeg.burn_subtitles_with_cancel(
+            Path::new(&task.video_file.path),
+            Path::new(&sub),
+            &burned,
+            &|| abort.is_cancelled(),
+        )?;
+        check_abort(abort)?;
         if let Some(artifacts) = task.output_artifacts.as_mut() {
             artifacts.burned_video = Some(path.to_string_lossy().into_owned());
         }
     }
     Ok(())
+}
+
+fn segment_content_fingerprint(
+    task: &TranslationTask,
+    translated_input: bool,
+) -> Result<String, String> {
+    use std::hash::Hasher;
+    let content: Vec<_> = task
+        .segments
+        .iter()
+        .map(|segment| {
+            (
+                &segment.id,
+                segment.start,
+                segment.end,
+                if translated_input {
+                    segment.translate_input()
+                } else {
+                    segment.asr_text()
+                },
+            )
+        })
+        .collect();
+    let encoded = serde_json::to_vec(&content).map_err(|error| error.to_string())?;
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    hash.write(&encoded);
+    Ok(format!("{:016x}", hash.finish()))
+}
+
+fn complete_document_part(
+    runtime: &Runtime,
+    task: &TranslationTask,
+    input: &str,
+) -> Result<String, String> {
+    let completer = runtime
+        .completer
+        .as_ref()
+        .ok_or("整理文稿需要模型服务，请在设置中填写 Endpoint 和模型 ID")?;
+    completer.complete_with_model(&task.options.polish_model, document_system(), input)
 }
 
 fn write_subtitle_artifacts(task: &mut TranslationTask) -> Result<(), String> {
@@ -750,12 +921,13 @@ mod tests {
             .unwrap();
         let body = fs::read_to_string(original).unwrap();
         assert!(body.contains("Hello"));
-        assert!(task
-            .output_artifacts
-            .as_ref()
-            .unwrap()
-            .translated_subtitle
-            .is_none());
+        assert!(
+            task.output_artifacts
+                .as_ref()
+                .unwrap()
+                .translated_subtitle
+                .is_none()
+        );
     }
 
     #[test]
@@ -910,13 +1082,21 @@ mod tests {
         assert_ne!(reused.id, source.id);
         assert_eq!(reused.kind, TaskKind::Subtitle);
         assert_eq!(reused.target_language, "ja");
-        assert_eq!(reused.segments[0].original_text, source.segments[0].original_text);
+        assert_eq!(
+            reused.segments[0].original_text,
+            source.segments[0].original_text
+        );
         assert!(reused.segments[0].translated_text.is_none());
         assert!(reused.segments[0].polished_text.is_none());
 
         let reused = run_task(reused, &runtime, &abort, &mut hooks);
         assert_eq!(reused.status, TaskStatus::Completed);
-        assert!(reused.logs.iter().any(|log| log.message.contains("跳过 ASR")));
+        assert!(
+            reused
+                .logs
+                .iter()
+                .any(|log| log.message.contains("跳过 ASR"))
+        );
         assert_ne!(reused.segments[0].original_text, "[mock]");
 
         let empty = TranslationTask {
@@ -926,6 +1106,195 @@ mod tests {
         assert_eq!(
             create_reused_task(&empty, TaskKind::Document, &settings).unwrap_err(),
             "任务尚无可复用的识别结果"
+        );
+    }
+    #[test]
+    fn runtime_does_not_require_asr_for_subtitle_import() {
+        let settings = AppSettings {
+            asr_engine: "funasr-nano".into(),
+            ..AppSettings::default()
+        };
+        let runtime =
+            Runtime::from_settings(&settings).expect("ASR should be initialized only when needed");
+        let dir = tempdir().unwrap();
+        let srt = dir.path().join("input.srt");
+        fs::write(&srt, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+        let task = create_task_from_input(
+            srt.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &settings,
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(|_| {}),
+        };
+        let task = run_task(task, &runtime, &AbortFlag::new(), &mut hooks);
+        assert_eq!(task.status, TaskStatus::Completed);
+    }
+
+    struct RecordingCompleter(std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>);
+    impl Completer for RecordingCompleter {
+        fn complete(&self, _: &str, user: &str) -> Result<String, String> {
+            Ok(format!("译：{user}"))
+        }
+        fn complete_with_model(&self, model: &str, _: &str, user: &str) -> Result<String, String> {
+            self.0.lock().unwrap().push((model.into(), user.into()));
+            Ok(format!("正文：{user}"))
+        }
+    }
+
+    #[test]
+    fn document_uses_polish_model_in_bounded_parts_with_source_links() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("long.srt");
+        fs::write(
+            &input,
+            format!("1\n00:00:03,500 --> 00:00:05,000\n{}\n", "文".repeat(3000)),
+        )
+        .unwrap();
+        let settings = AppSettings {
+            polish_model: "polisher".into(),
+            ..AppSettings::default()
+        };
+        let task = create_task_from_input(
+            input.to_str().unwrap(),
+            TaskKind::Document,
+            &settings,
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let runtime = Runtime {
+            transcriber: Box::new(MockTranscriber),
+            completer: Some(Box::new(RecordingCompleter(calls.clone()))),
+            ffmpeg: None,
+        };
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(|_| {}),
+        };
+        let task = run_task(task, &runtime, &AbortFlag::new(), &mut hooks);
+        assert_eq!(task.status, TaskStatus::Completed);
+        let calls = calls.lock().unwrap();
+        assert!(calls.len() >= 3);
+        assert!(
+            calls
+                .iter()
+                .all(|(model, input)| model == "polisher" && input.chars().count() <= 1200)
+        );
+        let markdown =
+            fs::read_to_string(task.output_artifacts.unwrap().polished_markdown.unwrap()).unwrap();
+        assert!(markdown.contains("#t=3.500"));
+    }
+
+    #[test]
+    fn document_resume_keeps_successful_parts() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        struct CancelAfterFirst {
+            calls: Arc<AtomicUsize>,
+            abort: Arc<AbortFlag>,
+        }
+        impl Completer for CancelAfterFirst {
+            fn complete(&self, _: &str, input: &str) -> Result<String, String> {
+                if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    self.abort.cancel();
+                }
+                Ok(input.into())
+            }
+        }
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("resume-doc.srt");
+        fs::write(
+            &input,
+            format!("1\n00:00:01,000 --> 00:00:05,000\n{}\n", "文".repeat(3000)),
+        )
+        .unwrap();
+        let task = create_task_from_input(
+            input.to_str().unwrap(),
+            TaskKind::Document,
+            &AppSettings::default(),
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let abort = Arc::new(AbortFlag::new());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let runtime = Runtime {
+            transcriber: Box::new(MockTranscriber),
+            completer: Some(Box::new(CancelAfterFirst {
+                calls: calls.clone(),
+                abort: abort.clone(),
+            })),
+            ffmpeg: None,
+        };
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(|_| {}),
+        };
+        let task = run_task(task, &runtime, &abort, &mut hooks);
+        assert_eq!(task.status, TaskStatus::Cancelled);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let task = run_task(task, &runtime, &AbortFlag::new(), &mut hooks);
+        assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "resume must not request the first part again"
+        );
+    }
+
+    #[test]
+    fn resume_repairs_checkpoint_when_translated_segments_were_not_persisted() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("crash.srt");
+        fs::write(&input, "1\n00:00:00,000 --> 00:00:01,000\nHello\n").unwrap();
+        let settings = AppSettings {
+            polish_transcript: false,
+            ..AppSettings::default()
+        };
+        let task = create_task_from_input(
+            input.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &settings,
+            SubtitleProcessingMode::Translate,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let runtime = Runtime {
+            transcriber: Box::new(MockTranscriber),
+            completer: Some(Box::new(MockCompleter)),
+            ffmpeg: None,
+        };
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let mut hooks = PipelineHooks {
+            on_event: Box::new(move |event| {
+                captured.lock().unwrap().push(event.task);
+            }),
+        };
+        let mut task = run_task(task, &runtime, &AbortFlag::new(), &mut hooks);
+        assert!(
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| event.status == TaskStatus::Translating
+                    && event.segments[0].translated_text.is_some())
+        );
+        task.segments[0].translated_text = None;
+        task = run_task(task, &runtime, &AbortFlag::new(), &mut hooks);
+        assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(
+            task.segments[0].translated_text.as_deref(),
+            Some("译：Hello")
         );
     }
 }

@@ -4,8 +4,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{
     model::{
-        Segment, TaskKind, TaskLog, TaskOutputArtifacts, TaskStatus,
-        TranslationStatus, TranslationTask, VideoFile, new_id, now,
+        Segment, TaskKind, TaskLog, TaskOutputArtifacts, TaskStatus, TranslationStatus,
+        TranslationTask, VideoFile, new_id, now,
     },
     paths::{db_path, ensure_dir},
 };
@@ -104,11 +104,15 @@ impl Database {
     }
 
     pub fn upsert_task(&self, task: &TranslationTask) -> Result<(), String> {
-        self.conn
+        let transaction = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|err| err.to_string())?;
+        transaction
             .execute(
-                "INSERT OR REPLACE INTO video_files
+                "INSERT INTO video_files
                 (id, name, path, size, duration, format, created_at, source_url)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ON CONFLICT(id) DO UPDATE SET name=excluded.name, path=excluded.path, size=excluded.size, duration=excluded.duration, format=excluded.format, source_url=excluded.source_url",
                 params![
                     task.video_file.id,
                     task.video_file.name,
@@ -128,14 +132,21 @@ impl Database {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|err| err.to_string())?;
-        self.conn
+        transaction
             .execute(
-                "INSERT OR REPLACE INTO translation_tasks
+                "INSERT INTO translation_tasks
                 (id, video_file_id, kind, status, progress, source_language, detected_language,
                  target_language, options_json, source_url, platform_subtitle_path,
                  platform_subtitle_language, error_message, created_at, updated_at, completed_at,
                  artifacts_json)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+                ON CONFLICT(id) DO UPDATE SET video_file_id=excluded.video_file_id, kind=excluded.kind,
+                status=excluded.status, progress=excluded.progress, source_language=excluded.source_language,
+                detected_language=excluded.detected_language, target_language=excluded.target_language,
+                options_json=excluded.options_json, source_url=excluded.source_url,
+                platform_subtitle_path=excluded.platform_subtitle_path, platform_subtitle_language=excluded.platform_subtitle_language,
+                error_message=excluded.error_message, updated_at=excluded.updated_at,
+                completed_at=excluded.completed_at, artifacts_json=excluded.artifacts_json",
                 params![
                     task.id,
                     task.video_file.id,
@@ -157,14 +168,14 @@ impl Database {
                 ],
             )
             .map_err(|err| err.to_string())?;
-        self.conn
+        transaction
             .execute(
                 "DELETE FROM transcription_segments WHERE task_id = ?1",
                 params![task.id],
             )
             .map_err(|err| err.to_string())?;
         for segment in &task.segments {
-            self.conn
+            transaction
                 .execute(
                     "INSERT INTO transcription_segments
                     (id, task_id, start_time, end_time, original_text, polished_text, translated_text, translation_status, confidence)
@@ -183,14 +194,20 @@ impl Database {
                 )
                 .map_err(|err| err.to_string())?;
         }
-        Ok(())
+        for log in &task.logs {
+            transaction.execute(
+                "INSERT INTO task_logs (id, task_id, timestamp, level, message, details) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO NOTHING",
+                params![log.id, task.id, log.timestamp.to_rfc3339(), log.level, log.message, log.details],
+            ).map_err(|err| err.to_string())?;
+        }
+        transaction.commit().map_err(|err| err.to_string())
     }
 
     pub fn add_log(&self, task_id: &str, log: &TaskLog) -> Result<(), String> {
         self.conn
             .execute(
                 "INSERT INTO task_logs (id, task_id, timestamp, level, message, details)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO NOTHING",
                 params![
                     log.id,
                     task_id,
@@ -226,9 +243,7 @@ impl Database {
     pub fn load_all(&self) -> Result<Vec<TranslationTask>, String> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT t.id FROM translation_tasks t ORDER BY t.updated_at DESC",
-            )
+            .prepare("SELECT t.id FROM translation_tasks t ORDER BY t.updated_at DESC")
             .map_err(|err| err.to_string())?;
         let ids: Vec<String> = stmt
             .query_map([], |row| row.get(0))
@@ -331,7 +346,8 @@ impl Database {
                 })
             })
             .map_err(|err| err.to_string())?;
-        rows.collect::<Result<_, _>>().map_err(|err| err.to_string())
+        rows.collect::<Result<_, _>>()
+            .map_err(|err| err.to_string())
     }
 
     fn load_logs(&self, task_id: &str) -> Result<Vec<TaskLog>, String> {
@@ -353,7 +369,8 @@ impl Database {
                 })
             })
             .map_err(|err| err.to_string())?;
-        rows.collect::<Result<_, _>>().map_err(|err| err.to_string())
+        rows.collect::<Result<_, _>>()
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -370,5 +387,56 @@ pub fn append_log(level: &str, message: impl Into<String>, details: Option<Strin
         level: level.into(),
         message: message.into(),
         details,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{
+        model::{SubtitleBurnMode, SubtitleProcessingMode},
+        pipeline::create_task_from_input,
+        settings::AppSettings,
+    };
+
+    #[test]
+    fn updating_task_preserves_full_log_history_and_rolls_back_invalid_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("talk.srt");
+        std::fs::write(&input, "subtitle").unwrap();
+        let mut task = create_task_from_input(
+            input.to_str().unwrap(),
+            TaskKind::Subtitle,
+            &AppSettings::default(),
+            SubtitleProcessingMode::Extract,
+            false,
+            SubtitleBurnMode::Bilingual,
+        )
+        .unwrap();
+        let db = Database::open_memory().unwrap();
+        task.logs.push(append_log("info", "first", None));
+        db.upsert_task(&task).unwrap();
+        db.add_log(&task.id, &task.logs[0]).unwrap();
+        task.logs.push(append_log("info", "second", None));
+        db.upsert_task(&task).unwrap();
+        assert_eq!(db.load_task(&task.id).unwrap().logs.len(), 2);
+        let segment = Segment {
+            id: "same".into(),
+            start: 0.0,
+            end: 1.0,
+            original_text: "original".into(),
+            polished_text: None,
+            translated_text: None,
+            translation_status: None,
+            confidence: 1.0,
+        };
+        task.segments = vec![segment.clone()];
+        db.upsert_task(&task).unwrap();
+        task.segments = vec![segment.clone(), segment];
+        task.progress = 50.0;
+        assert!(db.upsert_task(&task).is_err());
+        let stored = db.load_task(&task.id).unwrap();
+        assert_eq!(stored.progress, 0.0);
+        assert_eq!(stored.segments.len(), 1);
     }
 }

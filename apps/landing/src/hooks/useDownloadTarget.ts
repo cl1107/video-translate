@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   detectPlatform,
@@ -6,7 +6,6 @@ import {
   type DetectedPlatform,
 } from '../lib/platform'
 import {
-  buildFallbackDownloadUrl,
   fetchLatestRelease,
   matchDownload,
   type MatchedDownload,
@@ -91,13 +90,9 @@ export function useDownloadTarget(
     }
   }, [variant, platform])
 
-  const fallbackUrl = useMemo(
-    () => buildFallbackDownloadUrl(platform, variant),
-    [platform, variant]
-  )
-
-  const href = matched?.url ?? fallbackUrl ?? releasePageUrl
-  const isDirect = Boolean(matched?.url || fallbackUrl)
+  // 仅使用已读取 Release 中的真实资产；未匹配时回到 Release 页面。
+  const href = matched?.url ?? releasePageUrl
+  const isDirect = Boolean(matched?.url)
 
   return {
     platform,

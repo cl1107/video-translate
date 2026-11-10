@@ -16,6 +16,10 @@ pub struct PipelineCheckpoint {
     pub document_complete: bool,
     pub document_fingerprint: Option<String>,
     pub document_markdown: Option<String>,
+    #[serde(default)]
+    pub document_parts: Vec<String>,
+    #[serde(default)]
+    pub document_parts_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -46,8 +50,11 @@ pub fn save(task_id: &str, checkpoint: &PipelineCheckpoint) -> Result<(), String
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
-    fs::write(path, serde_json::to_string_pretty(checkpoint).map_err(|err| err.to_string())?)
-        .map_err(|err| err.to_string())
+    fs::write(
+        path,
+        serde_json::to_string_pretty(checkpoint).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| err.to_string())
 }
 
 pub fn fingerprint(parts: &[&str]) -> String {
@@ -72,7 +79,13 @@ pub fn file_mtime_size(path: &str) -> (u64, u64) {
         .unwrap_or((0, 0))
 }
 
-pub fn load_chunk(task_id: &str, index: usize, fingerprint: &str, start: f64, duration: f64) -> Option<Vec<Segment>> {
+pub fn load_chunk(
+    task_id: &str,
+    index: usize,
+    fingerprint: &str,
+    start: f64,
+    duration: f64,
+) -> Option<Vec<Segment>> {
     let path = chunk_dir(task_id).join(format!("{index}.json"));
     let raw = fs::read_to_string(path).ok()?;
     let record: AsrChunkRecord = serde_json::from_str(&raw).ok()?;
@@ -124,7 +137,10 @@ mod tests {
 
     #[test]
     fn fingerprint_changes_with_inputs() {
-        assert_ne!(asr_fingerprint("a", "p", 1, 2), asr_fingerprint("b", "p", 1, 2));
+        assert_ne!(
+            asr_fingerprint("a", "p", 1, 2),
+            asr_fingerprint("b", "p", 1, 2)
+        );
         assert!(matches(&Some("x".into()), "x"));
         assert!(!matches(&Some("x".into()), "y"));
         assert!(stage_valid(true, &None, "anything"));

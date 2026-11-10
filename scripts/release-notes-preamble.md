@@ -1,13 +1,10 @@
 ## 下载说明
 
-每个平台发布 **两种** 安装包：
+当前分发为 **NSH 原生 macOS arm64 应用**，文件名带 `-mac-arm64-nsh.zip`。解压后将「视频翻译助手.app」放入 Applications；FFmpeg / FFprobe 需单独安装，硬字幕需要含 libass 的完整构建。SenseVoice 模型在设置中下载，翻译与文稿整理另需配置模型服务。
 
-| 类型               | 文件名标记         | 何时选用                                   |
-| ------------------ | ------------------ | ------------------------------------------ |
-| **bundled-ffmpeg** | `-bundled-ffmpeg.` | **推荐大多数用户** — 内置 FFmpeg，开箱即用 |
-| **slim**           | `-slim.`           | 本机已装完整 FFmpeg，或希望安装包更小      |
+> 应用采用 ad hoc 签名，未经 Apple 公证。下载后请用 `SHA256SUMS.txt` 校验；若被 Gatekeeper 拦截，先核对来源，再在系统设置中允许打开，必要时对已核实的 `.app` 执行 `xattr -dr com.apple.quarantine`。
 
-> **未签名构建**：macOS 若无法打开，对 `.app` 执行 `xattr -cr`；Windows 在 SmartScreen 选「更多信息 → 仍要运行」。下载后请用 `SHA256SUMS.txt` 校验。
+历史 v0.8.2 的 `bundled-ffmpeg` / `slim` 包属于 Electron 实现。Windows / Linux 的 NSH 安装包尚未验收。
 
-**详情**（安装、依赖、各平台说明与使用教程）：  
+安装与使用说明：
 https://cl1107.github.io/video-translate/docs

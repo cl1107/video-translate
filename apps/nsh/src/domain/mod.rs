@@ -6,6 +6,7 @@ pub mod command;
 pub mod db;
 pub mod download;
 pub mod ffmpeg;
+pub mod legacy_import;
 pub mod llm;
 pub mod model;
 pub mod paths;

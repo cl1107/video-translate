@@ -151,12 +151,14 @@ const releaseHighlights = [
   {
     icon: ListChecks,
     title: '字幕校对工作台',
-    detail: '同步播放媒体，对照修改原文、译文与时间轴；问题清单标出空译、重叠和过长行。',
+    detail:
+      '同步播放媒体，对照修改原文、译文与时间轴；问题清单标出空译、重叠和过长行。',
   },
   {
     icon: RotateCcw,
     title: '阶段断点恢复',
-    detail: '识别、润色、翻译按成功块落盘。恢复任务只补未完成部分，成功 ASR 块不重复推理。',
+    detail:
+      '识别、润色、翻译按成功块落盘。恢复任务只补未完成部分，成功 ASR 块不重复推理。',
   },
   {
     icon: Bookmark,
@@ -166,7 +168,8 @@ const releaseHighlights = [
   {
     icon: FilePlus2,
     title: '导入与跨工作流复用',
-    detail: '导入 SRT / VTT 直接校对；完整转录可生成字幕或文稿，换语言重译不必重新识别。',
+    detail:
+      '导入 SRT / VTT 直接校对；完整转录可生成字幕或文稿，换语言重译不必重新识别。',
   },
 ]
 
@@ -189,8 +192,9 @@ export function HomePage() {
             <em>跨越语言。</em>
           </h1>
           <p className="hero-description">
-            本地文件或在线链接：提取原文 SRT、翻译字幕、校对与硬烧录，或把音视频整理成
-            Markdown 文稿。仅提取原文无需模型服务，素材默认留在你的电脑里。
+            本地文件或在线链接：提取原文
+            SRT、翻译字幕、校对与硬烧录，或把音视频整理成 Markdown
+            文稿。仅提取原文无需模型服务，素材默认留在你的电脑里。
           </p>
           <DownloadCta
             appearance="primary"
@@ -336,12 +340,13 @@ export function HomePage() {
         aria-labelledby="release-title"
       >
         <div className="release-heading">
-          <p>源码新能力 · 安装包仍为 v{APP_VERSION}</p>
-          <h2 id="release-title">校对、断点、术语库，工作台已经齐了。</h2>
+          <p>NSH 原生重构 · 历史安装包 v{APP_VERSION}</p>
+          <h2 id="release-title">字幕与文稿，迁入原生工作台。</h2>
           <span>
-            字幕校对、阶段断点恢复、术语库与跨工作流复用已进入当前源码。GitHub
-            Releases 安装包仍为 v{APP_VERSION}
-            ，下一版本随包发布；从源码运行可立即使用。
+            当前源码使用 Longbridge Native
+            Shell，提供校对、阶段断点与跨工作流复用。 NSH macOS arm64
+            需从源码构建；下载按钮提供的 v{APP_VERSION}
+            为历史 Electron 安装包。
           </span>
         </div>
         <div className="release-list">
@@ -448,7 +453,8 @@ export function HomePage() {
           <h2>你的素材，只属于你的设备。</h2>
           <p>
             视频翻译助手以离线工作流为核心。数据库、临时音频、识别文本、字幕与
-            Markdown 文稿都保存在本机路径中。配置在线模型服务时，只发送识别后的文本与必要提示词。
+            Markdown
+            文稿都保存在本机路径中。配置在线模型服务时，只发送识别后的文本与必要提示词。
           </p>
           <ul>
             <li>

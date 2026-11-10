@@ -4,6 +4,10 @@ use super::model::GlossaryEntry;
 
 pub trait Completer: Send + Sync {
     fn complete(&self, system: &str, user: &str) -> Result<String, String>;
+    fn complete_with_model(&self, model: &str, system: &str, user: &str) -> Result<String, String> {
+        let _ = model;
+        self.complete(system, user)
+    }
 }
 
 pub struct MockCompleter;
@@ -63,9 +67,13 @@ impl OpenAiCompleter {
 
 impl Completer for OpenAiCompleter {
     fn complete(&self, system: &str, user: &str) -> Result<String, String> {
+        self.complete_with_model(&self.model, system, user)
+    }
+
+    fn complete_with_model(&self, model: &str, system: &str, user: &str) -> Result<String, String> {
         let url = format!("{}/chat/completions", self.base_url);
         let body = json!({
-            "model": self.model,
+            "model": if model.trim().is_empty() { &self.model } else { model },
             "temperature": 0.1,
             "max_tokens": 2000,
             "messages": [
@@ -74,6 +82,7 @@ impl Completer for OpenAiCompleter {
             ]
         });
         let response = ureq::post(&url)
+            .timeout(std::time::Duration::from_secs(120))
             .set("Authorization", &format!("Bearer {}", self.api_key))
             .set("Content-Type", "application/json")
             .send_json(body)
@@ -81,13 +90,22 @@ impl Completer for OpenAiCompleter {
         let value: Value = response
             .into_json()
             .map_err(|err| format!("解析模型服务响应失败: {err}"))?;
+        if value
+            .pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+            == Some("length")
+        {
+            return Err("模型服务输出达到长度上限，返回内容不完整".into());
+        }
         let content = value
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        Ok(content)
+            .ok_or_else(|| "模型服务响应缺少 choices[0].message.content 文本".to_string())?
+            .trim();
+        if content.is_empty() {
+            return Err("模型服务返回空内容".into());
+        }
+        Ok(content.to_string())
     }
 }
 
@@ -102,6 +120,7 @@ pub fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String>
         api_key.trim()
     };
     let response = ureq::get(&format!("{base}/models"))
+        .timeout(std::time::Duration::from_secs(30))
         .set("Authorization", &format!("Bearer {key}"))
         .call()
         .map_err(|err| format!("拉取模型列表失败: {err}"))?;
@@ -120,9 +139,8 @@ pub fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String>
 }
 
 pub fn translate_system(target: &str, glossary: &[GlossaryEntry]) -> String {
-    let mut prompt = format!(
-        "你是字幕翻译器。把用户给出的原文译成{target}。只输出译文，不要解释，不要编号。"
-    );
+    let mut prompt =
+        format!("你是字幕翻译器。把用户给出的原文译成{target}。只输出译文，不要解释，不要编号。");
     if !glossary.is_empty() {
         prompt.push_str("\n固定译法：\n");
         for entry in glossary {
@@ -163,10 +181,58 @@ mod tests {
 
     #[test]
     fn adds_v1_suffix() {
-        assert_eq!(normalize_base_url("http://127.0.0.1:11434"), "http://127.0.0.1:11434/v1");
+        assert_eq!(
+            normalize_base_url("http://127.0.0.1:11434"),
+            "http://127.0.0.1:11434/v1"
+        );
         assert_eq!(
             normalize_base_url("http://127.0.0.1:11434/v1/"),
             "http://127.0.0.1:11434/v1"
         );
+    }
+    #[test]
+    fn rejects_missing_or_truncated_completion_content() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+        };
+        for body in [
+            r#"{"choices":[{"message":{}}]}"#,
+            r#"{"choices":[{"message":{"content":"partial"},"finish_reason":"length"}]}"#,
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0; 1];
+                while !request.ends_with(b"\r\n\r\n") {
+                    socket.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let headers = String::from_utf8_lossy(&request);
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                let mut payload = vec![0; length];
+                socket.read_exact(&mut payload).unwrap();
+                write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+            });
+            let client =
+                OpenAiCompleter::new(&format!("http://{address}"), "key", "model").unwrap();
+            let error = client
+                .complete("system", "user")
+                .expect_err("must reject invalid model response");
+            assert!(
+                error.contains("响应缺少") || error.contains("长度上限"),
+                "unexpected error: {error}"
+            );
+            server.join().unwrap();
+        }
     }
 }

@@ -34,13 +34,10 @@ function primaryLabel(opts: {
   version: string
   isDirect: boolean
 }): string {
-  const { compact, shortLabel, version, isDirect } = opts
-  if (compact) {
-    if (isDirect && shortLabel !== '本机') return `下载 ${shortLabel}`
-    return `下载 v${version}`
-  }
-  if (isDirect && shortLabel !== '本机') return `下载 ${shortLabel}`
-  return '免费下载'
+  const { compact, shortLabel, isDirect } = opts
+  if (compact) return '旧版下载'
+  if (isDirect && shortLabel !== '本机') return `旧版 ${shortLabel}`
+  return '下载历史版本'
 }
 
 export function DownloadCta({
@@ -72,8 +69,8 @@ export function DownloadCta({
   })
 
   const metaLine = matched
-    ? `${matched.formatLabel}${matched.sizeLabel ? ` · ${matched.sizeLabel}` : ''}`
-    : `v${version}`
+    ? `Electron · ${matched.formatLabel}${matched.sizeLabel ? ` · ${matched.sizeLabel}` : ''}`
+    : `历史 Electron v${version}`
 
   const downloadButton = (
     <a
@@ -84,8 +81,8 @@ export function DownloadCta({
       data-status={status}
       aria-label={
         isDirect
-          ? `下载 ${platform.label} ${variantCopy[variant].label}`
-          : '打开 GitHub Releases 下载'
+          ? `下载历史 Electron ${platform.label} ${variantCopy[variant].label}`
+          : '打开 GitHub Releases 查看历史版本'
       }
     >
       <ArrowDownToLine size={compact ? 16 : 19} aria-hidden />
@@ -170,7 +167,9 @@ export function DownloadCta({
 
       {showHint && (
         <p className="download-hint">
-          <span className="download-hint-platform">{platform.label}</span>
+          <span className="download-hint-platform">
+            历史 Electron · {platform.label}
+          </span>
           <span className="download-hint-dot" aria-hidden />
           <span>{variantCopy[variant].hint}</span>
           {!isDirect && status !== 'loading' ? (

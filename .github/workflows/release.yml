@@ -1,7 +1,12 @@
-name: Release
+name: Release NSH
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build (for example v0.9.0)'
+        required: true
+        type: string
   push:
     tags:
       - 'v*'
@@ -11,41 +16,13 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }} ${{ matrix.variant }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macOS-arm64
-            os: macos-15
-            variant: bundled-ffmpeg
-            bundle_ffmpeg: '1'
-          - platform: macOS-arm64
-            os: macos-15
-            variant: slim
-            bundle_ffmpeg: '0'
-          - platform: Windows-x64
-            os: windows-2025
-            variant: bundled-ffmpeg
-            bundle_ffmpeg: '1'
-          - platform: Windows-x64
-            os: windows-2025
-            variant: slim
-            bundle_ffmpeg: '0'
-          - platform: Linux-x64
-            os: ubuntu-24.04
-            variant: bundled-ffmpeg
-            bundle_ffmpeg: '1'
-          - platform: Linux-x64
-            os: ubuntu-24.04
-            variant: slim
-            bundle_ffmpeg: '0'
-
+    name: Build NSH macOS arm64
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -58,40 +35,44 @@ jobs:
 
       - name: Verify release version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          node -e "const version = require('./apps/desktop/package.json').version;
-          const expected = 'v' + version;
-          if (process.env.RELEASE_TAG !== expected) {
-            console.error('Release tag must be ' + expected);
-            process.exit(1);
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          node -e "const fs = require('node:fs');
+          const version = require('./apps/nsh/nsh.json').version;
+          const cargo = fs.readFileSync('apps/nsh/Cargo.toml', 'utf8').match(/^version = \"([^\"]+)\"/m)?.[1];
+          if (cargo !== version || process.env.RELEASE_TAG !== 'v' + version) {
+            console.error('Release tag, nsh.json and Cargo.toml versions must agree'); process.exit(1);
           }"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Update Linux package indexes
-        if: runner.os == 'Linux'
-        run: sudo apt-get update
-
-      - name: Install Linux packaging tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get install --yes libarchive-tools rpm
-
-      - name: Build unsigned release packages
+      - name: Install NSH stable toolchain
         env:
-          BUNDLE_FFMPEG: ${{ matrix.bundle_ffmpeg }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          UNSIGNED_BUILD: '1'
-        run: pnpm --filter video-translate run build:ci
+          NSH_VERSION: v0.4.0
+        run: |
+          curl -fsSL https://nsh.dev/install.sh -o "$RUNNER_TEMP/install-nsh.sh"
+          sh "$RUNNER_TEMP/install-nsh.sh"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify native build tools
+        run: |
+          rustc --version
+          cargo --version
+          nsh --version
+
+      - name: Install dependencies
+        # NSH does not use Electron's postinstall/native rebuild hooks.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run NSH tests
+        run: nsh test apps/nsh
+
+      - name: Build NSH release archive
+        run: pnpm make:release
 
       - name: Upload release packages
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.platform }}-${{ matrix.variant }}
-          path: |
-            apps/desktop/dist/v*/video-translate-v*
-            !apps/desktop/dist/v*/*.blockmap
+          name: release-nsh-macos-arm64
+          path: apps/nsh/.nsh/release/v*/*.zip
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -107,6 +88,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.tag || github.ref_name }}
           # Need full history + tags so commit-based notes fallback can git log
           # previous_tag..RELEASE_TAG when GitHub --generate-notes has no PRs.
           fetch-depth: 0
@@ -114,7 +96,7 @@ jobs:
       - name: Download release packages
         uses: actions/download-artifact@v8
         with:
-          pattern: release-*
+          pattern: release-nsh-*
           path: release-assets
           merge-multiple: true
 
@@ -125,7 +107,7 @@ jobs:
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           mapfile -d '' files < <(find release-assets -type f -print0)
           if [ "${#files[@]}" -eq 0 ]; then
@@ -139,7 +121,7 @@ jobs:
             # --generate-notes is often only a Full Changelog link.
             gh release create "$RELEASE_TAG" "${files[@]}" --generate-notes --title "$RELEASE_TAG"
           fi
-          # 每次发布都整理 notes，并固定写入 bundled/slim 说明与非签名注意事项
+          # 每次发布都整理 notes，并固定写入 NSH 安装说明
           #（feat/fix/docs 分组 + scripts/release-notes-preamble.md）
           tmp_dir="$(mktemp -d)"
           gh release view "$RELEASE_TAG" --json body --jq '.body' > "$tmp_dir/generated.md"
