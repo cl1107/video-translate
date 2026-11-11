@@ -252,7 +252,7 @@ export function DocsPage() {
             </h2>
             <p>
               NSH 安装包尚未发布时，请在 macOS Apple Silicon 上从源码构建。 需要
-              Rust / Cargo、Xcode Command Line Tools 与 NSH 0.4.0。
+              Rust / Cargo、Xcode Command Line Tools 与 NSH 0.5.0。
             </p>
             <CodeBlock label="仓库根目录 · macOS arm64">
               {`# 安装 NSH：见 https://nsh.dev/docs/installation

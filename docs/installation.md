@@ -4,13 +4,13 @@
 
 ## 准备
 
-需要 Xcode Command Line Tools、Rust / Cargo 与 NSH 0.4.0。最新稳定版请以 [官方 Release](https://github.com/longbridge/nsh/releases) 为准，本项目固定验证 `0.4.0 (e626a8d)`。
+需要 Xcode Command Line Tools、Rust / Cargo 与 NSH 0.5.0。最新稳定版请以 [官方 Release](https://github.com/longbridge/nsh/releases) 为准，本项目固定验证 `0.5.0 (f4d68f7)`。
 
 ```sh
 xcode-select --install
 # Rust 安装说明：https://rustup.rs
 curl -fsSL https://nsh.dev/install.sh -o /tmp/install-nsh.sh
-NSH_VERSION=v0.4.0 sh /tmp/install-nsh.sh
+NSH_VERSION=v0.5.0 sh /tmp/install-nsh.sh
 export PATH="$HOME/.local/bin:$PATH"
 nsh --version
 brew install ffmpeg

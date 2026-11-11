@@ -8,6 +8,8 @@ mod store;
 mod ui;
 
 use nsh_base::theme;
+use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
+use nsh_core::element::desktop::current_window;
 use nsh_core::prelude::*;
 
 /// The app's UI set (`nsh.json` `"rust"`).
@@ -21,10 +23,12 @@ fn native(registry: &mut Registry) {
 #[component]
 pub fn App() -> impl IntoElement {
     store::init_jobs();
-    nsh_core::element::desktop::set_title_bar(
-        nsh_core::desktop::TitleBarStyle::Hidden,
-        Some(px(56.0)),
-    );
+    let mut title_bar = TitleBarOptions::default();
+    title_bar.style = TitleBarStyle::Hidden;
+    title_bar.height = Some(px(56.0));
+    let mut window = WindowAttributes::default();
+    window.title_bar = Some(title_bar);
+    current_window().set(window);
     view()
         .flex_1()
         .bg(move || theme().background)

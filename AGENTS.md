@@ -13,7 +13,7 @@
 ## 关键开发命令
 
 ```bash
-# 桌面（NSH，需要本机 nsh CLI，当前验证版本 0.4.0）
+# 桌面（NSH，需要本机 nsh CLI，当前验证版本 0.5.0）
 nsh --version
 nsh check apps/nsh
 nsh test apps/nsh
@@ -105,7 +105,7 @@ LLM 驱动的翻译：
 
 ### 开发环境
 
-- 桌面端：**nsh 0.4.0** + Rust（`apps/nsh`）
+- 桌面端：**nsh 0.5.0** + Rust（`apps/nsh`）
 - 官网：pnpm + Vite + React（`apps/landing`）
 
 ## 重要实现细节
@@ -138,7 +138,7 @@ SQLite 数据库使用以下主要表：
 
 - **FFmpeg** - 音视频处理（必须在系统 PATH 中）
 - **模型服务** - 任意 OpenAI 兼容 Endpoint（本地 Ollama / LM Studio / vLLM 或在线 API，用户自配）
-- **nsh 0.4.0 + Rust** - 桌面运行时（`~/.local/bin/nsh`）
+- **nsh 0.5.0 + Rust** - 桌面运行时（`~/.local/bin/nsh`）
 - **sherpa-onnx CLI** - 真实 ASR（SenseVoice 模型；Fun-ASR-Nano 可选）
 
 ## 开发说明

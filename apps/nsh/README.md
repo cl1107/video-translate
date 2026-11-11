@@ -2,7 +2,7 @@
 
 桌面端已迁移到 [Longbridge Native Shell](https://nsh.dev)。默认开发/运行路径是本目录，**不再依赖 Electron**。
 
-截至 2026-11-10，[最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.4.0) 与本机验证版本均为 `nsh 0.4.0 (e626a8d)`。当前分发验收目标是 macOS arm64。
+截至目前，[最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.5.0) 与本机验证版本均为 `nsh 0.5.0 (f4d68f7)`。当前分发验收目标是 macOS arm64。
 
 ## 命令
 

@@ -23,13 +23,13 @@
 
 ## 从源码运行（macOS arm64）
 
-需要 Rust / Cargo、Xcode Command Line Tools，以及 **NSH 0.4.0**。截至 2026-11-10，[官方最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.4.0) 为 `0.4.0 (e626a8d)`；nightly 不作为本项目分发基线。
+需要 Rust / Cargo、Xcode Command Line Tools，以及 **NSH 0.5.0**。截至目前，[官方最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.5.0) 为 `0.5.0 (f4d68f7)`；nightly 不作为本项目分发基线。
 
 ```sh
 xcode-select --install
 # Rust 按 https://rustup.rs 安装
 curl -fsSL https://nsh.dev/install.sh -o /tmp/install-nsh.sh
-NSH_VERSION=v0.4.0 sh /tmp/install-nsh.sh
+NSH_VERSION=v0.5.0 sh /tmp/install-nsh.sh
 export PATH="$HOME/.local/bin:$PATH"
 
 # FFmpeg 必需；yt-dlp 仅在线链接需要
