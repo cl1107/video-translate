@@ -15,6 +15,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "typecheck": "turbo run typecheck",
+    "vt": "cargo run --manifest-path apps/nsh/Cargo.toml --bin vt --",
     "test": "nsh test apps/nsh && vitest run tests",
     "test:nsh": "nsh test apps/nsh",
     "test:watch": "vitest tests",

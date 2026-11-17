@@ -14,6 +14,10 @@
     "type": "git",
     "url": "https://github.com/cl1107/video-translate.git"
   },
+  "bin": {
+    "video-translate": "./src/cli/bin.mjs",
+    "vt": "./src/cli/bin.mjs"
+  },
   "main": "./node_modules/.dev/main/index.js",
   "scripts": {
     "start": "electron-vite preview",
@@ -42,7 +46,9 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:system-check": "vitest run src/main/utils/system-check.test.ts"
+    "test:system-check": "vitest run src/main/utils/system-check.test.ts",
+    "vt": "node src/cli/bin.mjs",
+    "cli": "node src/cli/bin.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

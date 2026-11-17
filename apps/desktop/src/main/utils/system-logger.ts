@@ -1,26 +1,13 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-
-function tryGetElectronPath(name: 'logs' | 'userData'): string | undefined {
-  try {
-    // 测试环境可能没有 electron，避免硬依赖
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { app } = require('electron') as typeof import('electron')
-    if (app?.isReady?.() || app?.getPath) {
-      return app.getPath(name)
-    }
-  } catch {
-    // ignore
-  }
-  return undefined
-}
+import { getLogsDir, getUserDataDir } from '../runtime/app-paths'
 
 function getLogsDirectory(): string {
-  return tryGetElectronPath('logs') ?? path.join(process.cwd(), 'logs')
+  return getLogsDir()
 }
 
 function getUserDataDirectory(): string {
-  return tryGetElectronPath('userData') ?? path.join(process.cwd(), 'userData')
+  return getUserDataDir()
 }
 
 /**

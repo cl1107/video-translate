@@ -135,15 +135,6 @@ export function resolveCommandPath(command: string): string {
   const bundledCommand = resolveBundledMediaCommandPath(command)
   if (bundledCommand) return bundledCommand
 
-  const pathCommand = findInPath(command)
-  if (pathCommand) return pathCommand
-
-  // 即使 PATH 尚未增强，也主动扫描常见目录
-  for (const directory of getCommonBinaryDirectories()) {
-    const candidate = path.join(directory, command)
-    if (isExecutable(candidate)) return candidate
-  }
-
   if (process.platform === 'darwin' && HOMEBREW_MEDIA_COMMANDS.has(command)) {
     for (const prefix of getHomebrewPrefixes()) {
       for (const formula of ['ffmpeg-full', 'ffmpeg']) {
@@ -151,6 +142,15 @@ export function resolveCommandPath(command: string): string {
         if (isExecutable(candidate)) return candidate
       }
     }
+  }
+
+  const pathCommand = findInPath(command)
+  if (pathCommand) return pathCommand
+
+  // 即使 PATH 尚未增强，也主动扫描常见目录
+  for (const directory of getCommonBinaryDirectories()) {
+    const candidate = path.join(directory, command)
+    if (isExecutable(candidate)) return candidate
   }
 
   // 保留原命令，让 child_process 返回明确的 ENOENT 或权限错误。

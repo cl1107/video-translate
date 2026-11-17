@@ -3,8 +3,8 @@
  * 接口：run / 协作式 AbortSignal；阶段进度与依赖检查内化。
  */
 import { promises as fs } from 'node:fs'
-import { app } from 'electron'
 import { createTextPartCache } from './text-part-cache'
+import { getUserDataSubdir } from '../runtime/app-paths'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
@@ -507,11 +507,7 @@ async function transcribeStage(
       engine: asrEngine,
       language: toLanguageCode(task.sourceLanguage),
       workDir,
-      checkpointDir: path.join(
-        app.getPath('userData'),
-        'asr-checkpoints',
-        task.id
-      ),
+      checkpointDir: getUserDataSubdir('asr-checkpoints', task.id),
       checkpointKey,
       signal,
       onPartialSegments: partial => {
@@ -620,12 +616,7 @@ async function polishStage(
     config: polishResolved.config,
     signal,
     ...createTextPartCache(
-      path.join(
-        app.getPath('userData'),
-        'text-checkpoints',
-        task.id,
-        'subtitle-polish'
-      ),
+      getUserDataSubdir('text-checkpoints', task.id, 'subtitle-polish'),
       { polishFingerprint, texts }
     ),
     onProgress: (completed, total) => {

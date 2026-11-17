@@ -19,6 +19,8 @@ nsh check apps/nsh
 nsh test apps/nsh
 nsh run apps/nsh          # 或 pnpm dev:desktop / pnpm start:desktop
 nsh package apps/nsh --target macos
+pnpm vt --help            # 仓库内无窗口 CLI；安装到 /Applications 后用全局 vt
+pnpm install:local        # 本地自用：打包、签名、安装至 /Applications，并写入 ~/.local/bin/vt
 
 # 官网
 pnpm dev:landing
@@ -34,7 +36,7 @@ pnpm test                 # 先跑 nsh test，再跑 Vitest / turbo
 ### NSH 应用结构
 
 - **桌面应用** (`apps/nsh/`): mixed 模式（Rust 领域 / SQLite / ASR / 流水线 + TSX 界面）；入口 `App.tsx`，原生导出 `video-translate/native`
-- **产品官网** (`apps/landing/`): Vite + React landing page
+- **CLI** (`apps/nsh/src/bin/vt.rs`): 无窗口入口，复用 Rust 领域层 / 流水线；开发用 `pnpm vt`，安装后用全局 `vt`
 - **废弃 Electron** (`apps/desktop/`): 见该目录 `DEPRECATED.md`
 - **产品官网** (`apps/landing/`): Vite + React landing page
 - **主进程** (`apps/desktop/src/main/`): 核心服务和任务管理
@@ -173,3 +175,5 @@ UI / 设计工作请先读对应应用的产品与视觉上下文（Impeccable�
 - **North stars:** desktop = _The Quiet Workbench_；landing = _The Acid Studio_
 - **Live 配置:** `apps/desktop/.impeccable/live/config.json`、`apps/landing/.impeccable/live/config.json`
 - 命令入口：`$impeccable`（需指定 target 应用）。设计相关原则与 anti-references 以 PRODUCT/DESIGN 为准，勿与实现细节混写。
+
+Agent 通过 CLI 执行翻译 / 转录 / 文稿时，使用 skill `video-translate-cli`（`.agents/skills/video-translate-cli/SKILL.md`）。

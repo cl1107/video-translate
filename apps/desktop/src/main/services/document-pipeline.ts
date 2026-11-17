@@ -2,8 +2,8 @@
  * 文稿流水线：共享 FFmpeg/ASR，整篇润色为 Markdown（不写字幕、不翻译）。
  */
 import { promises as fs } from 'node:fs'
-import { app } from 'electron'
 import { createTextPartCache } from './text-part-cache'
+import { getUserDataSubdir } from '../runtime/app-paths'
 import path from 'node:path'
 import dayjs from 'dayjs'
 import { DEFAULT_ASR_ENGINE } from '../../shared/constants'
@@ -373,11 +373,7 @@ export async function runDocumentPipeline(
               engine: asrEngine,
               language: toLanguageCode(task.sourceLanguage),
               workDir: context.workDir,
-              checkpointDir: path.join(
-                app.getPath('userData'),
-                'asr-checkpoints',
-                task.id
-              ),
+              checkpointDir: getUserDataSubdir('asr-checkpoints', task.id),
               checkpointKey: asrFingerprint,
               signal,
               onPartialSegments: partial => {
@@ -465,12 +461,7 @@ export async function runDocumentPipeline(
             config: polishResolved.config,
             signal,
             ...createTextPartCache(
-              path.join(
-                app.getPath('userData'),
-                'text-checkpoints',
-                task.id,
-                'document-polish'
-              ),
+              getUserDataSubdir('text-checkpoints', task.id, 'document-polish'),
               documentFingerprint
             ),
             onProgress: (done, total) => {

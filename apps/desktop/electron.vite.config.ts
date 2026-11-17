@@ -26,6 +26,8 @@ export default defineConfig({
           // ASR 独立 worker：utilityProcess.fork 执行 sherpa-onnx 推理，
           // 原生层崩溃只死 worker 不拖垮主进程；产物随 main/**/* 打包
           'asr-worker': resolve('src/main/services/asr/asr-worker.ts'),
+          // 无窗口 CLI：ELECTRON_RUN_AS_NODE 加载 main/cli.js
+          cli: resolve('src/cli/index.ts'),
         },
 
         output: {

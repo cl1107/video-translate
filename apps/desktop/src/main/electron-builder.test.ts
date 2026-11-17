@@ -36,3 +36,20 @@ test('Linux 发布只生成 Linux 平台安装包', async () => {
   assert.deepEqual(config.linux.target, ['AppImage', 'deb', 'pacman', 'rpm'])
   assert.equal(config.linux.executableName, name)
 })
+
+test('各平台 extraResources 都带 CLI bootstrap', async () => {
+  const { default: config } = await builderConfigModule
+  const hasBootstrap = (resources: unknown) =>
+    Array.isArray(resources) &&
+    resources.some(
+      item =>
+        typeof item === 'object' &&
+        item !== null &&
+        'to' in item &&
+        item.to === 'cli-bootstrap.cjs'
+    )
+
+  assert.equal(hasBootstrap(config.mac.extraResources), true)
+  assert.equal(hasBootstrap(config.linux.extraResources), true)
+  assert.equal(hasBootstrap(config.win.extraResources), true)
+})

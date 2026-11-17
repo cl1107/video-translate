@@ -48,10 +48,28 @@ nsh run apps/nsh
 
 Node.js 22.13+、仓库固定的 pnpm 11.17.0 用于官网和快捷脚本。安装 workspace 时可用 `--ignore-scripts`，避免执行旧 Electron 包的 postinstall。
 
+### CLI
+
+桌面应用的全部处理能力也可通过无窗口 CLI 调用（复用同一套 Rust 领域层 / ASR / 模型服务 / 流水线）。
+
+执行 `pnpm install:local` 安装桌面端时，会同时将 `vt` 安装到 `~/.local/bin/vt`：
+
+```bash
+pnpm install:local          # 部署到 /Applications，并写入 ~/.local/bin/vt
+vt --help
+vt doctor --json
+vt subtitle ./video.mp4 --target-lang zh --json
+```
+
+开发仓库内也可直接运行 `pnpm vt`（默认使用独立数据目录；可通过 `--share-desktop` 或 `VIDEO_TRANSLATE_DATA_DIR` 与桌面共用任务库）。Agent 集成见 [`.agents/skills/video-translate-cli/SKILL.md`](.agents/skills/video-translate-cli/SKILL.md)。
+
+### 本地开发与构建
+
 ```sh
 pnpm install --ignore-scripts
 nsh check apps/nsh
 nsh test apps/nsh
+pnpm dev:desktop
 pnpm build:desktop
 # macOS .app: apps/nsh/.nsh/out/视频翻译助手.app
 open "apps/nsh/.nsh/out/视频翻译助手.app"

@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3'
+import { mkdirSync } from 'node:fs'
 import dayjs from 'dayjs'
-import { app } from 'electron'
 import path from 'node:path'
+import { getUserDataDir } from '../../runtime/app-paths'
 import { normalizeDetectedLanguage } from '../../../shared/language'
 import {
   parseTaskRuntimeOptionsJson,
@@ -52,8 +53,8 @@ export class DatabaseManager {
    * 数据库管理器构造函数，初始化SQLite数据库连接并创建必要的表结构
    */
   constructor() {
-    // 数据库文件存储在用户数据目录
-    const userDataPath = app.getPath('userData')
+    const userDataPath = getUserDataDir()
+    mkdirSync(userDataPath, { recursive: true })
     this.dbPath = path.join(userDataPath, 'video-translate.db')
 
     this.db = new Database(this.dbPath)

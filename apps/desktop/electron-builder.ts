@@ -34,6 +34,27 @@ export function createArtifactName(includeBundledFfmpeg: boolean): string {
 
 const artifactName = createArtifactName(bundleFfmpeg)
 
+const cliBootstrapResource = {
+  from: 'src/cli/packaged-bootstrap.cjs',
+  to: 'cli-bootstrap.cjs',
+}
+
+function extraResourcesFor(
+  ffmpegFrom?: string
+): NonNullable<Configuration['extraResources']> {
+  const items: NonNullable<Configuration['extraResources']> = [
+    cliBootstrapResource,
+  ]
+  if (ffmpegFrom) {
+    items.push({
+      from: ffmpegFrom,
+      to: 'ffmpeg',
+      filter: ['**/*'],
+    })
+  }
+  return items
+}
+
 export default {
   appId,
   productName: displayName,
@@ -81,22 +102,14 @@ export default {
     icon: `${resources}/build/icons/icon.icns`,
     category: 'public.app-category.utilities',
     target: ['zip', 'dmg', 'dir'],
+    extraResources: extraResourcesFor(
+      bundleFfmpeg ? `${resources}/ffmpeg/darwin-${ffmpegArch}` : undefined
+    ),
     ...(unsignedBuild
       ? {
           identity: null,
           hardenedRuntime: false,
           notarize: false,
-        }
-      : {}),
-    ...(bundleFfmpeg
-      ? {
-          extraResources: [
-            {
-              from: `${resources}/ffmpeg/darwin-${ffmpegArch}`,
-              to: 'ffmpeg',
-              filter: ['**/*'],
-            },
-          ],
         }
       : {}),
   },
@@ -108,34 +121,18 @@ export default {
     synopsis: description,
     executableName: name,
     target: ['AppImage', 'deb', 'pacman', 'rpm'],
-    ...(bundleFfmpeg
-      ? {
-          extraResources: [
-            {
-              from: `${resources}/ffmpeg/linux-${ffmpegArch}`,
-              to: 'ffmpeg',
-              filter: ['**/*'],
-            },
-          ],
-        }
-      : {}),
+    extraResources: extraResourcesFor(
+      bundleFfmpeg ? `${resources}/ffmpeg/linux-${ffmpegArch}` : undefined
+    ),
   },
 
   win: {
     artifactName,
     icon: `${resources}/build/icons/icon.ico`,
     target: ['zip', 'portable'],
+    extraResources: extraResourcesFor(
+      bundleFfmpeg ? `${resources}/ffmpeg/win32-${ffmpegArch}` : undefined
+    ),
     ...(unsignedBuild ? { signExecutable: false } : {}),
-    ...(bundleFfmpeg
-      ? {
-          extraResources: [
-            {
-              from: `${resources}/ffmpeg/win32-${ffmpegArch}`,
-              to: 'ffmpeg',
-              filter: ['**/*'],
-            },
-          ],
-        }
-      : {}),
   },
 } satisfies Configuration

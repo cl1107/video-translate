@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 构建并安装 NSH 桌面应用；不会关闭正在运行的实例或删除应用数据。
+# 构建并安装 NSH 桌面应用与全局 vt CLI；不会关闭正在运行的实例或删除应用数据。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +13,7 @@ SIGN_IDENTITY="-"
 usage() {
   cat <<'HELP'
 用法: pnpm install:local [选项]
-构建 NSH macOS 应用并安装到 ~/Applications。FFmpeg 需自行安装。
+构建 NSH macOS 应用并安装到 ~/Applications，同时写入 ~/.local/bin/vt。FFmpeg 需自行安装。
   --skip-build       安装 apps/nsh/.nsh/out 中已有的应用
   --dest <目录>      安装目录（默认 ~/Applications）
   --identity <证书>  重签名使用指定证书（默认 ad hoc）
@@ -63,4 +63,17 @@ if [[ -e "$TARGET_APP" ]]; then
 fi
 mv "${STAGING_DIR}/视频翻译助手.app" "$TARGET_APP"
 echo "NSH 应用已安装: $TARGET_APP"
+
+if [[ "$SKIP_BUILD" == false ]]; then
+  cargo build --release --manifest-path "${APP_DIR}/Cargo.toml" --bin vt
+fi
+VT_BIN_SRC="${APP_DIR}/target/release/vt"
+if [[ -x "$VT_BIN_SRC" ]]; then
+  VT_BIN_DIR="${HOME}/.local/bin"
+  mkdir -p "$VT_BIN_DIR"
+  cp "$VT_BIN_SRC" "${VT_BIN_DIR}/vt"
+  chmod 755 "${VT_BIN_DIR}/vt"
+  echo "全局 CLI 已安装: ${VT_BIN_DIR}/vt"
+fi
+
 if [[ "$AUTO_OPEN" == true ]]; then open "$TARGET_APP"; fi
