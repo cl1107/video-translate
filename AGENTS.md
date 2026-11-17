@@ -33,7 +33,7 @@ pnpm test                 # 先跑 nsh test，再跑 Vitest / turbo
 
 ### NSH 应用结构
 
-- **桌面应用** (`apps/nsh/`): Rust 二进制 + `nsh_base` UI；领域逻辑在 `src/domain/`
+- **桌面应用** (`apps/nsh/`): mixed 模式（Rust 领域 / SQLite / ASR / 流水线 + TSX 界面）；入口 `App.tsx`，原生导出 `video-translate/native`
 - **产品官网** (`apps/landing/`): Vite + React landing page
 - **废弃 Electron** (`apps/desktop/`): 见该目录 `DEPRECATED.md`
 - **产品官网** (`apps/landing/`): Vite + React landing page
@@ -105,7 +105,7 @@ LLM 驱动的翻译：
 
 ### 开发环境
 
-- 桌面端：**nsh 0.5.0** + Rust（`apps/nsh`）
+- 桌面端：**nsh 0.5.0** mixed（`apps/nsh`：Rust crate + TSX）
 - 官网：pnpm + Vite + React（`apps/landing`）
 
 ## 重要实现细节
@@ -145,7 +145,7 @@ SQLite 数据库使用以下主要表：
 
 ### 测试方法
 
-- 桌面：`nsh test apps/nsh`（Rust 领域测试 + 无头 UI）
+- 桌面：`nsh test apps/nsh`（Rust 领域测试 + `App.test.tsx` 无头 UI）
 - 官网：Vitest / turbo
 
 ### 性能考虑

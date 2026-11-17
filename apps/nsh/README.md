@@ -1,6 +1,6 @@
 # 视频翻译助手（NSH）
 
-桌面端已迁移到 [Longbridge Native Shell](https://nsh.dev)。默认开发/运行路径是本目录，**不再依赖 Electron**。
+桌面端已迁移到 [Longbridge Native Shell](https://nsh.dev) mixed 模式：Rust 负责领域、SQLite、ASR 与流水线，TSX 负责界面（热更新）。默认开发/运行路径是本目录，**不再依赖 Electron**。
 
 截至目前，[最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.5.0) 与本机验证版本均为 `nsh 0.5.0 (f4d68f7)`。当前分发验收目标是 macOS arm64。
 
@@ -9,10 +9,9 @@
 在仓库根目录：
 
 ```sh
-nsh check apps/nsh     # cargo check + TS 测试类型
-nsh test apps/nsh      # 领域测试、无头 UI、App.test.tsx
-nsh run apps/nsh       # 本机 AppKit 窗口（macOS）
-cargo run --manifest-path apps/nsh/Cargo.toml
+nsh check apps/nsh     # cargo check + TSX 类型
+nsh test apps/nsh      # 领域测试 + App.test.tsx
+nsh run apps/nsh       # TSX 入口，本机 AppKit 窗口（macOS）
 cargo run --manifest-path apps/nsh/Cargo.toml --bin vt -- check
 ```
 

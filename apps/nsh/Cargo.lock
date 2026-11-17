@@ -2332,7 +2332,6 @@ dependencies = [
 name = "nsh-app-video-translate"
 version = "0.9.0"
 dependencies = [
- "base64 0.22.1",
  "chrono",
  "dirs",
  "env_logger",

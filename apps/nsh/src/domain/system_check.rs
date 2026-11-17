@@ -3,7 +3,7 @@ use super::{
     command::{first_version_line, resolve_command, run_capture},
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct CheckResult {
     pub name: String,
     pub available: bool,
