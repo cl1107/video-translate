@@ -252,6 +252,36 @@ impl Workspace {
         self.notify();
     }
 
+    /// 复制文本到系统剪贴板。
+    pub fn copy_text(&self, text: String) {
+        if text.trim().is_empty() {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        let result = {
+            use std::io::Write;
+            std::process::Command::new("pbcopy")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .and_then(|mut child| {
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        stdin.write_all(text.as_bytes())?;
+                    }
+                    child.wait()
+                })
+                .map(|status| status.success())
+                .unwrap_or(false)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let result = false;
+
+        if result {
+            self.set_message_inner("已复制到剪贴板".to_string());
+        } else {
+            self.set_message_inner("当前环境不支持剪贴板写入".to_string());
+        }
+    }
+
     /// 覆盖保存设置。
     pub fn update_settings(&self, value: nsh_core::JsonValue) {
         match serde_json::from_value::<AppSettings>(value) {

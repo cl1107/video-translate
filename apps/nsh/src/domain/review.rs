@@ -4,7 +4,7 @@ pub const MIN_SUBTITLE_DURATION_SECONDS: f64 = 0.5;
 pub const MAX_SUBTITLE_DURATION_SECONDS: f64 = 8.0;
 pub const MAX_SUBTITLE_LINE_WIDTH: usize = 84;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ReviewIssue {
     pub kind: &'static str,
     pub segment_id: String,

@@ -240,9 +240,18 @@ function SelectedBody() {
         <BarProgress value={(task()?.progress ?? 0) as number} />
       </If>
       <If when={task()?.error_message}>
-        <Text class="text-sm text-destructive">
-          {task()?.error_message ?? ''}
-        </Text>
+        <View class="flex-row items-start justify-between gap-2">
+          <Text class="flex-1 text-sm text-destructive">
+            {task()?.error_message ?? ''}
+          </Text>
+          <OutlineButton
+            label="复制错误"
+            onPress={() => {
+              const msg = task()?.error_message
+              if (msg) workspace.copyText(msg)
+            }}
+          />
+        </View>
       </If>
       <View class="flex-row flex-wrap items-center gap-2">
         <If when={running()}>
@@ -318,16 +327,32 @@ function SelectedBody() {
         </Text>
       </If>
       <If when={logs()}>
-        <Scroll class="h-40">
-          <Text class="text-xs text-muted-foreground">
-            {(task()?.logs ?? [])
-              .slice()
-              .reverse()
-              .slice(0, 40)
-              .map(log => `[${log.level}] ${log.message}`)
-              .join('\n')}
-          </Text>
-        </Scroll>
+        <View class="gap-2">
+          <View class="flex-row justify-end">
+            <OutlineButton
+              label="复制日志"
+              onPress={() => {
+                const text = (task()?.logs ?? [])
+                  .slice()
+                  .reverse()
+                  .slice(0, 40)
+                  .map(log => `[${log.level}] ${log.message}`)
+                  .join('\n')
+                if (text) workspace.copyText(text)
+              }}
+            />
+          </View>
+          <Scroll class="h-40">
+            <Text class="text-xs text-muted-foreground">
+              {(task()?.logs ?? [])
+                .slice()
+                .reverse()
+                .slice(0, 40)
+                .map(log => `[${log.level}] ${log.message}`)
+                .join('\n')}
+            </Text>
+          </Scroll>
+        </View>
       </If>
     </View>
   )
