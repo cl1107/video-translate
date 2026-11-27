@@ -15,7 +15,13 @@ import { useEffect, useState } from 'react'
 import { SiteFooter } from '../components/SiteFooter'
 import { SiteHeader } from '../components/SiteHeader'
 import { DownloadCta } from '../components/DownloadCta'
-import { APP_VERSION, releaseUrl, repositoryUrl } from '../site'
+import {
+  APP_VERSION,
+  LEGACY_APP_VERSION,
+  nshReleaseUrl,
+  releaseUrl,
+  repositoryUrl,
+} from '../site'
 
 const toc = [
   { id: 'overview', label: '概览' },
@@ -135,7 +141,7 @@ export function DocsPage() {
       <div className="docs-hero">
         <p className="docs-kicker">
           <BookOpen size={14} />
-          NSH 源码指南 · 历史包 v{APP_VERSION}
+          NSH 安装指南 · v{APP_VERSION}
         </p>
         <h1>
           装好依赖，
@@ -215,7 +221,7 @@ export function DocsPage() {
                 <strong>当前源码与历史安装包</strong>
                 <p>
                   当前桌面端使用 Longbridge Native Shell（NSH），macOS arm64
-                  为当前分发验收目标。 GitHub Releases v{APP_VERSION} 为历史
+                  提供 NSH 安装包。GitHub Releases v{LEGACY_APP_VERSION} 为历史
                   Electron 包，不包含 NSH 重构。
                 </p>
               </div>
@@ -251,8 +257,8 @@ export function DocsPage() {
               安装应用
             </h2>
             <p>
-              NSH 安装包尚未发布时，请在 macOS Apple Silicon 上从源码构建。 需要
-              Rust / Cargo、Xcode Command Line Tools 与 NSH 0.5.0。
+              在 macOS Apple Silicon 上从源码构建需要 Rust / Cargo、Xcode
+              Command Line Tools 与 NSH 0.6.0。
             </p>
             <CodeBlock label="仓库根目录 · macOS arm64">
               {`# 安装 NSH：见 https://nsh.dev/docs/installation
@@ -266,7 +272,7 @@ open "apps/nsh/.nsh/out/视频翻译助手.app"`}
             <p>
               安装快捷脚本为 <code>pnpm install:local --open</code>，默认复制到
               <code>~/Applications</code>。<code>pnpm make:release</code>{' '}
-              仅生成本地 NSH zip 与校验和，不推送或发布。FFmpeg、yt-dlp
+              仅生成本地 NSH zip 与校验和，不推送或发布。FFmpeg、yt-dlp、Node.js
               和模型需单独准备。
             </p>
             <p>
@@ -276,12 +282,9 @@ open "apps/nsh/.nsh/out/视频翻译助手.app"`}
               后继续校对。
             </p>
             <p>
-              上方下载按钮及{' '}
-              <a href={releaseUrl} target="_blank" rel="noreferrer">
-                GitHub Releases
-              </a>
-              当前提供历史 Electron v{APP_VERSION}，下面的 bundled / slim
-              与跨平台包说明仅适用于旧版。
+              macOS Apple Silicon 可从 <a href={nshReleaseUrl}>NSH 发布页</a>
+              下载 ZIP 并核对 SHA-256 校验和。Bundled / slim 和跨平台包见{' '}
+              <a href={releaseUrl}>历史 Electron v{LEGACY_APP_VERSION}</a>。
             </p>
           </section>
 
@@ -528,7 +531,8 @@ ollama list`}
             </h2>
             <p>
               仅当你使用<strong>在线视频链接</strong>
-              （YouTube、B 站等）时需要。只做本地文件翻译可以跳过。
+              （YouTube、B 站等）时需要。YouTube 下载还需要 Node.js 22
+              或更高版本。
             </p>
             <PlatformTabs
               mac={`brew install yt-dlp

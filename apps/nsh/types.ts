@@ -142,6 +142,7 @@ export interface CheckResult {
 }
 
 export interface Snapshot {
+  app_version: string
   kind: TaskKind
   panel: Panel
   path_draft: string

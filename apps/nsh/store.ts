@@ -5,7 +5,32 @@ import type { Snapshot, TaskKind, TranslationTask } from './types'
 export const workspace = new Workspace()
 
 const snap = signal(workspace.snapshot() as Snapshot)
-workspace.onChange(value => snap.set(value as Snapshot))
+let messageTimer: ReturnType<typeof setTimeout> | undefined
+let lastMessage = snap().message
+
+function scheduleMessageDismiss(message: string) {
+  if (message === lastMessage) return
+  lastMessage = message
+  if (messageTimer !== undefined) {
+    clearTimeout(messageTimer)
+    messageTimer = undefined
+  }
+  if (message) {
+    messageTimer = setTimeout(() => {
+      messageTimer = undefined
+      if (snap().message === message) {
+        workspace.setMessage('')
+      }
+    }, 3000)
+  }
+}
+
+scheduleMessageDismiss(lastMessage)
+workspace.onChange(value => {
+  const next = value as Snapshot
+  snap.set(next)
+  scheduleMessageDismiss(next.message)
+})
 
 export const state = () => snap()
 

@@ -25,6 +25,20 @@ test('import srt from the path field', async () => {
   await app.waitFor('text:/已完成/', { timeout: 8000 })
 })
 
+test('copies the complete task error to the clipboard', async () => {
+  const { app } = await start()
+  const invalidSubtitle = new URL(
+    './tests/fixtures/invalid.srt',
+    import.meta.url
+  ).pathname
+  await app.type('text:本地文件、字幕或视频链接', invalidSubtitle)
+  await app.press('开始')
+  await app.waitFor('复制错误')
+  await app.press('复制错误')
+  await app.waitFor('已复制到剪贴板')
+  expect(app.clipboard()).toBe('字幕文件没有有效条目')
+})
+
 test('reuse transcript from a completed task', async () => {
   const { app } = await start()
   await app.waitFor('视频翻译助手')

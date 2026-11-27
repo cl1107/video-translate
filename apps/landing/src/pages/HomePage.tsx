@@ -206,11 +206,8 @@ export function HomePage() {
             }
           />
           <div className="platform-row">
-            <span>macOS</span>
+            <span>macOS Apple Silicon</span>
             <i />
-            <span>Windows</span>
-            <i />
-            <span>Linux</span>
             <small>开源 · 离线优先 · MIT</small>
           </div>
           <ul className="hero-highlights" aria-label="核心能力速览">
@@ -340,13 +337,12 @@ export function HomePage() {
         aria-labelledby="release-title"
       >
         <div className="release-heading">
-          <p>NSH 原生重构 · 历史安装包 v{APP_VERSION}</p>
+          <p>NSH 原生工作台 · v{APP_VERSION}</p>
           <h2 id="release-title">字幕与文稿，迁入原生工作台。</h2>
           <span>
             当前源码使用 Longbridge Native
-            Shell，提供校对、阶段断点与跨工作流复用。 NSH macOS arm64
-            需从源码构建；下载按钮提供的 v{APP_VERSION}
-            为历史 Electron 安装包。
+            Shell，提供校对、阶段断点与跨工作流复用。macOS Apple Silicon
+            可直接下载安装。
           </span>
         </div>
         <div className="release-list">
@@ -490,7 +486,7 @@ export function HomePage() {
           }
         />
         <span>
-          v{APP_VERSION} · MIT License · macOS / Windows / Linux ·{' '}
+          v{APP_VERSION} · MIT License · macOS Apple Silicon ·{' '}
           <a href={siteUrl}>官网</a>
         </span>
       </section>

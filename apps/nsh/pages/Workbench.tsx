@@ -1,9 +1,10 @@
-import { List, Scroll, Text, View, signal, windowSize } from 'nsh'
-import { Button, Input, NavPage } from 'nsh/base'
+import { Clipboard, List, Scroll, Text, View, signal, windowSize } from 'nsh'
+import { Button, NavPage } from 'nsh/base'
 import { titleBar } from 'nsh/desktop'
 import {
   BarProgress,
   BurnCheckbox,
+  Field,
   GhostButton,
   Icon,
   Logo,
@@ -39,10 +40,10 @@ function Header() {
       desktop={{ windowDrag: true }}
     >
       <View
-        class="h-full w-full max-w-5xl flex-row items-center justify-between gap-4 px-6"
+        class="h-full w-full max-w-5xl flex-row items-center justify-between gap-3 px-6"
         style={{ paddingLeft: pad() }}
       >
-        <View class="flex-row items-center gap-3">
+        <View class="flex-row items-center gap-2">
           <Logo />
           <Text class="text-base font-semibold text-foreground">
             视频翻译助手
@@ -61,8 +62,8 @@ function Header() {
             onPress={() => workspace.setKind('document')}
           />
         </View>
-        <View class="flex-row items-center gap-3">
-          <View class="flex-row gap-0.5 rounded-lg bg-muted p-0.5">
+        <View class="flex-row items-center gap-2">
+          <View class="flex-row gap-1 rounded-lg border border-border bg-background p-1">
             <NavButton
               name="upload"
               label="添加"
@@ -71,7 +72,7 @@ function Header() {
             />
             <NavButton
               name="tasks"
-              label={count() > 0 ? `任务  ${count()}` : '任务'}
+              label={count() > 0 ? `任务 ${count()}` : '任务'}
               selected={state().panel === 'tasks'}
               onPress={() => workspace.setPanel('tasks')}
             />
@@ -105,7 +106,7 @@ function ProcessingRow() {
   return (
     <SectionCard class="gap-2 p-3">
       <View class="flex-row items-center justify-between gap-3">
-        <View class="flex-row gap-0.5 rounded-lg bg-muted p-0.5">
+        <View class="flex-row gap-1 rounded-lg bg-muted p-1">
           <GhostButton
             label="翻译字幕"
             selected={state().processing === 'translate'}
@@ -134,7 +135,7 @@ function AddPanel() {
   return (
     <Scroll class="flex-1">
       <View class="items-center px-6 py-6">
-        <View class="w-full max-w-2xl gap-5">
+        <View class="w-full max-w-2xl gap-4">
           <View class="gap-1">
             <Text class="text-lg font-semibold text-foreground">
               {documentKind() ? '添加要整理的音视频' : '添加要生成字幕的视频'}
@@ -146,8 +147,12 @@ function AddPanel() {
             </Text>
           </View>
           <View class="flex-row items-center gap-3">
-            <Text class="text-sm font-medium text-foreground">模型服务</Text>
-            <ServiceSelect />
+            <Text class="shrink-0 text-sm font-medium text-foreground">
+              模型服务
+            </Text>
+            <View class="min-w-0 max-w-72 flex-1">
+              <ServiceSelect />
+            </View>
             <OutlineButton
               label="管理服务"
               onPress={() => workspace.setPanel('settings')}
@@ -157,7 +162,7 @@ function AddPanel() {
             <ProcessingRow />
           </If>
           <View
-            class={`items-center gap-3 rounded-xl border border-dashed bg-card p-5 py-8 ${dragging() ? 'border-ring' : 'border-border'}`}
+            class={`items-center gap-3 rounded-xl border border-dashed px-5 py-6 ${dragging() ? 'border-ring bg-muted' : 'border-input bg-card'}`}
             onFileDragEnter={() => dragging.set(true)}
             onFileDragLeave={() => dragging.set(false)}
             onFileDrop={event => {
@@ -165,7 +170,9 @@ function AddPanel() {
               void workspace.addPaths(pathsFromUris(event.uris))
             }}
           >
-            <Icon name="upload" size={40} />
+            <View class="size-12 items-center justify-center rounded-lg bg-muted">
+              <Icon name="upload" size={24} />
+            </View>
             <Text class="text-base font-semibold text-foreground">
               {dragging()
                 ? '释放以添加文件'
@@ -189,7 +196,7 @@ function AddPanel() {
           <SectionCard class="gap-3">
             <View class="flex-row items-start gap-2">
               <Icon name="link" size={16} />
-              <View class="gap-1">
+              <View class="min-w-0 flex-1 gap-1">
                 <Text class="text-sm font-semibold text-foreground">
                   在线视频链接
                 </Text>
@@ -198,12 +205,12 @@ function AddPanel() {
                 </Text>
               </View>
             </View>
-            <Input
+            <Field
               multiline
+              accessibilityLabel="本地文件、字幕或视频链接"
               value={state().path_draft}
               placeholder="本地文件、字幕或视频链接"
-              onChange={({ value }) => workspace.setPathDraft(value)}
-              class="min-h-20 rounded-md border border-input px-3 py-2 text-sm text-foreground focus:border-ring"
+              onChange={value => workspace.setPathDraft(value)}
             />
             <View class="flex-row items-center justify-between">
               <OutlineButton
@@ -212,6 +219,7 @@ function AddPanel() {
               />
               <PrimaryButton
                 label="开始"
+                disabled={!state().path_draft.trim()}
                 onPress={() => void workspace.submitInput()}
               />
             </View>
@@ -220,6 +228,17 @@ function AddPanel() {
       </View>
     </Scroll>
   )
+}
+
+async function copyTaskText(text: string) {
+  try {
+    await Clipboard.writeText(text)
+    workspace.setMessage('已复制到剪贴板')
+  } catch (error) {
+    workspace.setMessage(
+      `复制失败：${error instanceof Error ? error.message : String(error)}`
+    )
+  }
 }
 
 function SelectedBody() {
@@ -236,21 +255,43 @@ function SelectedBody() {
   }
   return (
     <View class="gap-3">
-      <If when={running()}>
-        <BarProgress value={(task()?.progress ?? 0) as number} />
-      </If>
       <If when={task()?.error_message}>
-        <View class="flex-row items-start justify-between gap-2">
-          <Text class="flex-1 text-sm text-destructive">
-            {task()?.error_message ?? ''}
-          </Text>
-          <OutlineButton
-            label="复制错误"
-            onPress={() => {
-              const msg = task()?.error_message
-              if (msg) workspace.copyText(msg)
-            }}
-          />
+        <View class="gap-2">
+          <View class="flex-row items-start justify-between gap-2">
+            <Text class="flex-1 text-sm text-destructive">
+              {task()?.error_message ?? ''}
+            </Text>
+            <OutlineButton
+              label="复制错误"
+              onPress={() => {
+                const msg = task()?.error_message
+                if (msg) void copyTaskText(msg)
+              }}
+            />
+          </View>
+          <If
+            when={(task()?.error_message ?? '').includes(
+              '系统拒绝读取浏览器配置目录'
+            )}
+          >
+            <View class="gap-2 rounded-md border border-border bg-muted p-3">
+              <Text class="text-xs text-muted-foreground">
+                点击「准备拖拽授权」将同时打开系统设置与
+                Finder，把「视频翻译助手.app」拖入完全磁盘访问权限列表并重启应用；或在「设置
+                → 系统」改用「Ego Lite（免授权）」。
+              </Text>
+              <View class="flex-row flex-wrap gap-2">
+                <OutlineButton
+                  label="准备拖拽授权"
+                  onPress={() => workspace.prepareFullDiskAccess()}
+                />
+                <OutlineButton
+                  label="前往设置"
+                  onPress={() => workspace.setPanel('settings')}
+                />
+              </View>
+            </View>
+          </If>
         </View>
       </If>
       <View class="flex-row flex-wrap items-center gap-2">
@@ -338,7 +379,7 @@ function SelectedBody() {
                   .slice(0, 40)
                   .map(log => `[${log.level}] ${log.message}`)
                   .join('\n')
-                if (text) workspace.copyText(text)
+                if (text) void copyTaskText(text)
               }}
             />
           </View>
@@ -365,7 +406,7 @@ function TasksPanel() {
       <View class="w-full max-w-[976px] flex-1 gap-4">
         <View class="flex-row items-center justify-between">
           <Text class="text-lg font-semibold text-foreground">
-            {state().kind === 'document' ? '文稿任务' : '翻译任务'}
+            {state().kind === 'document' ? '文稿任务' : '字幕任务'}
           </Text>
           <View class="flex-row gap-2">
             <OutlineButton
@@ -382,13 +423,13 @@ function TasksPanel() {
           <SectionCard class="items-center gap-3 py-10">
             <Icon name="video" size={36} />
             <Text class="text-base font-semibold text-foreground">
-              暂无翻译任务
+              {state().kind === 'document' ? '暂无文稿任务' : '暂无字幕任务'}
             </Text>
             <Text class="text-sm text-muted-foreground">
               添加本地视频或在线链接，开始第一个任务
             </Text>
             <PrimaryButton
-              label="去添加视频"
+              label="添加文件或链接"
               onPress={() => workspace.setPanel('add')}
             />
           </SectionCard>
@@ -396,42 +437,69 @@ function TasksPanel() {
         <List
           each={visibleTasks()}
           keyExtractor={task => task.id}
-          estimatedItemSize={92}
+          estimatedItemSize={76}
+          contentStyle={{ gap: 8, paddingBottom: 4 }}
           class="flex-1"
         >
-          {task => (
-            <SectionCard class="gap-3 p-4">
-              <Button
-                onPress={() => workspace.selectTask(task().id)}
-                class="w-full flex-row items-center justify-between gap-3"
-              >
-                <Icon name="video" size={20} />
-                <View class="flex-1 gap-1">
-                  <Text class="text-sm font-semibold text-foreground">
-                    {task().video_file.name}
-                  </Text>
-                  <Text class="text-xs text-muted-foreground">
-                    {formatStamp(task().created_at)} · {task().segments.length}{' '}
-                    段 · {task().source_language} → {task().target_language}
-                  </Text>
-                </View>
-                <View class="rounded-full bg-muted px-2 py-1">
-                  <Text class="text-xs text-foreground">
-                    {statusLabel[task().status] ?? task().status}
-                  </Text>
-                </View>
-              </Button>
-              <If when={isRunning(task().status)}>
-                <BarProgress value={task().progress as number} />
-              </If>
-            </SectionCard>
-          )}
+          {task => {
+            const selected = () => state().selected_id === task().id
+            const running = () => isRunning(task().status)
+            const statusColor = () =>
+              task().status === 'failed'
+                ? 'text-destructive'
+                : running() || task().status === 'completed'
+                  ? 'text-chart-2'
+                  : 'text-muted-foreground'
+            return (
+              <View class="gap-2">
+                <Button
+                  selected={selected()}
+                  onPress={() => workspace.selectTask(task().id)}
+                  class="w-full gap-2 rounded-lg border border-border bg-card px-4 py-3 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring selected:border-ring"
+                >
+                  <View class="flex-row items-center gap-3">
+                    <Icon
+                      name={state().kind === 'document' ? 'document' : 'video'}
+                      class="tint-muted-foreground"
+                    />
+                    <View class="min-w-0 flex-1 gap-1">
+                      <Text
+                        class="text-sm font-medium text-foreground"
+                        style={{
+                          numberOfLines: 1,
+                          textOverflow: 'ellipsis-middle',
+                        }}
+                      >
+                        {task().video_file.name}
+                      </Text>
+                      <Text
+                        class="text-xs text-muted-foreground"
+                        style={{ fontVariant: 'tabular-nums' }}
+                      >
+                        {formatStamp(task().created_at)} ·{' '}
+                        {task().segments.length} 段 · {task().source_language} →{' '}
+                        {task().target_language}
+                      </Text>
+                    </View>
+                    <Text
+                      class={`shrink-0 text-xs font-medium ${statusColor()}`}
+                    >
+                      {statusLabel[task().status] ?? task().status}
+                    </Text>
+                  </View>
+                  <If when={running()}>
+                    <BarProgress value={task().progress} />
+                  </If>
+                </Button>
+                <If when={selected()}>
+                  <SectionCard class="gap-3 p-4">
+                    <SelectedBody />
+                  </SectionCard>
+                </If>
+              </View>
+            )
+          }}
         </List>
-        <If when={!!state().selected_id}>
-          <SectionCard class="gap-3 p-4">
-            <SelectedBody />
-          </SectionCard>
-        </If>
       </View>
     </View>
   )

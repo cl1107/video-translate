@@ -4,6 +4,7 @@ import { setColorScheme } from 'nsh'
 import {
   Field,
   GhostButton,
+  Icon,
   LabeledField,
   LabeledSwitch,
   NavButton,
@@ -11,9 +12,107 @@ import {
   OutlineButton,
   PrimaryButton,
   SectionCard,
+  StyledSelect,
   ThemeButton,
 } from '../components/ui'
 import { patchSettings, selectedService, state, workspace } from '../store'
+
+type ModelRequest<T> =
+  | { scope: string; kind: 'pending' }
+  | { scope: string; kind: 'success'; value: T }
+  | { scope: string; kind: 'error'; message: string }
+
+function modelRequest<T>(scope: () => string) {
+  const result = signal<ModelRequest<T> | null>(null)
+  return {
+    current: () => {
+      const request = result()
+      return request?.scope === scope() ? request : null
+    },
+    async run(action: () => Promise<T>) {
+      const request: ModelRequest<T> = { scope: scope(), kind: 'pending' }
+      result.set(request)
+      try {
+        const value = await action()
+        if (result() === request)
+          result.set({ ...request, kind: 'success', value })
+      } catch (error) {
+        if (result() === request) {
+          result.set({
+            ...request,
+            kind: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    },
+  }
+}
+
+function ModelField(props: {
+  label: string
+  placeholder?: string
+  value: string
+  fallback?: string
+  scope: string
+  items: { value: string; title: string }[]
+  onChange: (value: string) => void
+}) {
+  const model = () => props.value.trim() || props.fallback?.trim() || ''
+  const test = modelRequest<void>(() => JSON.stringify([props.scope, model()]))
+  const pending = () => test.current()?.kind === 'pending'
+  const message = () => {
+    const result = test.current()
+    if (result?.kind === 'success') return '模型可用'
+    if (result?.kind === 'error') return result.message
+    return ''
+  }
+
+  return (
+    <View class="gap-2">
+      <LabeledField
+        label={props.label}
+        placeholder={props.placeholder}
+        value={props.value}
+        onChange={props.onChange}
+      />
+      <View class="flex-row flex-wrap items-center gap-2">
+        <If when={props.items.length > 0}>
+          <StyledSelect
+            items={props.items}
+            value={props.value}
+            accessibilityLabel={`选择${props.label}`}
+            onChange={({ value }) => {
+              if (value) props.onChange(value)
+            }}
+            trigger={
+              <View class="h-9 flex-row items-center gap-2 rounded-md border border-border bg-background px-4 hover:bg-muted">
+                <Text class="text-sm text-foreground">从列表选择</Text>
+                <Icon name="chevron" size={14} />
+              </View>
+            }
+          />
+        </If>
+        <OutlineButton
+          label={pending() ? '测试中…' : `测试${props.label}`}
+          disabled={!model() || pending()}
+          onPress={() => void test.run(() => workspace.testModel(model()))}
+        />
+      </View>
+      <If when={message()}>
+        <Text
+          class={
+            test.current()?.kind === 'error'
+              ? 'text-sm text-destructive'
+              : 'text-sm text-muted-foreground'
+          }
+        >
+          {message()}
+        </Text>
+      </If>
+    </View>
+  )
+}
 
 export function SettingsPage() {
   const category = signal(0)
@@ -22,6 +121,28 @@ export function SettingsPage() {
   const settings = () => state().settings
   const service = () => selectedService()
   const canDelete = () => settings().llm_services.length > 1
+
+  const modelScope = () =>
+    JSON.stringify([
+      settings().selected_llm_service_id,
+      settings().llm_base_url,
+      state().api_key,
+    ])
+  const models = modelRequest<string[]>(modelScope)
+  const modelItems = () => {
+    const result = models.current()
+    return result?.kind === 'success'
+      ? result.value.map(value => ({ value, title: value }))
+      : []
+  }
+  const listMessage = () => {
+    const result = models.current()
+    if (result?.kind === 'error') return result.message
+    if (result?.kind !== 'success') return ''
+    return result.value.length
+      ? `已获取 ${result.value.length} 个模型`
+      : '服务未返回模型'
+  }
 
   const removeService = async () => {
     if (!canDelete()) return
@@ -38,13 +159,14 @@ export function SettingsPage() {
 
   return (
     <View class="flex-1 flex-row">
-      <View class="w-56 shrink-0 items-stretch gap-2 border-r border-border bg-card px-3 pt-12">
+      <View class="w-48 shrink-0 items-stretch gap-1 border-r border-sidebar-border bg-sidebar px-4 pt-12">
         <NavButton
           name="back"
           label="返回工作区"
           align="start"
           onPress={() => workspace.setPanel('add')}
         />
+        <View class="my-3 h-px bg-border" />
         <NavButton
           name="settings"
           label="常规"
@@ -67,19 +189,25 @@ export function SettingsPage() {
           onPress={() => category.set(2)}
         />
         <View class="flex-1" />
-        <View class="flex-row items-center justify-between border-t border-border py-3">
-          <Text class="text-xs text-muted-foreground">外观</Text>
-          <ThemeButton />
+        <View class="gap-1 border-t border-border py-3">
+          <View class="flex-row items-center justify-between">
+            <Text class="text-xs text-muted-foreground">外观</Text>
+            <ThemeButton />
+          </View>
         </View>
       </View>
       <Scroll class="flex-1">
-        <View class="items-center p-8">
-          <View class="w-full max-w-3xl gap-5">
-            <Text class="text-xl font-semibold text-foreground">
-              {category() === 1 ? '模型' : category() === 2 ? '系统' : '常规'}
+        <View class="items-center px-6 py-8">
+          <View class="w-full max-w-3xl gap-6">
+            <Text class="text-lg font-semibold text-foreground">
+              {category() === 1
+                ? '模型设置'
+                : category() === 2
+                  ? '系统设置'
+                  : '常规设置'}
             </Text>
             <If when={category() === 0}>
-              <View class="gap-5">
+              <View class="gap-4">
                 <SectionCard>
                   <Text class="text-base font-semibold text-foreground">
                     外观
@@ -189,26 +317,36 @@ export function SettingsPage() {
                   <Text class="text-base font-medium text-foreground">
                     术语库
                   </Text>
-                  <Text class="text-sm text-muted-foreground">
-                    {settings()
-                      .glossary.map(
-                        entry => `${entry.source} → ${entry.target}`
-                      )
-                      .join('\n')}
-                  </Text>
+                  <If when={settings().glossary.length === 0}>
+                    <Text class="text-sm text-muted-foreground">
+                      添加固定译法，统一字幕中的人名和术语
+                    </Text>
+                  </If>
+                  <If when={settings().glossary.length > 0}>
+                    <Text class="text-sm text-foreground">
+                      {settings()
+                        .glossary.map(
+                          entry => `${entry.source} → ${entry.target}`
+                        )
+                        .join('\n')}
+                    </Text>
+                  </If>
                   <View class="flex-row gap-2">
                     <Field
                       placeholder="原文"
+                      accessibilityLabel="术语原文"
                       value={glossarySource()}
                       onChange={value => glossarySource.set(value)}
                     />
                     <Field
                       placeholder="译文"
+                      accessibilityLabel="术语译文"
                       value={glossaryTarget()}
                       onChange={value => glossaryTarget.set(value)}
                     />
                     <PrimaryButton
                       label="添加术语"
+                      disabled={!glossarySource().trim()}
                       onPress={() => {
                         const source = glossarySource().trim()
                         const target = glossaryTarget()
@@ -228,7 +366,7 @@ export function SettingsPage() {
               </View>
             </If>
             <If when={category() === 1}>
-              <View class="gap-5">
+              <View class="gap-4">
                 <SectionCard>
                   <Text class="text-sm font-semibold text-foreground">
                     模型服务
@@ -281,17 +419,50 @@ export function SettingsPage() {
                     masked
                     onChange={value => workspace.setApiKey(value)}
                   />
-                  <LabeledField
+                  <View class="flex-row flex-wrap items-center gap-2">
+                    <OutlineButton
+                      label={
+                        models.current()?.kind === 'pending'
+                          ? '获取中…'
+                          : '获取模型列表'
+                      }
+                      disabled={
+                        !settings().llm_base_url.trim() ||
+                        models.current()?.kind === 'pending'
+                      }
+                      onPress={() =>
+                        void models.run(() => workspace.listModels())
+                      }
+                    />
+                    <If when={listMessage()}>
+                      <Text
+                        class={
+                          models.current()?.kind === 'error'
+                            ? 'text-sm text-destructive'
+                            : 'text-sm text-muted-foreground'
+                        }
+                      >
+                        {listMessage()}
+                      </Text>
+                    </If>
+                  </View>
+                  <ModelField
                     label="翻译模型"
                     placeholder="qwen2.5:7b"
                     value={settings().translate_model}
+                    scope={modelScope()}
+                    items={modelItems()}
                     onChange={value =>
                       patchSettings({ translate_model: value })
                     }
                   />
-                  <LabeledField
-                    label="润色模型（空=跟随翻译）"
+                  <ModelField
+                    label="润色模型"
+                    placeholder="留空时使用翻译模型"
                     value={settings().polish_model}
+                    fallback={settings().translate_model}
+                    scope={modelScope()}
+                    items={modelItems()}
                     onChange={value => patchSettings({ polish_model: value })}
                   />
                 </SectionCard>
@@ -349,28 +520,120 @@ export function SettingsPage() {
                   value={settings().download_proxy}
                   onChange={value => patchSettings({ download_proxy: value })}
                 />
+                <OptionField
+                  label="在线下载登录来源"
+                  value={
+                    settings().download_cookie_browser === 'auto'
+                      ? 'none'
+                      : settings().download_cookie_browser
+                  }
+                  items={[
+                    { value: 'none', title: '匿名下载' },
+                    { value: 'ego', title: 'Ego Lite（免授权）' },
+                    { value: 'edge', title: 'Microsoft Edge' },
+                    { value: 'chrome', title: 'Google Chrome' },
+                    { value: 'safari', title: 'Safari' },
+                    { value: 'firefox', title: 'Firefox' },
+                    { value: 'brave', title: 'Brave' },
+                    { value: 'chromium', title: 'Chromium' },
+                  ]}
+                  onChange={value =>
+                    patchSettings({ download_cookie_browser: value })
+                  }
+                />
+                <If when={settings().download_cookie_browser === 'ego'}>
+                  <Text class="text-sm text-muted-foreground">
+                    将从 Ego Lite 直接读取已登录站点的
+                    Cookie，无需授予完全磁盘访问权限。请先在 Ego Lite
+                    中登录目标网站（如 YouTube）。
+                  </Text>
+                </If>
+                <If
+                  when={
+                    !['none', 'auto', '', 'ego'].includes(
+                      settings().download_cookie_browser
+                    )
+                  }
+                >
+                  <View class="gap-2 rounded-md border border-border bg-muted p-3">
+                    <Text class="text-sm font-medium text-foreground">
+                      需要授予「完全磁盘访问权限」
+                    </Text>
+                    <Text class="text-xs text-muted-foreground">
+                      1. 点击「准备拖拽授权」，同时打开系统设置与
+                      Finder（已选中当前应用）；{'\n'}
+                      2. 将 Finder
+                      中的「视频翻译助手.app」直接拖入右侧权限列表；{'\n'}
+                      3. 按提示重启应用后即可读取浏览器 Cookie。
+                    </Text>
+                    <View class="flex-row flex-wrap gap-2">
+                      <OutlineButton
+                        label="准备拖拽授权"
+                        onPress={() => workspace.prepareFullDiskAccess()}
+                      />
+                      <OutlineButton
+                        label="仅打开系统设置"
+                        onPress={() => workspace.openFullDiskAccess()}
+                      />
+                    </View>
+                  </View>
+                </If>
+                <If
+                  when={['none', 'auto', ''].includes(
+                    settings().download_cookie_browser
+                  )}
+                >
+                  <Text class="text-sm text-muted-foreground">
+                    YouTube 要求验证时，可选择「Ego
+                    Lite（免授权）」或已在浏览器登录的来源并重试任务。
+                  </Text>
+                </If>
                 <View class="flex-row gap-2">
                   <OutlineButton
                     label="系统自检"
                     onPress={() => void workspace.runSystemCheck()}
                   />
                   <OutlineButton
-                    label="测试模型服务"
-                    onPress={() => void workspace.listModels()}
-                  />
-                  <OutlineButton
                     label="下载 SenseVoice"
                     onPress={() => void workspace.downloadSensevoice()}
                   />
                 </View>
-                <Text class="text-sm text-muted-foreground">
-                  {state()
-                    .checks.map(
-                      item =>
-                        `${item.name} ${item.available ? '就绪' : '缺失'} ${item.version ?? item.error ?? ''}`
-                    )
-                    .join('\n')}
-                </Text>
+                <If when={state().checks.length > 0}>
+                  <View class="rounded-lg border border-border bg-background px-3">
+                    <Each of={state().checks} key={item => item.name}>
+                      {(item, index) => (
+                        <View
+                          class={`gap-1 py-3 ${index() > 0 ? 'border-t border-border' : ''}`}
+                        >
+                          <View class="flex-row items-center justify-between gap-3">
+                            <Text class="min-w-0 flex-1 text-sm font-medium text-foreground">
+                              {item().name}
+                            </Text>
+                            <Text
+                              class={`shrink-0 text-xs font-medium ${item().available ? 'text-chart-2' : 'text-destructive'}`}
+                            >
+                              {item().available ? '就绪' : '缺失'}
+                            </Text>
+                          </View>
+                          <If when={item().error ?? item().version}>
+                            <Text class="text-xs text-muted-foreground">
+                              {item().error ?? item().version}
+                            </Text>
+                          </If>
+                        </View>
+                      )}
+                    </Each>
+                  </View>
+                </If>
+              </SectionCard>
+              <SectionCard>
+                <Text class="text-sm font-semibold text-foreground">关于</Text>
+                <View class="flex-row items-center justify-between">
+                  <Text class="text-sm text-foreground">视频翻译助手</Text>
+                  <Text class="text-sm text-muted-foreground">
+                    {`v${state().app_version}`}
+                  </Text>
+                </View>
               </SectionCard>
             </If>
           </View>

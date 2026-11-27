@@ -1,3 +1,4 @@
+import type { SelectProps } from 'nsh/base'
 import type { JSX } from 'nsh'
 import { Image, Text, View } from 'nsh'
 import {
@@ -32,11 +33,11 @@ const iconPaths: Record<string, string> = {
 export function Icon(props: { name: string; size?: number; class?: string }) {
   const d = iconPaths[props.name] ?? 'M4 3h16v18H4z'
   const size = props.size ?? 16
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`
   return (
     <Image
       src={`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`}
-      class={`tint-foreground ${props.class ?? ''}`}
+      class={props.class ?? 'tint-foreground'}
       style={{ width: size, height: size, flexShrink: 0 }}
     />
   )
@@ -55,7 +56,7 @@ export function PrimaryButton(props: {
     <Button
       onPress={props.onPress}
       disabled={props.disabled}
-      class="h-9 items-center justify-center rounded-md bg-primary px-4 active:opacity-85 hover:opacity-90 focus:outline-2 focus:outline-ring disabled:opacity-50"
+      class="h-9 items-center justify-center rounded-md bg-primary px-4 active:opacity-85 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
     >
       <Text class="text-sm text-primary-foreground">{props.label}</Text>
     </Button>
@@ -71,7 +72,7 @@ export function OutlineButton(props: {
     <Button
       onPress={props.onPress}
       disabled={props.disabled}
-      class="h-9 items-center justify-center rounded-md border border-border bg-background px-4 hover:bg-muted active:bg-muted focus:outline-2 focus:outline-ring disabled:opacity-50"
+      class="h-9 items-center justify-center rounded-md border border-border bg-background px-4 hover:bg-muted active:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
     >
       <Text class="text-sm text-foreground">{props.label}</Text>
     </Button>
@@ -82,18 +83,17 @@ export function GhostButton(props: {
   label: string
   selected?: boolean
   onPress: () => void
-  align?: 'start' | 'center'
 }) {
-  const start = props.align === 'start'
   return (
     <Button
       onPress={props.onPress}
-      class={`h-8 items-center gap-1.5 rounded-md px-2.5 hover:bg-muted ${start ? 'flex-row justify-start' : 'justify-center'} ${props.selected ? 'bg-muted text-foreground' : 'bg-transparent text-muted-foreground'}`}
+      selected={props.selected}
+      class={`h-8 items-center justify-center rounded-md px-3 focus-visible:outline-2 focus-visible:outline-ring ${props.selected ? 'bg-primary' : 'hover:bg-muted active:bg-accent'}`}
     >
       <Text
         class={
           props.selected
-            ? 'text-sm text-foreground'
+            ? 'text-sm font-medium text-primary-foreground'
             : 'text-sm text-muted-foreground'
         }
       >
@@ -114,9 +114,13 @@ export function NavButton(props: {
   return (
     <Button
       onPress={props.onPress}
-      class={`h-8 flex-row items-center gap-1.5 rounded-md px-2.5 hover:bg-muted focus:outline-2 focus:outline-ring ${start ? 'w-full justify-start' : 'justify-center'} ${props.selected ? 'bg-muted' : 'bg-transparent'}`}
+      selected={props.selected}
+      class={`h-8 flex-row items-center gap-2 rounded-md px-2 hover:bg-muted active:bg-accent focus-visible:outline-2 focus-visible:outline-ring selected:bg-accent ${start ? 'w-full justify-start' : 'justify-center'}`}
     >
-      <Icon name={props.name} size={16} />
+      <Icon
+        name={props.name}
+        class={props.selected ? undefined : 'tint-muted-foreground'}
+      />
       <Text
         class={
           props.selected
@@ -147,7 +151,7 @@ export function Field(props: {
       multiline={props.multiline}
       accessibilityLabel={props.accessibilityLabel}
       onChange={({ value }) => props.onChange(value)}
-      class={`h-9 flex-1 rounded-md border border-input px-3 text-sm text-foreground focus:border-ring ${props.multiline ? 'min-h-20 py-2' : ''} ${props.class ?? ''}`}
+      class={`h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring ${props.multiline ? 'min-h-20 py-2' : ''} ${props.class ?? ''}`}
     />
   )
 }
@@ -160,8 +164,8 @@ export function LabeledField(props: {
   masked?: boolean
 }) {
   return (
-    <View class="gap-1">
-      <Text class="text-sm text-muted-foreground">{props.label}</Text>
+    <View class="gap-2">
+      <Text class="text-sm font-medium text-foreground">{props.label}</Text>
       <Field
         value={props.value}
         accessibilityLabel={props.label}
@@ -248,7 +252,7 @@ export function ThemeButton() {
         index = (index + 1) % modes.length
         setColorScheme(modes[index])
       }}
-      class="h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
+      class="h-8 w-8 items-center justify-center rounded-md hover:bg-muted active:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
       accessibilityLabel="外观"
     >
       <Icon name="sun" size={16} />
@@ -274,11 +278,35 @@ export function BurnCheckbox() {
   )
 }
 
+export function StyledSelect(
+  props: Pick<
+    SelectProps,
+    'items' | 'value' | 'onChange' | 'accessibilityLabel' | 'trigger'
+  >
+) {
+  return (
+    <Select
+      items={props.items}
+      value={props.value}
+      onChange={props.onChange}
+      accessibilityLabel={props.accessibilityLabel}
+      trigger={props.trigger}
+      popupClass="rounded-md border border-border bg-popover p-1 shadow-md"
+      itemClass="group rounded-md px-3 py-2 focus:bg-accent"
+      renderItem={item => (
+        <Text class="text-sm text-popover-foreground group-selected:font-medium">
+          {item.title}
+        </Text>
+      )}
+    />
+  )
+}
+
 export function ServiceSelect() {
   const settings = () => state().settings
   const current = () => selectedService()?.name ?? ''
   return (
-    <Select
+    <StyledSelect
       items={settings().llm_services.map(service => ({
         value: service.id,
         title: service.name,
@@ -288,11 +316,14 @@ export function ServiceSelect() {
         if (value) workspace.selectService(value)
       }}
       accessibilityLabel="模型服务"
-      popupClass="rounded-md border border-border bg-popover p-1 shadow-md"
-      itemClass="rounded-md px-3 py-2 focus:bg-accent selected:font-medium"
       trigger={
-        <View class="h-8 w-72 flex-row items-center justify-between rounded-md border border-input px-3">
-          <Text class="text-sm text-foreground">{current()}</Text>
+        <View class="h-9 flex-row items-center justify-between gap-2 rounded-md border border-input bg-background px-3 hover:bg-muted">
+          <Text
+            class="min-w-0 flex-1 text-sm text-foreground"
+            style={{ numberOfLines: 1 }}
+          >
+            {current() || '未配置模型服务'}
+          </Text>
           <Icon name="chevron" size={14} />
         </View>
       }
@@ -310,19 +341,22 @@ export function OptionField(props: {
     props.items.find(item => item.value === props.value)?.title ?? props.value
   return (
     <View class="gap-2">
-      <Text class="text-sm text-foreground">{props.label}</Text>
-      <Select
+      <Text class="text-sm font-medium text-foreground">{props.label}</Text>
+      <StyledSelect
         items={props.items}
         value={props.value}
         onChange={({ value }) => {
           if (value) props.onChange(value)
         }}
         accessibilityLabel={props.label}
-        popupClass="rounded-md border border-border bg-popover p-1 shadow-md"
-        itemClass="rounded-md px-3 py-2 focus:bg-accent selected:font-medium"
         trigger={
-          <View class="h-9 flex-row items-center justify-between rounded-md border border-input px-3">
-            <Text class="text-sm text-foreground">{title()}</Text>
+          <View class="h-9 flex-row items-center justify-between gap-2 rounded-md border border-input bg-background px-3 hover:bg-muted">
+            <Text
+              class="min-w-0 flex-1 text-sm text-foreground"
+              style={{ numberOfLines: 1 }}
+            >
+              {title()}
+            </Text>
             <Icon name="chevron" size={14} />
           </View>
         }

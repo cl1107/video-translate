@@ -1,8 +1,11 @@
 /** 站点级常量与路由工具（兼容 Vite base / GitHub Pages 子路径） */
 
-export const APP_VERSION = '0.8.2'
+export const APP_VERSION = '0.9.1'
+export const LEGACY_APP_VERSION = '0.8.2'
+export const nshReleaseUrl = `https://github.com/cl1107/video-translate/releases/tag/v${APP_VERSION}`
+export const nshDownloadUrl = `https://github.com/cl1107/video-translate/releases/download/v${APP_VERSION}/video-translate-v${APP_VERSION}-mac-arm64-nsh.zip`
 export const releaseUrl =
-  'https://github.com/cl1107/video-translate/releases/latest'
+  'https://github.com/cl1107/video-translate/releases/tag/v0.8.2'
 export const repositoryUrl = 'https://github.com/cl1107/video-translate'
 export const siteUrl = 'https://cl1107.github.io/video-translate/'
 

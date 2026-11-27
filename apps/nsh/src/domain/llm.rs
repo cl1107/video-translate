@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::model::GlossaryEntry;
@@ -124,14 +125,25 @@ pub fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String>
         .set("Authorization", &format!("Bearer {key}"))
         .call()
         .map_err(|err| format!("拉取模型列表失败: {err}"))?;
-    let value: Value = response.into_json().map_err(|err| err.to_string())?;
-    let mut models = Vec::new();
-    if let Some(data) = value.get("data").and_then(Value::as_array) {
-        for item in data {
-            if let Some(id) = item.get("id").and_then(Value::as_str) {
-                models.push(id.to_string());
-            }
-        }
+    #[derive(Deserialize)]
+    struct Model {
+        id: String,
+    }
+    #[derive(Deserialize)]
+    struct ModelList {
+        data: Vec<Model>,
+    }
+
+    let list: ModelList = response
+        .into_json()
+        .map_err(|err| format!("解析模型列表失败: {err}"))?;
+    let mut models = list
+        .data
+        .into_iter()
+        .map(|model| model.id)
+        .collect::<Vec<_>>();
+    if models.iter().any(|id| id.trim().is_empty()) {
+        return Err("模型列表包含空模型 ID".into());
     }
     models.sort();
     models.dedup();

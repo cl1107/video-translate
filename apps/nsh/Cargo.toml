@@ -1,6 +1,6 @@
 [package]
 name = "nsh-app-video-translate"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 publish = false
 default-run = "nsh-app-video-translate"
@@ -20,8 +20,8 @@ name = "vt"
 path = "src/bin/vt.rs"
 
 [dependencies]
-nsh-core = "0.5.0"
-nsh-base = "0.5.0"
+nsh-core = "0.6.0"
+nsh-base = "0.6.0"
 env_logger = "0.11"
 log = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -35,15 +35,15 @@ dirs = "6"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nsh-platform-linux = { version = "0.5.0", default-features = false }
+nsh-platform-linux = { version = "0.6.0", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-nsh-platform-macos = { version = "0.5.0", default-features = false }
+nsh-platform-macos = { version = "0.6.0", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-nsh-platform-windows = { version = "0.5.0", default-features = false }
+nsh-platform-windows = { version = "0.6.0", default-features = false }
 
 [dev-dependencies]
-nsh-engine = { version = "0.5.0", default-features = false }
-nsh-testing = { version = "0.5.0", default-features = false, features = ["live"] }
+nsh-engine = { version = "0.6.0", default-features = false }
+nsh-testing = { version = "0.6.0", default-features = false, features = ["live"] }
 tempfile = "3"

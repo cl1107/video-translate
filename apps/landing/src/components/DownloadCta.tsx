@@ -1,23 +1,14 @@
 import { ArrowDownToLine, ExternalLink } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { useDownloadTarget } from '../hooks/useDownloadTarget'
-import { variantCopy, type PackageVariant } from '../lib/releases'
+import { APP_VERSION, nshDownloadUrl, nshReleaseUrl, releaseUrl } from '../site'
 
 type Appearance = 'primary' | 'dark' | 'header'
 
 type DownloadCtaProps = {
-  /** 按钮外观 */
   appearance?: Appearance
-  /** 是否展示完整版 / 精简版切换 */
-  showVariantToggle?: boolean
-  /** 是否展示「其他下载」链接 */
-  showOtherLink?: boolean
-  /** 是否展示平台与体积提示 */
   showHint?: boolean
-  /** 主按钮旁的次要操作（如「看它如何工作」） */
   secondary?: ReactNode
-  /** header 紧凑模式：仅一颗下载钮 */
   compact?: boolean
   className?: string
 }
@@ -28,70 +19,26 @@ function buttonClass(appearance: Appearance): string {
   return 'button button-primary download-btn'
 }
 
-function primaryLabel(opts: {
-  compact: boolean
-  shortLabel: string
-  version: string
-  isDirect: boolean
-}): string {
-  const { compact, shortLabel, isDirect } = opts
-  if (compact) return '旧版下载'
-  if (isDirect && shortLabel !== '本机') return `旧版 ${shortLabel}`
-  return '下载历史版本'
-}
-
 export function DownloadCta({
   appearance = 'primary',
-  showVariantToggle = true,
-  showOtherLink = true,
   showHint = true,
   secondary,
   compact = false,
   className,
 }: DownloadCtaProps) {
-  const {
-    platform,
-    variant,
-    setVariant,
-    href,
-    matched,
-    version,
-    releasePageUrl,
-    status,
-    isDirect,
-  } = useDownloadTarget('bundled')
-
-  const label = primaryLabel({
-    compact,
-    shortLabel: platform.shortLabel,
-    version,
-    isDirect,
-  })
-
-  const metaLine = matched
-    ? `Electron · ${matched.formatLabel}${matched.sizeLabel ? ` · ${matched.sizeLabel}` : ''}`
-    : `历史 Electron v${version}`
-
   const downloadButton = (
     <a
       className={buttonClass(appearance)}
-      href={href}
-      target={isDirect ? undefined : '_blank'}
-      rel={isDirect ? undefined : 'noreferrer'}
-      data-status={status}
-      aria-label={
-        isDirect
-          ? `下载历史 Electron ${platform.label} ${variantCopy[variant].label}`
-          : '打开 GitHub Releases 查看历史版本'
-      }
+      href={nshDownloadUrl}
+      aria-label="下载 macOS Apple Silicon 安装包"
     >
       <ArrowDownToLine size={compact ? 16 : 19} aria-hidden />
       {compact ? (
-        label
+        '下载'
       ) : (
         <span className="download-btn-text">
-          <strong>{label}</strong>
-          <small>{metaLine}</small>
+          <strong>下载 macOS 版</strong>
+          <small>Apple Silicon · v{APP_VERSION}</small>
         </span>
       )}
     </a>
@@ -119,66 +66,17 @@ export function DownloadCta({
         {downloadButton}
         {secondary}
       </div>
-
-      {(showVariantToggle || showOtherLink) && (
-        <div className="download-cta-meta">
-          {showVariantToggle && (
-            <div
-              className="download-variant"
-              role="group"
-              aria-label="安装包类型"
-            >
-              {(['bundled', 'slim'] as PackageVariant[]).map(key => {
-                const copy = variantCopy[key]
-                const active = variant === key
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className={
-                      active
-                        ? 'download-variant-btn is-active'
-                        : 'download-variant-btn'
-                    }
-                    aria-pressed={active}
-                    title={copy.hint}
-                    onClick={() => setVariant(key)}
-                  >
-                    {copy.label}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {showOtherLink && (
-            <a
-              className="download-other"
-              href={releasePageUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              其他下载
-              <ExternalLink size={12} strokeWidth={2.2} aria-hidden />
-            </a>
-          )}
-        </div>
-      )}
-
       {showHint && (
-        <p className="download-hint">
-          <span className="download-hint-platform">
-            历史 Electron · {platform.label}
-          </span>
-          <span className="download-hint-dot" aria-hidden />
-          <span>{variantCopy[variant].hint}</span>
-          {!isDirect && status !== 'loading' ? (
-            <>
-              <span className="download-hint-dot" aria-hidden />
-              <span>将打开 GitHub Releases</span>
-            </>
-          ) : null}
-        </p>
+        <div className="download-cta-meta">
+          <a className="download-other" href={nshReleaseUrl}>
+            版本说明与校验和
+            <ExternalLink size={12} aria-hidden />
+          </a>
+          <a className="download-other" href={releaseUrl}>
+            历史 Electron 版本
+            <ExternalLink size={12} aria-hidden />
+          </a>
+        </div>
       )}
     </div>
   )

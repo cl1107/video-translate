@@ -4,10 +4,10 @@
 
 [产品官网](https://cl1107.github.io/video-translate/) · [安装指南](docs/installation.md) · [NSH 开发说明](apps/nsh/README.md)
 
-![源码版本](https://img.shields.io/badge/NSH_source-0.9.0-blue.svg)
+![源码版本](https://img.shields.io/badge/NSH_source-0.9.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-当前 NSH 分发目标为 **macOS Apple Silicon**。Windows / Linux 的原生后端尚未在本项目验收。GitHub Releases 的 **v0.8.2 是历史 Electron 安装包**，不包含当前 NSH 重构；尚未发布 NSH 安装包时，请从源码构建。
+当前 NSH 分发目标为 **macOS Apple Silicon**。Windows / Linux 的原生后端尚未在本项目验收。GitHub Releases 的 **v0.8.2 是历史 Electron 安装包**，不包含当前 NSH 重构；可从 [v0.9.1 发布页](https://github.com/cl1107/video-translate/releases/tag/v0.9.1) 下载 NSH 安装包。
 
 ## 功能
 
@@ -23,17 +23,19 @@
 
 ## 从源码运行（macOS arm64）
 
-需要 Rust / Cargo、Xcode Command Line Tools，以及 **NSH 0.5.0**。截至目前，[官方最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.5.0) 为 `0.5.0 (f4d68f7)`；nightly 不作为本项目分发基线。
+需要 Rust / Cargo、Xcode Command Line Tools，以及 **NSH 0.6.0**。截至目前，[官方最新稳定版](https://github.com/longbridge/nsh/releases/tag/v0.6.0) 为 `0.6.0`；nightly 不作为本项目分发基线。
 
 ```sh
 xcode-select --install
 # Rust 按 https://rustup.rs 安装
 curl -fsSL https://nsh.dev/install.sh -o /tmp/install-nsh.sh
-NSH_VERSION=v0.5.0 sh /tmp/install-nsh.sh
+NSH_VERSION=v0.6.0 sh /tmp/install-nsh.sh
 export PATH="$HOME/.local/bin:$PATH"
 
 # FFmpeg 必需；yt-dlp 仅在线链接需要
 brew install ffmpeg yt-dlp
+# YouTube 下载需要 Node.js 22+
+brew install node
 # 硬字幕需要 libass/subtitles 滤镜，可按本机情况安装 ffmpeg-full
 
 nsh --version
@@ -77,10 +79,10 @@ open "apps/nsh/.nsh/out/视频翻译助手.app"
 pnpm install:local --open
 # 默认安装至 ~/Applications；用 --dest /Applications 更改
 pnpm make:release
-# 本地 zip + SHA256SUMS: apps/nsh/.nsh/release/v0.9.0/
+# 本地 zip + SHA256SUMS: apps/nsh/.nsh/release/v0.9.1/
 ```
 
-`pnpm release` / `pnpm make:release` **只生成本地 NSH 分发文件**，不会提交、打 tag、推送或发布。应用为 ad hoc 签名，未做 Apple 公证；FFmpeg / FFprobe、yt-dlp 与 ASR 模型不打进当前应用包。
+`pnpm release` / `pnpm make:release` **只生成本地 NSH 分发文件**，不会提交、打 tag、推送或发布。应用为 ad hoc 签名，未做 Apple 公证；FFmpeg / FFprobe、yt-dlp、Node.js 与 ASR 模型不打进当前应用包。
 
 默认 Release workflow 只构建 NSH macOS arm64。真正发布前需同步 `apps/nsh/nsh.json` 与 `apps/nsh/Cargo.toml` 版本、使用匹配 tag，并在干净机器验收安装、依赖检测和真实转录。历史 Electron 发布入口保留为 `release:electron` / `make:release:electron`，workflow 仅允许显式手动运行。
 

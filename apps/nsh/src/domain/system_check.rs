@@ -17,6 +17,30 @@ pub fn run_checks() -> Vec<CheckResult> {
     results.push(check_cmd("ffmpeg", &["-version"], false));
     results.push(check_cmd("ffprobe", &["-version"], false));
     results.push(check_cmd("yt-dlp", &["--version"], true));
+    let mut node = check_cmd("node", &["--version"], true);
+    if node.available
+        && !node
+            .version
+            .as_deref()
+            .and_then(|version| {
+                version
+                    .strip_prefix('v')?
+                    .split('.')
+                    .next()?
+                    .parse::<u32>()
+                    .ok()
+            })
+            .is_some_and(|major| major >= 22)
+    {
+        node.available = false;
+        node.error = Some("YouTube 下载需要 Node.js 22 或更高版本".into());
+    } else if !node.available {
+        node.error = Some(format!(
+            "{}。YouTube 下载需要 Node.js 22 或更高版本",
+            node.error.as_deref().unwrap_or("Node.js 无法运行"),
+        ));
+    }
+    results.push(node);
     let sense = resolve_sensevoice();
     results.push(CheckResult {
         name: "SenseVoice".into(),

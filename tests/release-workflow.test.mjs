@@ -28,7 +28,7 @@ test('默认发布工作流只构建 NSH macOS arm64，历史 Electron 必须显
 test('NSH 发布验证实际产品版本，固定稳定工具链，禁止 Electron postinstall', () => {
   assert.match(workflow, /apps\/nsh\/nsh\.json/)
   assert.match(workflow, /apps\/nsh\/Cargo\.toml/)
-  assert.match(workflow, /NSH_VERSION: v0\.5\.0/)
+  assert.match(workflow, /NSH_VERSION: v0\.6\.0/)
   assert.match(workflow, /pnpm install --frozen-lockfile --ignore-scripts/)
 })
 

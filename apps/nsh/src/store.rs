@@ -3,7 +3,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -103,6 +103,7 @@ impl AppState {
 
 #[derive(Serialize)]
 struct Snapshot {
+    app_version: String,
     kind: String,
     panel: String,
     path_draft: String,
@@ -114,6 +115,56 @@ struct Snapshot {
     settings: AppSettings,
     tasks: Vec<TranslationTask>,
     checks: Vec<CheckResult>,
+}
+
+fn build_snapshot(state: &Mutex<AppState>) -> nsh_core::JsonValue {
+    let ws = state.lock().expect("workspace");
+    let api_key = ws
+        .api_keys
+        .get(&ws.settings.selected_llm_service_id)
+        .cloned()
+        .unwrap_or_default();
+    serde_json::to_value(Snapshot {
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        kind: ws.kind.as_str().to_owned(),
+        panel: ws.panel.as_str().to_owned(),
+        path_draft: ws.path_draft.clone(),
+        processing: ws.processing.as_str().to_owned(),
+        burn: ws.burn,
+        message: ws.message.clone(),
+        selected_id: ws.selected.clone(),
+        api_key,
+        settings: ws.settings.clone(),
+        tasks: ws.tasks.clone(),
+        checks: ws.checks.clone(),
+    })
+    .unwrap_or(nsh_core::JsonValue::Null)
+}
+
+fn emit_snapshot(
+    state: &Mutex<AppState>,
+    listeners: &Mutex<Vec<(u64, Callback<nsh_core::JsonValue>)>>,
+) {
+    let snap = build_snapshot(state);
+    let listeners: Vec<_> = listeners
+        .lock()
+        .expect("listeners")
+        .iter()
+        .map(|(_, cb)| cb.clone())
+        .collect();
+    for cb in listeners {
+        cb.post(snap.clone());
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn current_app_bundle_or_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let bundle = exe
+        .ancestors()
+        .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("app"))
+        .map(Path::to_path_buf);
+    Some(bundle.unwrap_or(exe))
 }
 
 fn load_settings() -> AppSettings {
@@ -154,7 +205,7 @@ fn run_pipeline_now(
 /// 桌面工作区：任务、设置与流水线。
 #[class]
 pub struct Workspace {
-    state: Mutex<AppState>,
+    state: Arc<Mutex<AppState>>,
     listeners: Arc<Mutex<Vec<(u64, Callback<nsh_core::JsonValue>)>>>,
     listener_id: AtomicU64,
     paused: Mutex<HashSet<String>>,
@@ -167,7 +218,7 @@ impl Workspace {
     /// 打开工作区。
     pub fn new() -> Self {
         Self {
-            state: Mutex::new(AppState::load()),
+            state: Arc::new(Mutex::new(AppState::load())),
             listeners: Arc::new(Mutex::new(Vec::new())),
             listener_id: AtomicU64::new(1),
             paused: Mutex::new(HashSet::new()),
@@ -250,36 +301,6 @@ impl Workspace {
     pub fn set_burn(&self, value: bool) {
         self.state.lock().expect("workspace").burn = value;
         self.notify();
-    }
-
-    /// 复制文本到系统剪贴板。
-    pub fn copy_text(&self, text: String) {
-        if text.trim().is_empty() {
-            return;
-        }
-        #[cfg(target_os = "macos")]
-        let result = {
-            use std::io::Write;
-            std::process::Command::new("pbcopy")
-                .stdin(std::process::Stdio::piped())
-                .spawn()
-                .and_then(|mut child| {
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        stdin.write_all(text.as_bytes())?;
-                    }
-                    child.wait()
-                })
-                .map(|status| status.success())
-                .unwrap_or(false)
-        };
-        #[cfg(not(target_os = "macos"))]
-        let result = false;
-
-        if result {
-            self.set_message_inner("已复制到剪贴板".to_string());
-        } else {
-            self.set_message_inner("当前环境不支持剪贴板写入".to_string());
-        }
     }
 
     /// 覆盖保存设置。
@@ -561,6 +582,11 @@ impl Workspace {
             if let Some(mut task) = ws.task_by_id(&id) {
                 task.status = TaskStatus::Pending;
                 task.error_message = None;
+                if task.source_url.is_some() && !Path::new(&task.video_file.path).is_file() {
+                    let settings = ws.settings();
+                    task.options.download_proxy = settings.download_proxy;
+                    task.options.download_cookie_browser = settings.download_cookie_browser;
+                }
                 ws.upsert_task(task);
             }
         });
@@ -863,48 +889,82 @@ impl Workspace {
         }
     }
 
-    /// 测试当前模型服务。
-    pub async fn list_models(this: Instance<Self>) {
-        let (url, key) = this.with(|ws| {
-            let state = ws.state.lock().expect("workspace");
-            (
-                state.settings.llm_base_url.clone(),
-                state
-                    .api_keys
-                    .get(&state.settings.selected_llm_service_id)
-                    .cloned()
-                    .unwrap_or_default(),
-            )
-        });
-        let listed = blocking(move || crate::domain::llm::list_models(&url, &key)).await;
-        this.with(|ws| match listed {
-            Ok(Ok(models)) => {
-                ws.set_message_inner(if models.is_empty() {
-                    "已连接，但未返回模型".into()
-                } else {
-                    format!(
-                        "可用模型 {} 个：{}",
-                        models.len(),
-                        models.into_iter().take(8).collect::<Vec<_>>().join(", ")
-                    )
-                });
-                ws.notify();
-            }
-            Ok(Err(err)) => {
-                ws.set_message_inner(err);
-                ws.notify();
-            }
-            Err(err) => {
-                ws.set_message_inner(format!("{err}"));
-                ws.notify();
-            }
-        });
+    /// 获取当前服务返回的完整模型列表。
+    pub async fn list_models(this: Instance<Self>) -> Result<Vec<String>, String> {
+        let (url, key) = this.with(Self::model_credentials);
+        blocking(move || crate::domain::llm::list_models(&url, &key))
+            .await
+            .map_err(|err| err.to_string())?
+    }
+
+    /// 使用与正式任务相同的请求，测试指定模型能否返回文本。
+    pub async fn test_model(this: Instance<Self>, model: String) -> Result<(), String> {
+        use crate::domain::llm::{Completer, OpenAiCompleter};
+
+        let (url, key) = this.with(Self::model_credentials);
+        blocking(move || {
+            OpenAiCompleter::new(&url, &key, &model)?
+                .complete(
+                    "你是视频翻译助手。请按要求只输出译文。",
+                    "把 Hello 翻译成中文。",
+                )
+                .map(|_| ())
+        })
+        .await
+        .map_err(|err| err.to_string())?
     }
 
     /// 界面提示。
     pub fn set_message(&self, message: String) {
         self.set_message_inner(message);
         self.notify();
+    }
+
+    /// 打开系统完全磁盘访问权限设置，并在 Finder 中定位当前应用以便拖拽授权。
+    pub fn prepare_full_disk_access(&self) {
+        self.open_full_disk_access();
+        self.reveal_app_in_finder();
+    }
+
+    /// 打开系统设置中的完全磁盘访问权限页面。
+    pub fn open_full_disk_access(&self) {
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(err) = std::process::Command::new("open")
+                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+                .spawn()
+            {
+                self.set_message_inner(format!("无法打开系统设置: {err}"));
+                self.notify();
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.set_message_inner("当前系统不支持自动打开完全磁盘访问权限设置".into());
+            self.notify();
+        }
+    }
+
+    /// 在 Finder 中显示当前应用（或可执行文件），方便拖拽进权限列表。
+    pub fn reveal_app_in_finder(&self) {
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(target) = current_app_bundle_or_exe() {
+                if let Err(err) = std::process::Command::new("open")
+                    .arg("-R")
+                    .arg(&target)
+                    .spawn()
+                {
+                    self.set_message_inner(format!("无法在 Finder 中显示应用: {err}"));
+                    self.notify();
+                }
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.set_message_inner("当前系统不支持在 Finder 中显示应用".into());
+            self.notify();
+        }
     }
 
     /// 修改一段的起止时间。
@@ -995,41 +1055,22 @@ impl Workspace {
 }
 
 impl Workspace {
-    fn snapshot_value(&self) -> nsh_core::JsonValue {
-        let ws = self.state.lock().expect("workspace");
-        let api_key = ws
+    fn model_credentials(&self) -> (String, String) {
+        let state = self.state.lock().expect("workspace");
+        let key = state
             .api_keys
-            .get(&ws.settings.selected_llm_service_id)
+            .get(&state.settings.selected_llm_service_id)
             .cloned()
             .unwrap_or_default();
-        serde_json::to_value(Snapshot {
-            kind: ws.kind.as_str().to_owned(),
-            panel: ws.panel.as_str().to_owned(),
-            path_draft: ws.path_draft.clone(),
-            processing: ws.processing.as_str().to_owned(),
-            burn: ws.burn,
-            message: ws.message.clone(),
-            selected_id: ws.selected.clone(),
-            api_key,
-            settings: ws.settings.clone(),
-            tasks: ws.tasks.clone(),
-            checks: ws.checks.clone(),
-        })
-        .unwrap_or(nsh_core::JsonValue::Null)
+        (state.settings.llm_base_url.clone(), key)
+    }
+
+    fn snapshot_value(&self) -> nsh_core::JsonValue {
+        build_snapshot(&self.state)
     }
 
     fn notify(&self) {
-        let snap = self.snapshot_value();
-        let listeners: Vec<_> = self
-            .listeners
-            .lock()
-            .expect("listeners")
-            .iter()
-            .map(|(_, cb)| cb.clone())
-            .collect();
-        for cb in listeners {
-            cb.post(snap.clone());
-        }
+        emit_snapshot(&self.state, &self.listeners);
     }
 
     fn set_message_inner(&self, message: String) {

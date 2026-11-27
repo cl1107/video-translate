@@ -54,8 +54,6 @@ export function SiteHeader({ variant = 'home' }: SiteHeaderProps) {
       <DownloadCta
         appearance="header"
         compact
-        showVariantToggle={false}
-        showOtherLink={false}
         showHint={false}
         className="header-download-slot"
       />

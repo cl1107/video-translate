@@ -399,7 +399,7 @@ fn handle_doctor(opts: &GlobalOpts) -> ExitCode {
                 "{} {} {}",
                 if item.available { "ok" } else { "missing" },
                 item.name,
-                item.version.clone().or(item.error.clone()).unwrap_or_default()
+                item.error.as_deref().or(item.version.as_deref()).unwrap_or_default()
             )
         })
         .collect::<Vec<_>>()
@@ -444,6 +444,9 @@ fn handle_config(opts: &GlobalOpts, args: &[String]) -> ExitCode {
                 "targetLanguage" | "target_language" => settings.target_language = val,
                 "asrEngine" | "asr_engine" => settings.asr_engine = val,
                 "downloadProxy" | "download_proxy" => settings.download_proxy = val,
+                "downloadCookieBrowser" | "download_cookie_browser" => {
+                    settings.download_cookie_browser = val;
+                }
                 "polishTranscript" | "polish_transcript" => {
                     settings.polish_transcript = matches!(val.as_str(), "true" | "1" | "yes")
                 }

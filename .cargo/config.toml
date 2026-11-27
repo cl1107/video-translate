@@ -1,0 +1,3 @@
+[profile.release]
+# macOS 27 dyld can reject binaries stripped by rustc (rust-lang/rust#157750).
+strip = "none"

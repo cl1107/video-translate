@@ -1,10 +1,9 @@
 import type { Signal, VideoRef } from 'nsh'
 import { List, Scroll, Text, Video, View, effect, signal } from 'nsh'
-import { Input, NavPage, TextView } from 'nsh/base'
+import { Button, Input, NavPage, TextView } from 'nsh/base'
 import { titleBar } from 'nsh/desktop'
 import {
   Field,
-  GhostButton,
   Icon,
   NavButton,
   OutlineButton,
@@ -32,13 +31,16 @@ function ReviewHeader(props: { id: string }) {
       desktop={{ windowDrag: true }}
       style={{ paddingLeft: Math.max(titleBar().left, 24) }}
     >
-      <View class="flex-row items-center gap-3">
+      <View class="min-w-0 flex-1 flex-row items-center gap-3 pr-4">
         <If when={nav.routes().length > 1}>
           <NavButton name="back" label="返回" onPress={() => nav.pop()} />
         </If>
-        <View class="gap-1">
+        <View class="min-w-0 flex-1 gap-1">
           <Text class="text-base font-semibold text-foreground">字幕校对</Text>
-          <Text class="text-xs text-muted-foreground">
+          <Text
+            class="text-xs text-muted-foreground"
+            style={{ numberOfLines: 1, textOverflow: 'ellipsis-middle' }}
+          >
             {task()?.video_file.name ?? ''}
           </Text>
         </View>
@@ -79,7 +81,7 @@ function MediaBlock(props: {
             props.player.current = node
           }}
           paused={props.paused()}
-          class="h-64"
+          class="h-64 overflow-hidden rounded-lg bg-muted"
           onLoad={info => props.duration.set(info.duration)}
           onEnd={() => props.paused.set(true)}
           onError={err => workspace.setMessage(`媒体无法播放: ${err.message}`)}
@@ -95,14 +97,15 @@ function MediaBlock(props: {
         />
       </If>
       <If when={!playable()}>
-        <View class="h-60 items-center justify-center gap-3 rounded-lg bg-muted">
-          <Icon name="video" size={36} />
+        <View class="h-64 items-center justify-center gap-3 rounded-lg bg-muted">
+          <Icon name="video" size={24} class="tint-muted-foreground" />
           <Text class="text-sm text-muted-foreground">关联视频以预览字幕</Text>
         </View>
       </If>
-      <View class="flex-row gap-2">
+      <View class="flex-row flex-wrap gap-2">
         <OutlineButton
-          label="播放/暂停"
+          label={props.paused() ? '播放' : '暂停'}
+          disabled={!playable()}
           onPress={() => {
             stopAt.set(null)
             props.paused.update(value => !value)
@@ -110,6 +113,7 @@ function MediaBlock(props: {
         />
         <OutlineButton
           label="预览此段"
+          disabled={!playable() || !segmentAt(props.id, props.selected())}
           onPress={() => {
             const segment = segmentAt(props.id, props.selected())
             if (!segment) return
@@ -130,7 +134,10 @@ function MediaBlock(props: {
           }}
         />
       </View>
-      <Text class="text-sm text-foreground">
+      <Text
+        class="text-xs text-muted-foreground"
+        style={{ fontVariant: 'tabular-nums' }}
+      >
         {props.current().toFixed(3)} / {props.duration().toFixed(3)} 秒
       </Text>
       <Text class="text-sm text-foreground">
@@ -169,12 +176,14 @@ function TimingControls(props: {
         <Text class="text-sm text-foreground">开始（秒）</Text>
         <Field
           placeholder="开始秒数"
+          accessibilityLabel="开始秒数"
           value={startDraft()}
           onChange={value => startDraft.set(value)}
         />
         <Text class="text-sm text-foreground">结束（秒）</Text>
         <Field
           placeholder="结束秒数"
+          accessibilityLabel="结束秒数"
           value={endDraft()}
           onChange={value => endDraft.set(value)}
         />
@@ -288,7 +297,7 @@ function Editor(props: {
         selected={props.selected}
         current={props.current}
       />
-      <Text class="text-sm font-medium text-foreground">拖改时间轴</Text>
+      <Text class="text-sm font-medium text-foreground">字幕时间轴</Text>
       <Timeline
         value={segment()?.start ?? 0}
         max={maxEnd()}
@@ -310,22 +319,24 @@ function Editor(props: {
       <Text class="text-sm font-medium text-foreground">原文</Text>
       <Input
         multiline
+        accessibilityLabel="原文"
         value={segment()?.original_text ?? ''}
         onChange={({ value }) => {
           if (value === (segment()?.original_text ?? '')) return
           update({ original_text: value })
         }}
-        class="min-h-[72px] rounded-md border border-input p-3 text-foreground"
+        class="min-h-[72px] rounded-md border border-input bg-background p-3 text-sm text-foreground focus:border-ring"
       />
       <Text class="text-sm font-medium text-foreground">译文</Text>
       <Input
         multiline
+        accessibilityLabel="译文"
         value={segment()?.translated_text ?? ''}
         onChange={({ value }) => {
           if (value === (segment()?.translated_text ?? '')) return
           update({ translated_text: value })
         }}
-        class="min-h-[72px] rounded-md border border-input p-3 text-foreground"
+        class="min-h-[72px] rounded-md border border-input bg-background p-3 text-sm text-foreground focus:border-ring"
       />
       <Text class="text-sm text-destructive">
         {issuesOf(props.id)
@@ -382,62 +393,78 @@ export function ReviewPage(props: { id: string }) {
   }
   return (
     <NavPage title="校对工作台" header={<ReviewHeader id={props.id} />}>
-      <View class="flex-1 items-center px-6 py-5">
-        <View class="w-full max-w-6xl flex-1 flex-row gap-5">
-          <View class="max-w-lg flex-1 gap-4">
-            <SectionCard class="p-0">
-              <MediaBlock
-                id={props.id}
-                selected={() => selected()}
-                setSelected={index => selected.set(index)}
-                player={player}
-                paused={paused}
-                current={current}
-                duration={duration}
-              />
-            </SectionCard>
-            <SectionCard class="gap-3">
-              <Text class="text-sm font-semibold text-foreground">
-                检查问题
-              </Text>
-              <Text class="text-xs text-muted-foreground">{issueText()}</Text>
-              <Scroll class="flex-1">
-                <Text class="text-sm text-muted-foreground">
-                  {issuesOf(props.id)
-                    .slice(0, 12)
-                    .map(issue => issue.message)
-                    .join('\n')}
+      <View class="flex-1 items-center px-6 py-6">
+        <View class="w-full max-w-6xl flex-1 flex-row gap-4">
+          <Scroll class="min-w-0 max-w-lg flex-1">
+            <View class="gap-4">
+              <SectionCard class="p-0">
+                <MediaBlock
+                  id={props.id}
+                  selected={() => selected()}
+                  setSelected={index => selected.set(index)}
+                  player={player}
+                  paused={paused}
+                  current={current}
+                  duration={duration}
+                />
+              </SectionCard>
+              <SectionCard class="gap-3">
+                <Text class="text-sm font-semibold text-foreground">
+                  字幕检查
                 </Text>
-              </Scroll>
-            </SectionCard>
-          </View>
-          <View class="flex-1 gap-3">
+                <Text class="text-xs text-muted-foreground">{issueText()}</Text>
+                <If when={issuesOf(props.id).length > 0}>
+                  <Text class="text-sm text-destructive">
+                    {issuesOf(props.id)
+                      .slice(0, 12)
+                      .map(issue => issue.message)
+                      .join('\n')}
+                  </Text>
+                </If>
+              </SectionCard>
+            </View>
+          </Scroll>
+          <View class="min-w-0 flex-1 gap-3">
             <View class="flex-row items-center justify-between">
               <Text class="text-sm font-semibold text-foreground">
                 字幕段落
               </Text>
               <Text class="text-xs text-muted-foreground">
-                {selected() + 1} / {task()?.segments.length ?? 0}
+                {task()?.segments.length ? selected() + 1 : 0} /{' '}
+                {task()?.segments.length ?? 0}
               </Text>
             </View>
             <List
               each={task()?.segments ?? []}
               keyExtractor={item => item.id}
               estimatedItemSize={32}
-              class="h-24 rounded-lg border border-border"
+              class="h-32 shrink-0 rounded-lg border border-border bg-card"
+              contentStyle={{ padding: 4 }}
             >
               {(item, index) => (
-                <GhostButton
-                  label={`${item().start.toFixed(2)} – ${item().end.toFixed(2)}   ${item().original_text}`}
+                <Button
                   selected={selected() === index()}
-                  align="start"
+                  class="h-8 flex-row items-center gap-2 rounded-md px-2 hover:bg-muted selected:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
                   onPress={() => {
                     selected.set(index())
                     player.current?.seek(item().start)
                     current.set(item().start)
                     paused.set(true)
                   }}
-                />
+                >
+                  <Text
+                    class="w-28 shrink-0 text-xs text-muted-foreground"
+                    style={{ fontVariant: 'tabular-nums', numberOfLines: 1 }}
+                  >
+                    {item().start.toFixed(2)} – {item().end.toFixed(2)}
+                  </Text>
+                  <Text
+                    class="min-w-0 flex-1 text-sm text-foreground"
+                    style={{ numberOfLines: 1 }}
+                  >
+                    {item().original_text}
+                  </Text>
+                </Button>
               )}
             </List>
             <Scroll class="flex-1">
